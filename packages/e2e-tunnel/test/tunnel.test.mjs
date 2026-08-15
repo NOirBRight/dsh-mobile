@@ -208,8 +208,13 @@ test('deviceToken reconnects indefinitely; unknown tokens and the burned code ar
   assert.equal((await res.json()).echo, 'after-reconnect')
   second.close()
 
-  // the seat is free (one client per room); unknown tokens and the burned code
-  // are refused — connect() retries absorb the 4409 release lag
+  // the seat is free (one client per room); unknown tokens are refused —
+  // connect() retries absorb the 4409 release lag
   await assert.rejects(connect(offer, { deviceToken: 'no-such-token' }), (e) => e.code === 'bad-token')
-  await assert.rejects(connect(offer), (e) => e.code === 'bad-code')
+
+  // codes are multi-use within their window: re-pairing with the same code
+  // yields a fresh device (this is what makes a lost ack recoverable)
+  const third = await connect(offer)
+  assert.equal(third.deviceToken, 'dev-2')
+  third.close()
 })

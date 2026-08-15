@@ -59,6 +59,20 @@ export class PairingOfferManager {
   }
 
   /**
+   * Check a code WITHOUT burning it — the tunnel handshake path. Codes are
+   * multi-use within their 5-minute window (protocol §1): an ack lost after
+   * the host issued a device must not brick the phone's only credential —
+   * the client retries with the same code and pairs a new device.
+   * @param code - the code from an offer payload.
+   * @returns the validity outcome.
+   */
+  validate(code: string): 'ok' | 'expired' | 'unknown' {
+    const exp = this.pending.get(code)
+    if (exp === undefined) return 'unknown'
+    return Date.now() <= exp ? 'ok' : 'expired'
+  }
+
+  /**
    * Burn a code and report whether it was still valid. One-time: a presented
    * code is consumed whether or not it has expired.
    * @param code - the code from an offer payload.

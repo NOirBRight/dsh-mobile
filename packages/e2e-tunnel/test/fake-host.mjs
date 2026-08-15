@@ -14,7 +14,6 @@ const HOST_CHUNK = 100 * 1024
 export async function startFakeHost(relayUrl, room, opts = {}) {
   const keys = nacl.box.keyPair()
   const expectedCode = opts.expectedCode ?? 'test-code'
-  let codeBurned = false
   const deviceTokens = new Set()
   let tokenCounter = 0
 
@@ -47,8 +46,8 @@ export async function startFakeHost(relayUrl, room, opts = {}) {
   const adoptHello = (clientPub, hello) => {
     let issued = null
     if (typeof hello.code === 'string') {
-      if (codeBurned || hello.code !== expectedCode) return replyError('bad-code')
-      codeBurned = true
+      // multi-use within the window: wrong code is bad-code, right code pairs another device
+      if (hello.code !== expectedCode) return replyError('bad-code')
       tokenCounter += 1
       issued = 'dev-' + tokenCounter
       deviceTokens.add(issued)

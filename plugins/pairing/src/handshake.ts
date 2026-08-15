@@ -11,8 +11,9 @@
  *
  * helloJson is { code } | { deviceToken }. A valid code pairs a NEW device:
  * the ack carries { ok, deviceToken } — the token's only showing; the store
- * keeps its hash (protocol §5: permanent until revoked). A valid deviceToken
- * reconnects an already-paired device: ack is { ok }.
+ * keeps its hash (protocol §5: permanent until revoked). Codes are multi-use
+ * within their window (§1). A valid deviceToken reconnects an already-paired
+ * device: ack is { ok }.
  */
 import nacl from 'tweetnacl'
 import type { DaemonKeypair } from './keys.ts'
@@ -68,7 +69,9 @@ export function hostHandshake(frame: Uint8Array, deps: HandshakeDeps): Handshake
 
   let deviceToken: string | null = null
   if (typeof hello.code === 'string') {
-    const status = deps.offers.redeem(hello.code)
+    // Multi-use within the pairing window (validate, not redeem): a lost ack
+    // must not leave the phone with a burned code and no device token.
+    const status = deps.offers.validate(hello.code)
     if (status !== 'ok') return fail(status === 'expired' ? 'expired' : 'bad-code')
     // New device: issue its permanent token (plaintext shows here only).
     deviceToken = deps.devices.issue(undefined, deps.room).token

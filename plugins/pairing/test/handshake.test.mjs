@@ -63,17 +63,18 @@ test('code handshake pairs a new device: ack carries a device token bound to the
   assert.deepEqual(store.liveRooms(), [ROOM])
 })
 
-test('unknown code → bad-code; code is single-use', () => {
+test('unknown code → bad-code; code is multi-use within its window (ack-loss safe)', () => {
   const offer = offers.mint('relay', 'wss://relay.test', 'b'.repeat(32), keypair.publicKeyBase64Url)
   const good = makeClientFrame({ code: offer.code })
   assert.equal(hostHandshake(good.frame, deps).ok, true)
+  // same code again inside the window: pairs ANOTHER device (a lost ack must not brick the phone)
   const again = makeClientFrame({ code: offer.code })
-  assert.equal(errorOf(hostHandshake(again.frame, deps)), 'bad-code')
+  assert.equal(hostHandshake(again.frame, deps).ok, true)
   const unknown = makeClientFrame({ code: 'never-minted' })
   assert.equal(errorOf(hostHandshake(unknown.frame, deps)), 'bad-code')
 })
 
-test('expired code → expired on first presentation, bad-code after (burned)', async () => {
+test('expired code → expired on every presentation (validate never burns)', async () => {
   const shortOffers = new PairingOfferManager(20)
   const shortDeps = { keypair, offers: shortOffers, devices: store, room: 'c'.repeat(32) }
   const offer = shortOffers.mint('relay', 'wss://relay.test', 'c'.repeat(32), keypair.publicKeyBase64Url)
@@ -81,7 +82,7 @@ test('expired code → expired on first presentation, bad-code after (burned)', 
   const first = makeClientFrame({ code: offer.code })
   assert.equal(errorOf(hostHandshake(first.frame, shortDeps)), 'expired')
   const second = makeClientFrame({ code: offer.code })
-  assert.equal(errorOf(hostHandshake(second.frame, shortDeps)), 'bad-code')
+  assert.equal(errorOf(hostHandshake(second.frame, shortDeps)), 'expired')
 })
 
 test('deviceToken handshake reconnects forever; revoked token → bad-token', () => {
