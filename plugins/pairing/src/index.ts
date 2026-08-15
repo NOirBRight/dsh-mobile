@@ -191,7 +191,7 @@ type CampaignStarter = (room: string, exp: number) => void
 function mintRelayOffer(config: ResolvedConfig, pubkey: string, offers: PairingOfferManager, start: CampaignStarter): PairingOfferPayload {
   const room = randomBytes(16).toString('hex') // 128-bit, matches the relay's room id rules
   const offer = offers.mint('relay', config.relayUrl, room, pubkey)
-  start(room, offer.exp)
+  start(room, offer.exp * 1000) // campaign window is ms; the wire exp is seconds
   return offer
 }
 

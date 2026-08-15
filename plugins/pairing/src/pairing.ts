@@ -6,7 +6,7 @@
  */
 import { randomBytes } from 'node:crypto'
 
-/** The QR payload. `v` 1 = LAN (M1), 2 = relay (tunnel-protocol.md §1). `room` is null in LAN mode; `exp` is epoch milliseconds. */
+/** The QR payload. `v` 1 = LAN (M1), 2 = relay (tunnel-protocol.md §1). `room` is null in LAN mode; `exp` is epoch SECONDS (wire contract, tunnel-protocol.md §1). */
 export interface PairingOfferPayload {
   v: 1 | 2
   mode: 'lan' | 'relay'
@@ -38,9 +38,10 @@ export class PairingOfferManager {
   mint(mode: 'lan' | 'relay', addr: string, room: string | null, pubkey: string): PairingOfferPayload {
     this.prune()
     const code = randomBytes(24).toString('base64url')
-    const exp = Date.now() + this.ttlMs
-    this.pending.set(code, exp)
-    return { v: mode === 'relay' ? 2 : 1, mode, addr, room, pubkey, code, exp }
+    const expMs = Date.now() + this.ttlMs
+    this.pending.set(code, expMs)
+    // Wire field is unix SECONDS (tunnel-protocol.md §1); the pending map keeps ms.
+    return { v: mode === 'relay' ? 2 : 1, mode, addr, room, pubkey, code, exp: Math.floor(expMs / 1000) }
   }
 
   /**

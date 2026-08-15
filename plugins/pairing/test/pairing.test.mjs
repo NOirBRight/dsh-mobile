@@ -65,7 +65,7 @@ test('offer: mint shape, one-time exchange, expiry', async () => {
   assert.equal(offer.mode, 'lan')
   assert.equal(offer.room, null)
   assert.ok(offer.code.length > 20)
-  assert.ok(offer.exp > Date.now())
+  assert.ok(offer.exp >= Math.floor(Date.now() / 1000)) // wire exp is unix seconds (tunnel-protocol.md §1)
 
   assert.equal(offers.exchange(offer.code), true)
   assert.equal(offers.exchange(offer.code), false) // burned: one-time
