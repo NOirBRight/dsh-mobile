@@ -59,7 +59,9 @@ const PLAINTEXT_LIMIT = 200 * 1024
 export async function connect(offerUrl: string, options: ConnectOptions = {}): Promise<TunnelClient> {
   options.onStateChange?.('connecting')
   try {
-    const offer = parseOffer(offerUrl)
+    // A paired device's persistent token outlives the short QR window.
+    // Still parse the offer shape, but let the host authenticate the token.
+    const offer = parseOffer(offerUrl, { allowExpired: options.deviceToken !== undefined })
     const hostPub = b64urlDecode(offer.pubkey)
     const maxAttempts = Math.max(1, options.connectRetries ?? 3)
     for (let attempt = 1; ; attempt++) {

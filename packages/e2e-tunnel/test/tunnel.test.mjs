@@ -218,3 +218,22 @@ test('deviceToken reconnects indefinitely; unknown tokens and the burned code ar
   assert.equal(third.deviceToken, 'dev-2')
   third.close()
 })
+
+test('a paired device reconnects after its original QR offer expires', async () => {
+  const { offer } = await hostAndOffer()
+  const first = await connect(offer)
+  const token = first.deviceToken
+  assert.equal(typeof token, 'string')
+  first.close()
+
+  const parsed = parseOffer(offer)
+  const expired = makeOffer({
+    room: parsed.room,
+    pubkey: parsed.pubkey,
+    exp: Math.floor(Date.now() / 1000) - 1,
+  })
+  const resumed = await connect(expired, { deviceToken: token })
+  assert.equal(resumed.state, 'open')
+  assert.equal(resumed.deviceToken, token)
+  resumed.close()
+})

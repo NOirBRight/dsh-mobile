@@ -19,14 +19,20 @@ export interface Offer {
   exp: number
 }
 
+export interface ParseOfferOptions {
+  /** Permit an expired pairing window when a caller has a persistent device token. */
+  allowExpired?: boolean
+}
+
 /**
  * Parse and validate an offer. Accepts a full URL with an '#offer=<base64url>'
  * fragment or a bare base64url payload.
  * @param offerUrl QR content or bare payload.
+ * @param options Validation policy; token reconnects may outlive the QR window.
  * @returns the validated offer.
  * @throws TunnelError 'bad-offer' (malformed) or 'expired' (past exp).
  */
-export function parseOffer(offerUrl: string): Offer {
+export function parseOffer(offerUrl: string, options: ParseOfferOptions = {}): Offer {
   const match = /#offer=([A-Za-z0-9_-]+)/.exec(offerUrl)
   const payload = match ? match[1] : offerUrl.trim()
   let parsed: unknown
@@ -49,6 +55,6 @@ export function parseOffer(offerUrl: string): Offer {
   }
   if (typeof o.code !== 'string' || o.code.length === 0) throw new TunnelError('bad-offer', 'missing code')
   if (typeof o.exp !== 'number' || !Number.isFinite(o.exp)) throw new TunnelError('bad-offer', 'missing exp')
-  if (o.exp * 1000 <= Date.now()) throw new TunnelError('expired', 'offer has expired; rescan the QR code')
+  if (!options.allowExpired && o.exp * 1000 <= Date.now()) throw new TunnelError('expired', 'offer has expired; rescan the QR code')
   return { v: 2, mode: 'relay', addr: o.addr, room: o.room, pubkey: o.pubkey, code: o.code, exp: o.exp }
 }
