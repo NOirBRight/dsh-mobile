@@ -148,7 +148,9 @@ class DeferredWebSocket {
 
   constructor(mgr: TunnelManager, NativeWS: typeof WebSocket, url: string | URL, protocols?: string | string[]) {
     const u = new URL(String(url), location.origin)
-    if (u.origin !== location.origin) {
+    // Compare by HOST, not origin: the shell builds downlinks as ws(s)://<host>/api/...,
+    // and wss://x != https://x as origins even for the same server.
+    if (u.host !== location.host) {
       this.bind(new NativeWS(String(url), protocols) as never)
       return
     }
