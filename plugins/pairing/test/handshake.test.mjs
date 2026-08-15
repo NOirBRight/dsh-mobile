@@ -85,12 +85,14 @@ test('expired code → expired on every presentation (validate never burns)', as
   assert.equal(errorOf(hostHandshake(second.frame, shortDeps)), 'expired')
 })
 
-test('deviceToken handshake reconnects forever; revoked token → bad-token', () => {
+test('deviceToken handshake reconnects forever and re-binds the room; revoked token → bad-token', () => {
   const { id, token } = store.issue(undefined, 'd'.repeat(32))
   const first = makeClientFrame({ deviceToken: token })
   const ack = openAck(hostHandshake(first.frame, deps), first.clientKeys)
   assert.equal(ack.ok, true)
   assert.equal(ack.deviceToken, undefined) // bearer token persists; no rotation in the ack
+  // the handshake landed on deps.room: the device re-binds to it (keeps the new room's campaign alive)
+  assert.equal(store.authenticate(token)?.room, ROOM)
   // same token again — still valid (permanent until revoked)
   const second = makeClientFrame({ deviceToken: token })
   assert.equal(hostHandshake(second.frame, deps).ok, true)

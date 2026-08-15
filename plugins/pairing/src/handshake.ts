@@ -76,7 +76,11 @@ export function hostHandshake(frame: Uint8Array, deps: HandshakeDeps): Handshake
     // New device: issue its permanent token (plaintext shows here only).
     deviceToken = deps.devices.issue(undefined, deps.room).token
   } else if (typeof hello.deviceToken === 'string') {
-    if (deps.devices.authenticate(hello.deviceToken) === null) return fail('bad-token')
+    const device = deps.devices.authenticate(hello.deviceToken)
+    if (device === null) return fail('bad-token')
+    // Re-bind to the room this handshake landed on: without it the new room's
+    // campaign dies at window close and the phone times out forever (§5).
+    if (deps.room !== undefined) deps.devices.bindRoom(device.id, deps.room)
   } else {
     return fail('bad-hello')
   }

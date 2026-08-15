@@ -94,6 +94,20 @@ export class DeviceTokenStore {
   }
 
   /**
+   * Re-bind a device to a different room (a deviceToken handshake that lands
+   * on a new room moves the binding, so the new room's campaign stays alive
+   * after the pairing window closes — protocol §5).
+   * @param id - record id from authenticate/list.
+   * @param room - the room to bind.
+   */
+  bindRoom(id: string, room: string): void {
+    const device = this.devices.find((d) => d.id === id && d.revokedAt === null)
+    if (!device || device.room === room) return
+    device.room = room
+    this.save()
+  }
+
+  /**
    * Revoke a device by id.
    * @param id - record id from {@link list}.
    * @returns whether a live device was found and revoked.
