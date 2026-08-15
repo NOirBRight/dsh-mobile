@@ -6,7 +6,7 @@ relay 是部署在用户 VPS(杭州阿里云,120.26.124.92)上的哑 WebSocket �
 
 M0 PoC 已在 VPS 部署并通过公网 E2E(wss://noirbright.top/relay)。实现的是本协议的子集:
 
-- 入口为路径形式 wss://noirbright.top/relay(Caddy handle_path 去前缀);relay.noirbright.top 子域待加 DNS A 记录后切换。
+- 规范入口 wss://relay.noirbright.top 已上线(2026-08-15:A 记录经 aliyun CLI 添加,LE 证书 tls-alpn-01 签发,E2E 通过);路径形式 wss://noirbright.top/relay 保留为兼容入口。
 - 已实现:双方房间(先到建房)、第三者 4409、binary/text 帧透明转发、空房 10 分钟 GC、30 秒 ping/pong 保活、单帧上限 1 MiB(ws 库以 1009 关闭)、/healthz 纯文本 ok、每 IP 每分钟 100 次升级限流。
 - 未实现(留 M1+):text 控制消息与 binary/text 分工(§3.5、§5)、重连宽限与 4404/4408(§3.6)、4413(M0 以 1009 代替)、healthz JSON 计数、host 接入令牌。
 - M0 的"单方离开不拆房、不通知"与 §3.6 草案不同,是有意为之:手机漫游重连不要求 E2E 层重建会话;§3.6 的宽限+控制消息方案在 M1 评审后取代。
