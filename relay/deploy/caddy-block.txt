@@ -1,0 +1,7 @@
+	# dsh-relay (dsh-mobile PoC) - strip /relay prefix; WS rooms under /r/<id>
+	handle_path /relay* {
+		reverse_proxy dsh-relay:8787 {
+			flush_interval -1
+		}
+	}
+

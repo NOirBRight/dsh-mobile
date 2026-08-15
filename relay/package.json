@@ -1,0 +1,17 @@
+{
+  "name": "dsh-relay",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Untrusted WebSocket room relay for dsh-mobile (E2E ciphertext pipe)",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/relay.test.mjs"
+  }
+}
