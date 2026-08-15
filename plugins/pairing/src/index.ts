@@ -14,6 +14,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { randomBytes } from 'node:crypto'
 import { networkInterfaces } from 'node:os'
 import QRCode from 'qrcode'
 import { Config, resolveConfig } from './config.ts'
@@ -23,6 +24,11 @@ import { DeviceTokenStore } from './tokens.ts'
 import { PairingOfferManager, buildOfferUrl } from './pairing.ts'
 import type { PairingOfferPayload } from './pairing.ts'
 import { createAuthProxy } from './proxy.ts'
+import { ResumeTokenStore } from './handshake.ts'
+import { createRelayConnector } from './relay-connector.ts'
+import type { RelayConnector } from './relay-connector.ts'
+import { attachRelaySocket } from './tunnel-server.ts'
+import type { RelaySocketGate } from './tunnel-server.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'dsh-mobile-pairing'
@@ -49,6 +55,12 @@ export { PairingOfferManager, buildOfferUrl, parseOfferUrl } from './pairing.ts'
 export type { PairingOfferPayload } from './pairing.ts'
 export { createAuthProxy, WS_AUTH_PREFIX } from './proxy.ts'
 export type { AuthProxy, AuthProxyOptions } from './proxy.ts'
+export { ResumeTokenStore, hostHandshake, RESUME_TOKEN_TTL_MS } from './handshake.ts'
+export type { HandshakeDeps, HandshakeOutcome } from './handshake.ts'
+export { createRelayConnector } from './relay-connector.ts'
+export type { RelayConnector, RelayConnectorOptions } from './relay-connector.ts'
+export { attachRelaySocket } from './tunnel-server.ts'
+export type { RelaySocketGate, TunnelEndpointOptions } from './tunnel-server.ts'
 
 /**
  * Plugin body: wire the keypair, stores, /pair routes, and the LAN proxy.
@@ -70,6 +82,44 @@ export function apply(ctx: Context, config: Config): void {
     tokenStore: store,
   })
 
+  // ── relay campaign state (M3) ───────────────────────────────────────────
+  // Minting a relay offer starts (or replaces) a connector campaign for the
+  // offer's room. The retry window runs to the offer's exp, extended by any
+  // live resume token (tunnel-protocol.md §5 lets a paired phone outlive the
+  // pairing window — README §M3 interpretations).
+  const resumeTokens = new ResumeTokenStore()
+  let campaign: RelayConnector | null = null
+  let gate: RelaySocketGate | null = null
+
+  const startCampaign = (room: string, exp: number): void => {
+    campaign?.close()
+    gate?.close()
+    gate = null
+    campaign = createRelayConnector({
+      relayUrl: resolved.relayUrl,
+      room,
+      shouldRetry: () => Date.now() < exp || resumeTokens.liveUntil() > Date.now(),
+      onSocket: (socket) => {
+        gate?.close()
+        gate = attachRelaySocket(socket, {
+          upstreamHost: resolved.dshHost,
+          upstreamPort: resolved.dshPort,
+          handshake: { keypair, offers, resumeTokens },
+          logger: (msg) => ctx.logger.info('dsh-mobile-pairing: ' + msg),
+          onSessionClose: () => {
+            gate = null
+          },
+        })
+      },
+      logger: (msg) => ctx.logger.info('dsh-mobile-pairing: ' + msg),
+    })
+  }
+
+  ctx.effect(() => () => {
+    campaign?.close()
+    gate?.close()
+  })
+
   ctx.effect(() => {
     proxy.listen().then(
       (port) =>
@@ -85,7 +135,7 @@ export function apply(ctx: Context, config: Config): void {
     webServer.register({
       kind: 'exact',
       path: '/pair',
-      handler: (req, res) => handlePair(req, res, resolved, proxy.port(), keypair.publicKeyBase64Url, offers),
+      handler: (req, res) => handlePair(req, res, resolved, proxy.port(), keypair.publicKeyBase64Url, offers, startCampaign),
     }),
   )
 
@@ -135,6 +185,16 @@ export function apply(ctx: Context, config: Config): void {
 }
 
 /** Mint the current offer and answer JSON, or SVG with ?format=svg. */
+type CampaignStarter = (room: string, exp: number) => void
+
+/** Mint a relay-mode offer (v2) and start its connector campaign. */
+function mintRelayOffer(config: ResolvedConfig, pubkey: string, offers: PairingOfferManager, start: CampaignStarter): PairingOfferPayload {
+  const room = randomBytes(16).toString('hex') // 128-bit, matches the relay's room id rules
+  const offer = offers.mint('relay', config.relayUrl, room, pubkey)
+  start(room, offer.exp)
+  return offer
+}
+
 async function handlePair(
   req: IncomingMessage,
   res: ServerResponse,
@@ -142,10 +202,24 @@ async function handlePair(
   proxyPort: number | null,
   pubkey: string,
   offers: PairingOfferManager,
+  startCampaign: CampaignStarter,
 ): Promise<void> {
   if (req.method !== 'GET') {
     res.writeHead(405)
     res.end()
+    return
+  }
+  if (config.enableRelay) {
+    const offer = mintRelayOffer(config, pubkey, offers, startCampaign)
+    const offerUrl = buildOfferUrl(config.appUrl, offer)
+    if (new URL(req.url ?? '/', 'http://x').searchParams.get('format') === 'svg') {
+      const svg = await QRCode.toString(offerUrl, { type: 'svg', margin: 1 })
+      res.writeHead(200, { 'content-type': 'image/svg+xml' })
+      res.end(svg)
+      return
+    }
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ ...offer, offerUrl }))
     return
   }
   if (proxyPort === null) {

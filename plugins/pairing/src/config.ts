@@ -29,6 +29,10 @@ export interface Config {
   tokenStorePath?: string
   /** One-time pairing-code lifetime in milliseconds. */
   codeTtlMs: number
+  /** Relay WSS base URL for relay-mode offers (tunnel-protocol.md §1). */
+  relayUrl: string
+  /** When true, /pair mints relay-mode (v2) offers and drives the relay connector; false keeps M1 LAN offers. */
+  enableRelay: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -42,6 +46,8 @@ export const Config: z<Config> = z.object({
   keyStorePath: z.string(),
   tokenStorePath: z.string(),
   codeTtlMs: z.natural().default(300_000),
+  relayUrl: z.string().default('wss://relay.noirbright.top'),
+  enableRelay: z.boolean().default(true),
 })
 
 /** The config after the resolve step: every derivable field is concrete and checked. */
@@ -62,6 +68,9 @@ export function resolveConfig(config: Config): ResolvedConfig {
   }
   if (!/^https?:\/\//.test(config.appUrl)) {
     throw new Error(`dsh-mobile-pairing: appUrl must be an http(s) URL, got "${config.appUrl}"`)
+  }
+  if (!/^wss?:\/\//.test(config.relayUrl)) {
+    throw new Error(`dsh-mobile-pairing: relayUrl must be a ws(s) URL, got "${config.relayUrl}"`)
   }
   if (config.codeTtlMs <= 0) {
     throw new Error('dsh-mobile-pairing: codeTtlMs must be positive')

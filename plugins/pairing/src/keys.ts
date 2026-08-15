@@ -15,6 +15,10 @@ export interface DaemonKeypair {
   privateKey: KeyObject
   /** Raw 32-byte public key, base64url — the value placed into pairing offers. */
   publicKeyBase64Url: string
+  /** Raw 32-byte X25519 public key — NaCl box material (tunnel-protocol.md §2). */
+  publicKeyRaw: Uint8Array
+  /** Raw 32-byte X25519 private key — NaCl box material. Never leaves $DSH_HOME. */
+  secretKeyRaw: Uint8Array
 }
 
 /**
@@ -36,16 +40,27 @@ export function loadOrCreateKeypair(path: string): DaemonKeypair {
   if (j.kty !== 'OKP' || j.crv !== 'X25519' || typeof j.x !== 'string' || typeof j.d !== 'string') {
     throw new Error(`dsh-mobile-pairing: ${path} is not an X25519 JWK — remove it to re-mint (breaks paired devices)`)
   }
+  const publicKeyRaw = Buffer.from(j.x, 'base64url')
+  const secretKeyRaw = Buffer.from(j.d, 'base64url')
+  if (publicKeyRaw.length !== 32 || secretKeyRaw.length !== 32) {
+    throw new Error(`dsh-mobile-pairing: ${path} has non-32-byte X25519 key material — remove it to re-mint (breaks paired devices)`)
+  }
   const privateKey = createPrivateKey({ key: jwk as JsonWebKey, format: 'jwk' })
-  return { publicKey: createPublicKey(privateKey), privateKey, publicKeyBase64Url: j.x }
+  return { publicKey: createPublicKey(privateKey), privateKey, publicKeyBase64Url: j.x, publicKeyRaw, secretKeyRaw }
 }
 
 /** @param path - destination file. @returns a fresh keypair persisted at `path`. */
 function mint(path: string): DaemonKeypair {
   const { publicKey, privateKey } = generateKeyPairSync('x25519')
-  const jwk = privateKey.export({ format: 'jwk' }) as { x: string }
+  const jwk = privateKey.export({ format: 'jwk' }) as { x: string; d: string }
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, JSON.stringify(jwk, null, 2))
   chmodSync(path, 0o600)
-  return { publicKey, privateKey, publicKeyBase64Url: jwk.x }
+  return {
+    publicKey,
+    privateKey,
+    publicKeyBase64Url: jwk.x,
+    publicKeyRaw: Buffer.from(jwk.x, 'base64url'),
+    secretKeyRaw: Buffer.from(jwk.d, 'base64url'),
+  }
 }

@@ -6,9 +6,9 @@
  */
 import { randomBytes } from 'node:crypto'
 
-/** The QR payload. `room` is null in LAN mode; `exp` is epoch milliseconds. */
+/** The QR payload. `v` 1 = LAN (M1), 2 = relay (tunnel-protocol.md §1). `room` is null in LAN mode; `exp` is epoch milliseconds. */
 export interface PairingOfferPayload {
-  v: 1
+  v: 1 | 2
   mode: 'lan' | 'relay'
   addr: string
   room: string | null
@@ -40,7 +40,21 @@ export class PairingOfferManager {
     const code = randomBytes(24).toString('base64url')
     const exp = Date.now() + this.ttlMs
     this.pending.set(code, exp)
-    return { v: 1, mode, addr, room, pubkey, code, exp }
+    return { v: mode === 'relay' ? 2 : 1, mode, addr, room, pubkey, code, exp }
+  }
+
+  /**
+   * Burn a code and report the outcome distinctly — the tunnel handshake
+   * needs the expired/unknown split for its plaintext error frame (§2.2).
+   * One-time: a presented code is consumed whether or not it has expired.
+   * @param code - the code from an offer payload.
+   * @returns the redemption outcome.
+   */
+  redeem(code: string): 'ok' | 'expired' | 'unknown' {
+    const exp = this.pending.get(code)
+    if (exp === undefined) return 'unknown'
+    this.pending.delete(code)
+    return Date.now() <= exp ? 'ok' : 'expired'
   }
 
   /**
@@ -50,10 +64,7 @@ export class PairingOfferManager {
    * @returns true only for a live, unexpired code.
    */
   exchange(code: string): boolean {
-    const exp = this.pending.get(code)
-    if (exp === undefined) return false
-    this.pending.delete(code)
-    return Date.now() <= exp
+    return this.redeem(code) === 'ok'
   }
 
   private prune(): void {
@@ -85,7 +96,9 @@ export function parseOfferUrl(url: string): PairingOfferPayload | null {
   if (!hash.startsWith('#offer=')) return null
   try {
     const payload = JSON.parse(Buffer.from(hash.slice('#offer='.length), 'base64url').toString()) as PairingOfferPayload
-    if (payload.v !== 1 || typeof payload.code !== 'string' || typeof payload.pubkey !== 'string') return null
+    if (payload.v !== 1 && payload.v !== 2) return null
+    if (typeof payload.code !== 'string' || typeof payload.pubkey !== 'string') return null
+    if (payload.v === 2 && (payload.mode !== 'relay' || typeof payload.room !== 'string')) return null
     return payload
   } catch {
     return null

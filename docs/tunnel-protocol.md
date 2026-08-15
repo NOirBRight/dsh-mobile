@@ -17,7 +17,7 @@ JSON,经 `#offer=<base64url>` 传递:
 ## 2. 握手(会话建立前,仅前两帧)
 
 1. client 生成临时 X25519 对,发送**握手帧**:`clientPub(32B) || nonce(24B) || box(helloJson, hostPub, clientSec)`。helloJson = `{ code } | { resumeToken }`。
-2. host 开封校验:`code` 有效且未用 → 焚毁并通过;`resumeToken` 有效 → 通过(见 §5);否则回复**明文错误帧** `{"error":"bad-code"|"expired"|...}` 并关闭。
+2. host 开封校验:`code` 有效且未用 → 焚毁并通过;`resumeToken` 有效 → 通过(见 §5);否则回复**明文错误帧** `{"error":"bad-code"|"expired"|...}`。**座位生命周期**:host 拒绝后必须保持座位不动(一条坏 hello 不能踢掉 host、DoS 房间);client 在握手的任何失败路径上都必须自己关闭连接,释放房间 client 座位。
 3. 成功 → host 回复 `nonce(24B) || box(ackJson, clientPub, hostSec)`,ackJson = `{ ok: true, resumeToken: <新令牌> }`。会话开始。
 
 ## 3. 会话帧(全部密封)
