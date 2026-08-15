@@ -1,0 +1,32 @@
+{
+  "name": "@dsh-mobile/bundle-mobile-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "dsh-mobile 移动浏览器表面 bundle:patch 层(换根布局、换 dist)+ webRuntime 胶水插件",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@dsh-mobile/ui-layout-mobile": "file:../../packages/ui-layout-mobile"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3"
+  }
+}

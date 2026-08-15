@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "DSH Mobile",
+  "short_name": "DSH",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

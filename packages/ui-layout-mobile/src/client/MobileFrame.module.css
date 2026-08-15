@@ -1,0 +1,162 @@
+/* MobileFrame: single-column shell + top bar + drawer + details sheet.
+   Theme tokens only (--dsw-alias-* / --ds-motion): no literal colors. */
+
+.frame {
+  position: relative; /* anchors drawer, sheet, scrim, overlay */
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-base);
+}
+
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 8px;
+  padding-top: env(safe-area-inset-top);
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.menuButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px; /* minimum comfortable touch target */
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.menuButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.menuButton:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -2px;
+}
+
+.brand {
+  font: var(--dsw-font-s-strong-14);
+  color: var(--dsw-alias-label-primary);
+  user-select: none;
+}
+
+.center {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Scrim sits between content and drawer; visibility rides the slide
+   transition so it neither intercepts touches nor stays tabbable while
+   closed (delayed-visibility pattern, no JS involvement). */
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: var(--dsw-alias-bg-mask-1);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    visibility 0s var(--ds-transition-duration-slow);
+}
+
+.frame[data-drawer-open] .scrim {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    visibility 0s;
+}
+
+.drawer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  width: min(300px, 84vw);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--dsw-specific-sidebar-fill);
+  border-right: 1px solid var(--dsw-alias-border-l1);
+  transform: translateX(-105%);
+  visibility: hidden;
+  transition:
+    transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    visibility 0s var(--ds-transition-duration-slow);
+}
+
+.frame[data-drawer-open] .drawer {
+  transform: none;
+  visibility: visible;
+  transition:
+    transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    visibility 0s;
+}
+
+.detailsSheet {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--dsw-alias-bg-base);
+  transform: translateY(100%);
+  visibility: hidden;
+  transition:
+    transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    visibility 0s var(--ds-transition-duration-slow);
+}
+
+.frame[data-details-open] .detailsSheet {
+  transform: none;
+  visibility: visible;
+  transition:
+    transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    visibility 0s;
+}
+
+/* Click-through layer; occupants opt back in (upstream parity). */
+.overlayLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+
+.overlayLayer > * {
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim,
+  .drawer,
+  .detailsSheet {
+    transition: none;
+  }
+}

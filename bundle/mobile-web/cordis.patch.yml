@@ -1,0 +1,41 @@
+# dsh-mobile 的移动浏览器表面层:叠加在 dsh-web-app 层之上(见 README.md)。
+#
+# 两件事:
+# 1) 换根布局——禁用上游三栏 ui-layout,插入单栏抽屉壳 ui-layout-mobile;
+#    四条子 slot 声明逐字一致,leaf 插件(ui-sidebar/ui-conversation/…)
+#    不经修改继续工作。
+# 2) 换 dist——上游 web-runtime 胶水把 distIndex 硬编码为
+#    @deepseek-ai/dsh-web-frontend(包内 createRequire 解析,无配置口,
+#    见 packages/bundle/web-app/src/index.ts resolveDistIndex),因此整行
+#    禁用,由本包的 mobile-web-runtime 行接替提供 webRuntime 服务(LAN
+#    信任采样),dist 服务改挂一行 frontend-static 指向 apps/mobile-web
+#    的构建产物。frontend-static 的 fallback 席位是全树单主,不能双挂。
+#
+# 代价(README「已知取舍」):web-runtime 行同时承担 harness:source 与
+# app:web-surface 提示词段、DSH_WEB_URL shell 变量;M2 骨架不复制这些。
+
+- id: ui-layout
+  disabled: true
+
+- id: web-runtime
+  disabled: true
+
+- insert:
+    - id: ui-layout-mobile
+      name: '@dsh-mobile/ui-layout-mobile'
+
+    # 接替提供 webRuntime(connection 行的 !!js ctx.webRuntime.trustedHosts
+    # 依赖它)。行级 inject 让 !!js 表达式等 webStartup 就绪后再求值。
+    - id: mobile-web-runtime
+      name: '@dsh-mobile/bundle-mobile-web'
+      inject: [webStartup]
+      config:
+        printUrl: true
+        trustedHosts: !!js ctx.webStartup.trustedHosts
+
+    # SPA dist 服务:fallback 席位的唯一 owner。distIndex 是组装事实,
+    # 指向本仓库 apps/mobile-web 的构建产物(绝对路径,随机器调整)。
+    - id: frontend-static
+      name: '@deepseek-ai/dsh-host-frontend-static'
+      config:
+        distIndex: /home/noirbright/Workstation/dsh-mobile/apps/mobile-web/dist/index.html

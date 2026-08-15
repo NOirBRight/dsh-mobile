@@ -1,0 +1,27 @@
+{
+  "name": "@dsh-mobile/mobile-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "移动壳 Vite 入口:build 出 dsh-client-web shell 的 dist,由 mobile-web profile 的 frontend-static 行 serve",
+  "exports": {
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "watch": "vite build --watch"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^6.0.0"
+  }
+}
