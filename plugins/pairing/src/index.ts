@@ -24,7 +24,6 @@ import { DeviceTokenStore } from './tokens.ts'
 import { PairingOfferManager, buildOfferUrl } from './pairing.ts'
 import type { PairingOfferPayload } from './pairing.ts'
 import { createAuthProxy } from './proxy.ts'
-import { ResumeTokenStore } from './handshake.ts'
 import { createRelayConnector } from './relay-connector.ts'
 import type { RelayConnector } from './relay-connector.ts'
 import { attachRelaySocket } from './tunnel-server.ts'
@@ -55,7 +54,7 @@ export { PairingOfferManager, buildOfferUrl, parseOfferUrl } from './pairing.ts'
 export type { PairingOfferPayload } from './pairing.ts'
 export { createAuthProxy, WS_AUTH_PREFIX } from './proxy.ts'
 export type { AuthProxy, AuthProxyOptions } from './proxy.ts'
-export { ResumeTokenStore, hostHandshake, RESUME_TOKEN_TTL_MS } from './handshake.ts'
+export { hostHandshake } from './handshake.ts'
 export type { HandshakeDeps, HandshakeOutcome } from './handshake.ts'
 export { createRelayConnector } from './relay-connector.ts'
 export type { RelayConnector, RelayConnectorOptions } from './relay-connector.ts'
@@ -82,42 +81,46 @@ export function apply(ctx: Context, config: Config): void {
     tokenStore: store,
   })
 
-  // ── relay campaign state (M3) ───────────────────────────────────────────
-  // Minting a relay offer starts (or replaces) a connector campaign for the
-  // offer's room. The retry window runs to the offer's exp, extended by any
-  // live resume token (tunnel-protocol.md §5 lets a paired phone outlive the
-  // pairing window — README §M3 interpretations).
-  const resumeTokens = new ResumeTokenStore()
-  let campaign: RelayConnector | null = null
-  let gate: RelaySocketGate | null = null
+  // ── relay campaigns (M3/M4) ─────────────────────────────────────────────
+  // One connector campaign per room. A campaign stays alive while its offer
+  // is inside the pairing window OR any live (non-revoked) device is bound to
+  // the room — a paired phone keeps its room forever (tunnel-protocol.md §5).
+  // Campaigns for rooms with live devices are revived at boot.
+  const campaigns = new Map<string, { connector: RelayConnector; gate: RelaySocketGate | null }>()
 
-  const startCampaign = (room: string, exp: number): void => {
-    campaign?.close()
-    gate?.close()
-    gate = null
-    campaign = createRelayConnector({
+  const startCampaign = (room: string, shouldRetry: () => boolean): void => {
+    campaigns.get(room)?.connector.close()
+    const entry = { connector: null as unknown as RelayConnector, gate: null as RelaySocketGate | null }
+    entry.connector = createRelayConnector({
       relayUrl: resolved.relayUrl,
       room,
-      shouldRetry: () => Date.now() < exp || resumeTokens.liveUntil() > Date.now(),
+      shouldRetry,
       onSocket: (socket) => {
-        gate?.close()
-        gate = attachRelaySocket(socket, {
+        entry.gate?.close()
+        entry.gate = attachRelaySocket(socket, {
           upstreamHost: resolved.dshHost,
           upstreamPort: resolved.dshPort,
-          handshake: { keypair, offers, resumeTokens },
+          handshake: { keypair, offers, devices: store, room },
           logger: (msg) => ctx.logger.info('dsh-mobile-pairing: ' + msg),
           onSessionClose: () => {
-            gate = null
+            entry.gate = null
           },
         })
       },
       logger: (msg) => ctx.logger.info('dsh-mobile-pairing: ' + msg),
     })
+    campaigns.set(room, entry)
   }
 
+  // A dsh restart must not unpair phones: revive every room that has live devices.
+  for (const room of store.liveRooms()) startCampaign(room, () => store.hasLiveForRoom(room))
+
   ctx.effect(() => () => {
-    campaign?.close()
-    gate?.close()
+    for (const { connector, gate } of campaigns.values()) {
+      connector.close()
+      gate?.close()
+    }
+    campaigns.clear()
   })
 
   ctx.effect(() => {
@@ -135,7 +138,7 @@ export function apply(ctx: Context, config: Config): void {
     webServer.register({
       kind: 'exact',
       path: '/pair',
-      handler: (req, res) => handlePair(req, res, resolved, proxy.port(), keypair.publicKeyBase64Url, offers, startCampaign),
+      handler: (req, res) => handlePair(req, res, resolved, proxy.port(), keypair.publicKeyBase64Url, offers, store, startCampaign),
     }),
   )
 
@@ -185,13 +188,14 @@ export function apply(ctx: Context, config: Config): void {
 }
 
 /** Mint the current offer and answer JSON, or SVG with ?format=svg. */
-type CampaignStarter = (room: string, exp: number) => void
+type CampaignStarter = (room: string, shouldRetry: () => boolean) => void
 
 /** Mint a relay-mode offer (v2) and start its connector campaign. */
-function mintRelayOffer(config: ResolvedConfig, pubkey: string, offers: PairingOfferManager, start: CampaignStarter): PairingOfferPayload {
+function mintRelayOffer(config: ResolvedConfig, pubkey: string, offers: PairingOfferManager, store: DeviceTokenStore, start: CampaignStarter): PairingOfferPayload {
   const room = randomBytes(16).toString('hex') // 128-bit, matches the relay's room id rules
   const offer = offers.mint('relay', config.relayUrl, room, pubkey)
-  start(room, offer.exp * 1000) // campaign window is ms; the wire exp is seconds
+  // Live until the pairing window closes — extended by any device paired on this room.
+  start(room, () => Date.now() < offer.exp * 1000 || store.hasLiveForRoom(room))
   return offer
 }
 
@@ -202,6 +206,7 @@ async function handlePair(
   proxyPort: number | null,
   pubkey: string,
   offers: PairingOfferManager,
+  store: DeviceTokenStore,
   startCampaign: CampaignStarter,
 ): Promise<void> {
   if (req.method !== 'GET') {
@@ -210,7 +215,7 @@ async function handlePair(
     return
   }
   if (config.enableRelay) {
-    const offer = mintRelayOffer(config, pubkey, offers, startCampaign)
+    const offer = mintRelayOffer(config, pubkey, offers, store, startCampaign)
     const offerUrl = buildOfferUrl(config.appUrl, offer)
     if (new URL(req.url ?? '/', 'http://x').searchParams.get('format') === 'svg') {
       const svg = await QRCode.toString(offerUrl, { type: 'svg', margin: 1 })

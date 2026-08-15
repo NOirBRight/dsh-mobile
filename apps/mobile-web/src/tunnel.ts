@@ -6,13 +6,13 @@
  * Offer persistence: a scanned #offer= URL is moved to localStorage and the
  * hash is stripped (screenshots/shares must not leak it); later boots reuse
  * the stored offer. A new scan overwrites it. The offer is the durable
- * connection credential — the resumeToken only ever supplements its code.
+ * connection credential — the deviceToken (permanent until revoked) reconnects it.
  */
 import { connect, parseOffer, TunnelError } from '@dsh-mobile/e2e-tunnel'
 import type { TunnelClient, TunnelState } from '@dsh-mobile/e2e-tunnel'
 
 const OFFER_KEY = 'dsh-mobile.offer'
-const RESUME_KEY = 'dsh-mobile.resumeToken'
+const DEVICE_KEY = 'dsh-mobile.deviceToken'
 
 /**
  * Fetch the boot manifest through the tunnel and install it as
@@ -41,10 +41,15 @@ export function readOfferUrl(): string | null {
   return localStorage.getItem(OFFER_KEY)
 }
 
-/** Forget offer + resume token (pair with a different host / start over). */
+/** Whether a device token from a previous pairing is stored. */
+export function hasDeviceToken(): boolean {
+  return localStorage.getItem(DEVICE_KEY) !== null
+}
+
+/** Forget offer + device token (pair with a different host / start over). */
 export function clearPairing(): void {
   localStorage.removeItem(OFFER_KEY)
-  localStorage.removeItem(RESUME_KEY)
+  localStorage.removeItem(DEVICE_KEY)
 }
 
 /** Manages the tunnel lifecycle: connect, expose the open client, reconnect forever. */
@@ -77,8 +82,8 @@ export class TunnelManager {
     while (!this.stopped) {
       try {
         const client = await connect(this.offerUrl, {
-          resumeToken: localStorage.getItem(RESUME_KEY) ?? undefined,
-          onResumeToken: (token) => localStorage.setItem(RESUME_KEY, token),
+          deviceToken: localStorage.getItem(DEVICE_KEY) ?? undefined,
+          onDeviceToken: (token) => localStorage.setItem(DEVICE_KEY, token),
           onStateChange: (state) => this.setState(state),
         })
         this.client = client
@@ -90,9 +95,9 @@ export class TunnelManager {
         this.closeWaiter = null
         this.client = null
       } catch (error) {
-        // Host verdicts invalidate the stored token; transport failures keep it.
-        if (error instanceof TunnelError && (error.code === 'expired' || error.code === 'bad-code')) {
-          localStorage.removeItem(RESUME_KEY)
+        // Host verdicts: a dead device token is dropped; transport failures keep it.
+        if (error instanceof TunnelError && error.code === 'bad-token') {
+          localStorage.removeItem(DEVICE_KEY)
         }
         const code = error instanceof TunnelError ? error.code : null
         this.onError?.(code !== null ? code + ': ' + (error as Error).message : String(error))

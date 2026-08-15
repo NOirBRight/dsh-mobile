@@ -46,14 +46,14 @@ test('parseOffer rejects an expired offer', () => {
 
 // ── handshake ────────────────────────────────────────────────────────────────
 
-test('handshake with one-time code succeeds and yields a resumeToken', async () => {
+test('handshake with one-time code pairs the device and yields a deviceToken', async () => {
   const { offer } = await hostAndOffer()
   const tokens = []
   const states = []
-  const client = await connect(offer, { onResumeToken: (t) => tokens.push(t), onStateChange: (s) => states.push(s) })
+  const client = await connect(offer, { onDeviceToken: (t) => tokens.push(t), onStateChange: (s) => states.push(s) })
   assert.equal(client.state, 'open')
-  assert.equal(client.resumeToken, 'tok-2') // host rotates on every handshake
-  assert.deepEqual(tokens, ['tok-2'])
+  assert.equal(client.deviceToken, 'dev-1') // issued at first pairing, then permanent
+  assert.deepEqual(tokens, ['dev-1'])
   assert.deepEqual(states, ['connecting', 'open'])
   client.close()
   assert.equal(client.state, 'closed')
@@ -190,26 +190,26 @@ test('a host-side seq gap closes the tunnel and fails pending work', async () =>
   await assert.rejects(client.fetch('/api/echo'), (e) => e.code === 'closed')
 })
 
-// ── reconnect with resumeToken ───────────────────────────────────────────────
+// ── reconnect with deviceToken (permanent until revoked, protocol §5) ────────
 
-test('resumeToken reconnects without the burned code; stale tokens are refused', async () => {
+test('deviceToken reconnects indefinitely; unknown tokens and the burned code are refused', async () => {
   const { offer } = await hostAndOffer()
   const first = await connect(offer)
-  const tokenA = first.resumeToken
+  const token = first.deviceToken
+  assert.equal(typeof token, 'string')
   first.close()
 
-  const second = await connect(offer, { resumeToken: tokenA })
+  const second = await connect(offer, { deviceToken: token })
   assert.equal(second.state, 'open')
-  const tokenB = second.resumeToken
-  assert.notEqual(tokenA, tokenB)
+  assert.equal(second.deviceToken, token) // bearer token persists — no rotation
 
   // the reconnected tunnel is fully functional
   const res = await second.fetch('/api/echo', { method: 'POST', body: 'after-reconnect' })
   assert.equal((await res.json()).echo, 'after-reconnect')
   second.close()
 
-  // the seat is free (one client per room); the host refuses the rotated-out
-  // token and the burned code — connect() retries absorb the 4409 release lag
-  await assert.rejects(connect(offer, { resumeToken: tokenA }), (e) => e.code === 'expired')
+  // the seat is free (one client per room); unknown tokens and the burned code
+  // are refused — connect() retries absorb the 4409 release lag
+  await assert.rejects(connect(offer, { deviceToken: 'no-such-token' }), (e) => e.code === 'bad-token')
   await assert.rejects(connect(offer), (e) => e.code === 'bad-code')
 })

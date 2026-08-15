@@ -8,7 +8,7 @@
  */
 import { AppWebEntry } from '@deepseek-ai/dsh-client-web'
 import { parseOffer, TunnelError } from '@dsh-mobile/e2e-tunnel'
-import { installBadge, installShims, injectBootManifestFromTunnel, readOfferUrl, TunnelManager } from './tunnel.ts'
+import { hasDeviceToken, installBadge, installShims, injectBootManifestFromTunnel, readOfferUrl, TunnelManager } from './tunnel.ts'
 
 const el = document.getElementById('root')
 if (el === null) throw new Error('mobile-web app: missing #root')
@@ -19,12 +19,17 @@ void (async () => {
     try {
       parseOffer(offerUrl) // validate up front: format and expiry
     } catch (error) {
-      const msg =
-        error instanceof TunnelError && error.code === 'expired'
-          ? '配对二维码已过期,请在桌面端重新生成后再次扫码'
-          : '配对链接无效,请重新扫码'
-      el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">' + msg + '</div>'
-      throw error
+      // exp bounds the one-time CODE, not a paired device: with a stored
+      // device token we still try (the host accepts it past offer expiry).
+      const paired = error instanceof TunnelError && error.code === 'expired' && hasDeviceToken()
+      if (!paired) {
+        const msg =
+          error instanceof TunnelError && error.code === 'expired'
+            ? '配对二维码已过期,请在桌面端重新生成后再次扫码'
+            : '配对链接无效,请重新扫码'
+        el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">' + msg + '</div>'
+        throw error
+      }
     }
     // Progress + diagnostics while the tunnel campaign runs (a phone has no
     // devtools: state and the last error render on the boot screen itself).

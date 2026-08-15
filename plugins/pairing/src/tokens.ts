@@ -15,6 +15,8 @@ export interface DeviceRecord {
   label?: string
   createdAt: number
   revokedAt: number | null
+  /** Relay room this device paired on; its campaign lives while the device does (protocol §5). */
+  room?: string
 }
 
 interface StoredDevice extends DeviceRecord {
@@ -51,7 +53,7 @@ export class DeviceTokenStore {
    * @param label - optional human name shown in the device list.
    * @returns the record id and the plaintext token (this is its only showing).
    */
-  issue(label?: string): { id: string; token: string } {
+  issue(label?: string, room?: string): { id: string; token: string } {
     const token = randomBytes(32).toString('base64url')
     const record: StoredDevice = {
       id: randomBytes(8).toString('base64url'),
@@ -60,9 +62,20 @@ export class DeviceTokenStore {
       revokedAt: null,
       tokenHash: hash(token),
     }
+    if (room !== undefined) record.room = room
     this.devices.push(record)
     this.save()
     return { id: record.id, token }
+  }
+
+  /** @returns whether any live (non-revoked) device is bound to the room. */
+  hasLiveForRoom(room: string): boolean {
+    return this.devices.some((d) => d.revokedAt === null && d.room === room)
+  }
+
+  /** @returns distinct rooms with at least one live device (for campaign revival at boot). */
+  liveRooms(): string[] {
+    return [...new Set(this.devices.filter((d) => d.revokedAt === null && d.room !== undefined).map((d) => d.room as string))]
   }
 
   /**
@@ -95,7 +108,7 @@ export class DeviceTokenStore {
 
   /** @returns all devices (including revoked), with token hashes stripped. */
   list(): DeviceRecord[] {
-    return this.devices.map(({ id, label, createdAt, revokedAt }) => ({ id, label, createdAt, revokedAt }))
+    return this.devices.map(({ id, label, createdAt, revokedAt, room }) => ({ id, label, createdAt, revokedAt, room }))
   }
 
   private save(): void {

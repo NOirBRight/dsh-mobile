@@ -16,9 +16,9 @@ JSON,经 `#offer=<base64url>` 传递:
 
 ## 2. 握手(会话建立前,仅前两帧)
 
-1. client 生成临时 X25519 对,发送**握手帧**:`clientPub(32B) || nonce(24B) || box(helloJson, hostPub, clientSec)`。helloJson = `{ code } | { resumeToken }`。
-2. host 开封校验:`code` 有效且未用 → 焚毁并通过;`resumeToken` 有效 → 通过(见 §5);否则回复**明文错误帧** `{"error":"bad-code"|"expired"|...}`。**座位生命周期**:host 拒绝后必须保持座位不动(一条坏 hello 不能踢掉 host、DoS 房间);client 在握手的任何失败路径上都必须自己关闭连接,释放房间 client 座位。
-3. 成功 → host 回复 `nonce(24B) || box(ackJson, clientPub, hostSec)`,ackJson = `{ ok: true, resumeToken: <新令牌> }`。会话开始。
+1. client 生成临时 X25519 对,发送**握手帧**:`clientPub(32B) || nonce(24B) || box(helloJson, hostPub, clientSec)`。helloJson = `{ code } | { deviceToken }`。
+2. host 开封校验:`code` 有效且未用 → 焚毁并通过(首次配对);`deviceToken` 有效且未吊销 → 通过(已配对设备重连,见 §5);否则回复**明文错误帧** `{"error":"bad-code"|"expired"|"bad-token"}`。**座位生命周期**:host 拒绝后必须保持座位不动(一条坏 hello 不能踢掉 host、DoS 房间);client 在握手的任何失败路径上都必须自己关闭连接,释放房间 client 座位。
+3. 成功 → host 回复 `nonce(24B) || box(ackJson, clientPub, hostSec)`。首次配对(code 路径)ackJson = `{ ok: true, deviceToken: <新设备令牌> }`;重连(deviceToken 路径)ackJson = `{ ok: true }`。会话开始。
 
 ## 3. 会话帧(全部密封)
 
@@ -43,9 +43,13 @@ host 侧收到 http-req 后向 `127.0.0.1:<dshPort>` 发真实请求(**Host 改�
 - 单帧明文 ≤ 200 KiB;http body 上限 8 MiB(超出拒绝,插件 bundle 大文件走续帧)。
 - 连接断开即会话结束;无帧级重传(TCP/WSS 已保序可靠,relay 不断帧)。
 
-## 5. 断线重连(resumeToken)
+## 5. 断线重连(deviceToken,永久有效)
 
-手机漫游/锁屏后 WSS 会断。ack 中的 `resumeToken`(随机、单次使用、10 分钟 TTL)替代 `code` 完成再次握手,无需重新扫码。host 侧令牌存内存即可(进程重启则重新扫码,可接受)。
+首次配对成功时,host 签发**持久设备令牌**:host 侧仅存 SHA-256 哈希(JSON 文件于 $DSH_HOME,0600,进程重启存活),手机存明文(localStorage)。之后所有重连以 deviceToken 完成握手——**永久有效,直到在设备列表中被吊销**(/pair/revoke,吊销即拒绝后续握手并使对应房间战役在退避周期内停止)。
+
+安全论证:hello 全程密封(client 临时公钥加密到 host 公钥),relay 无法看到令牌;重放一条旧 hello 对攻击者无价值——会话密钥由 client 每次连接新生成的临时密钥对决定,重放者得不到任何可用会话。因此设备令牌可以是 bearer 形态,无需滚动轮换。
+
+host 侧战役管理:配对窗口(exp,5 分钟)内战役等待首次配对;一旦某房间签发过设备令牌,该房间的 relay 战役随令牌存续而存续(host 记录设备→房间绑定,进程重启后为每个存活设备的房间恢复战役);吊销全部设备后战役停止。
 
 ## 6. 安全属性
 

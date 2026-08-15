@@ -1,6 +1,6 @@
 
 import { connect } from './src/index.ts'
-const client = await connect(process.argv[2], { onStateChange: (s) => console.error('[state]', s), onResumeToken: (t) => console.error('[resumeToken]', t.slice(0,12)+'...') })
+const client = await connect(process.argv[2], { onStateChange: (s) => console.error('[state]', s), onDeviceToken: (t) => console.error('[resumeToken]', t.slice(0,12)+'...') })
 console.log('HANDSHAKE OK, tunnel open')
 const res = await client.fetch('/')
 const html = await res.text()

@@ -15,8 +15,8 @@ export async function startFakeHost(relayUrl, room, opts = {}) {
   const keys = nacl.box.keyPair()
   const expectedCode = opts.expectedCode ?? 'test-code'
   let codeBurned = false
-  let currentToken = 'tok-1'
-  let tokenCounter = 1
+  const deviceTokens = new Set()
+  let tokenCounter = 0
 
   const ws = new WebSocket(relayUrl + '/r/' + room + '?role=host')
   ws.binaryType = 'arraybuffer'
@@ -45,19 +45,22 @@ export async function startFakeHost(relayUrl, room, opts = {}) {
   // Shared hello validation + session adoption for the initial handshake (§2)
   // and the reconnect fallback (unseal failure on an existing session).
   const adoptHello = (clientPub, hello) => {
+    let issued = null
     if (typeof hello.code === 'string') {
       if (codeBurned || hello.code !== expectedCode) return replyError('bad-code')
       codeBurned = true
-    } else if (typeof hello.resumeToken === 'string') {
-      if (hello.resumeToken !== currentToken) return replyError('expired')
+      tokenCounter += 1
+      issued = 'dev-' + tokenCounter
+      deviceTokens.add(issued)
+    } else if (typeof hello.deviceToken === 'string') {
+      if (!deviceTokens.has(hello.deviceToken)) return replyError('bad-token')
     } else {
       return replyError('bad-hello')
     }
-    tokenCounter += 1
-    currentToken = 'tok-' + tokenCounter
     session = { clientPub, sendSeq: 0, recvSeq: 0 }
     const ackNonce = nacl.randomBytes(nacl.box.nonceLength)
-    const ack = nacl.box(utf8Encode(JSON.stringify({ ok: true, resumeToken: currentToken })), ackNonce, clientPub, keys.secretKey)
+    const ackJson = issued !== null ? { ok: true, deviceToken: issued } : { ok: true }
+    const ack = nacl.box(utf8Encode(JSON.stringify(ackJson)), ackNonce, clientPub, keys.secretKey)
     ws.send(concat(ackNonce, ack))
   }
 

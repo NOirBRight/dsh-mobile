@@ -10,9 +10,10 @@ export type TunnelState = 'connecting' | 'open' | 'closed'
 
 export interface ConnectOptions {
   /** Rotated single-use token from a previous session; takes precedence over the offer's one-time code. */
-  resumeToken?: string
-  /** Called with each freshly issued resumeToken (store it for reconnects). */
-  onResumeToken?: (token: string) => void
+  /** Persistent device token from a previous pairing (permanent until revoked, protocol §5). */
+  deviceToken?: string
+  /** Called with the device token when one is issued (first pairing only — store it). */
+  onDeviceToken?: (token: string) => void
   /** Called on every state transition. */
   onStateChange?: (state: TunnelState) => void
   /** Handshake wait bound; default 10_000 ms. */
@@ -32,8 +33,8 @@ export interface TunnelClient {
   }): Promise<Response>
   /** Open a tunneled WebSocket to a loopback path (e.g. /api/events.mux). */
   openWebSocket(path: string): TunnelWebSocket
-  /** Latest resumeToken issued by the host. */
-  readonly resumeToken: string | null
+  /** The device token this session runs on (permanent until revoked, protocol §5). */
+  readonly deviceToken: string | null
   readonly state: TunnelState
   close(): void
 }
@@ -85,7 +86,7 @@ async function attemptConnect(offer: Offer, hostPub: Uint8Array, options: Connec
   try {
     await onceOpen(ws)
 
-    const hello = options.resumeToken ? { resumeToken: options.resumeToken } : { code: offer.code }
+    const hello = options.deviceToken ? { deviceToken: options.deviceToken } : { code: offer.code }
   const helloNonce = nacl.randomBytes(nacl.box.nonceLength)
   const helloBox = nacl.box(utf8Encode(JSON.stringify(hello)), helloNonce, hostPub, keys.secretKey)
   ws.send(concat(keys.publicKey, helloNonce, helloBox))
@@ -96,11 +97,14 @@ async function attemptConnect(offer: Offer, hostPub: Uint8Array, options: Connec
   if (typeof first === 'string') throw new TunnelError('handshake', 'unexpected text frame from host')
   const ackBytes = unseal(first, hostPub, keys.secretKey)
   if (ackBytes === null) throw new TunnelError('handshake', 'could not unseal host ack')
-  const ack = JSON.parse(utf8Decode(ackBytes)) as { ok?: boolean; resumeToken?: string }
-    if (ack.ok !== true || typeof ack.resumeToken !== 'string') {
+  const ack = JSON.parse(utf8Decode(ackBytes)) as { ok?: boolean; deviceToken?: string }
+    // Code path: the ack must carry a freshly issued token; reconnect path: the presented bearer token persists.
+    const deviceToken = typeof ack.deviceToken === 'string' ? ack.deviceToken : (options.deviceToken ?? null)
+    if (ack.ok !== true || deviceToken === null) {
       throw new TunnelError('handshake', 'malformed ack')
     }
-    return new TunnelSession(ws, hostPub, keys.secretKey, ack.resumeToken, options)
+    if (typeof ack.deviceToken === 'string') options.onDeviceToken?.(ack.deviceToken)
+    return new TunnelSession(ws, hostPub, keys.secretKey, deviceToken, options)
   } catch (error) {
     // A rejected/failed attempt must release the room seat (one client per
     // room); the host stays seated and never closes on a bad hello.
@@ -111,7 +115,7 @@ async function attemptConnect(offer: Offer, hostPub: Uint8Array, options: Connec
 
 /** Session implementation; socket.ts and http.ts ride its demux maps. */
 export class TunnelSession implements TunnelClient {
-  readonly resumeToken: string | null
+  readonly deviceToken: string | null
   private currentState: TunnelState = 'open'
   private sendSeq = 0
   private recvSeq = 0
@@ -128,15 +132,14 @@ export class TunnelSession implements TunnelClient {
     ws: WebSocket,
     hostPub: Uint8Array,
     ownSec: Uint8Array,
-    resumeToken: string,
+    deviceToken: string,
     options: ConnectOptions,
   ) {
     this.ws = ws
     this.hostPub = hostPub
     this.ownSec = ownSec
     this.options = options
-    this.resumeToken = resumeToken
-    options.onResumeToken?.(resumeToken)
+    this.deviceToken = deviceToken
     ws.addEventListener('message', (ev) => {
       // Blob payloads force async reads; the queue keeps seq-order regardless.
       this.frameQueue = this.frameQueue.then(() => this.onFrame(ev)).catch(() => {})
