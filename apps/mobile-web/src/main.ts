@@ -26,12 +26,24 @@ void (async () => {
       el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">' + msg + '</div>'
       throw error
     }
-    const mgr = new TunnelManager(offerUrl, installBadge())
+    // Progress + diagnostics while the tunnel campaign runs (a phone has no
+    // devtools: state and the last error render on the boot screen itself).
+    const render = (state: string, detail: string) => {
+      el.innerHTML =
+        '<div style="padding:2em;text-align:center;font-family:sans-serif">正在建立加密隧道…<br/>' +
+        '<small style="color:#888">' + state + (detail !== '' ? ' · ' + detail : '') + '</small></div>'
+    }
+    let lastError = ''
+    const mgr = new TunnelManager(
+      offerUrl,
+      (state) => { installBadge()(state); render(state, lastError) },
+      (message) => { lastError = message; render('connecting', message) },
+    )
     installShims(mgr)
     mgr.start()
     // The shell cannot boot without window.__DSH_BOOT__; it arrives through
     // the tunnel. Show progress meanwhile, and a readable screen on failure.
-    el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">正在建立加密隧道…</div>'
+    render('connecting', '')
     try {
       const client = await mgr.current()
       await injectBootManifestFromTunnel(client)

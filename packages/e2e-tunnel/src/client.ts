@@ -93,6 +93,7 @@ async function attemptConnect(offer: Offer, hostPub: Uint8Array, options: Connec
   const first = await firstFrame(ws, options.handshakeTimeoutMs ?? 10_000)
   const plainError = plaintextError(first)
   if (plainError !== null) throw new TunnelError(plainError)
+  if (typeof first === 'string') throw new TunnelError('handshake', 'unexpected text frame from host')
   const ackBytes = unseal(first, hostPub, keys.secretKey)
   if (ackBytes === null) throw new TunnelError('handshake', 'could not unseal host ack')
   const ack = JSON.parse(utf8Decode(ackBytes)) as { ok?: boolean; resumeToken?: string }
@@ -136,7 +137,10 @@ export class TunnelSession implements TunnelClient {
     this.options = options
     this.resumeToken = resumeToken
     options.onResumeToken?.(resumeToken)
-    ws.addEventListener('message', (ev) => this.onFrame(ev))
+    ws.addEventListener('message', (ev) => {
+      // Blob payloads force async reads; the queue keeps seq-order regardless.
+      this.frameQueue = this.frameQueue.then(() => this.onFrame(ev)).catch(() => {})
+    })
     ws.addEventListener('close', () => this.teardown())
     ws.addEventListener('error', () => {}) // close always follows; teardown owns the bookkeeping
     options.onStateChange?.('open')
@@ -197,9 +201,12 @@ export class TunnelSession implements TunnelClient {
     this.sockets.delete(id)
   }
 
-  private onFrame(ev: MessageEvent): void {
-    if (typeof ev.data === 'string') return // no plaintext frames exist post-handshake
-    const plain = unseal(ev.data as ArrayBuffer, this.hostPub, this.ownSec)
+  private frameQueue: Promise<void> = Promise.resolve()
+
+  private async onFrame(ev: MessageEvent): Promise<void> {
+    const data = await frameData(ev).catch(() => null)
+    if (data === null || typeof data === 'string') return // no plaintext frames exist post-handshake
+    const plain = unseal(data, this.hostPub, this.ownSec)
     if (plain === null) return this.protocolClose('unseal failure')
     let message: WireMessage
     try {
@@ -263,12 +270,26 @@ function onceOpen(ws: WebSocket): Promise<void> {
   })
 }
 
-function firstFrame(ws: WebSocket, timeoutMs: number): Promise<ArrayBuffer | string> {
+/**
+ * Normalize a WS message payload to bytes or text. binaryType='arraybuffer'
+ * is a HINT some WebViews (WeChat/TBS among them) ignore and deliver Blobs
+ * anyway; slicing those as ArrayBuffer ends in tweetnacl size errors.
+ */
+async function frameData(ev: MessageEvent): Promise<Uint8Array | string> {
+  const data = ev.data as unknown
+  if (typeof data === 'string') return data
+  if (data instanceof ArrayBuffer) return new Uint8Array(data)
+  if (typeof Blob !== 'undefined' && data instanceof Blob) return new Uint8Array(await data.arrayBuffer())
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+  throw new TunnelError('handshake', 'unsupported frame payload type')
+}
+
+function firstFrame(ws: WebSocket, timeoutMs: number): Promise<Uint8Array | string> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new TunnelError('timeout', 'host handshake timed out')), timeoutMs)
     ws.addEventListener('message', (ev) => {
       clearTimeout(timer)
-      resolve(ev.data as ArrayBuffer | string)
+      void frameData(ev).then(resolve, reject)
     }, { once: true })
     ws.addEventListener('close', () => {
       clearTimeout(timer)
@@ -278,13 +299,12 @@ function firstFrame(ws: WebSocket, timeoutMs: number): Promise<ArrayBuffer | str
 }
 
 /** @returns the host's plaintext error code, or null when the frame is a sealed ack. */
-function plaintextError(frame: ArrayBuffer | string): string | null {
+function plaintextError(frame: Uint8Array | string): string | null {
   let text: string | null = null
   if (typeof frame === 'string') {
     text = frame
-  } else {
-    const bytes = new Uint8Array(frame)
-    if (bytes.length > 0 && bytes[0] === 0x7b) text = utf8Decode(bytes) // '{' — plaintext JSON error frame
+  } else if (frame.length > 0 && frame[0] === 0x7b) {
+    text = utf8Decode(frame) // '{' — plaintext JSON error frame
   }
   if (text === null) return null
   try {
@@ -295,8 +315,8 @@ function plaintextError(frame: ArrayBuffer | string): string | null {
   }
 }
 
-function unseal(frame: ArrayBuffer, peerPub: Uint8Array, ownSec: Uint8Array): Uint8Array | null {
-  const bytes = new Uint8Array(frame)
-  const nonce = bytes.slice(0, nacl.box.nonceLength)
-  return nacl.box.open(bytes.slice(nacl.box.nonceLength), nonce, peerPub, ownSec)
+function unseal(frame: Uint8Array, peerPub: Uint8Array, ownSec: Uint8Array): Uint8Array | null {
+  if (frame.length < nacl.box.nonceLength + nacl.box.overheadLength) return null
+  const nonce = frame.slice(0, nacl.box.nonceLength)
+  return nacl.box.open(frame.slice(nacl.box.nonceLength), nonce, peerPub, ownSec)
 }

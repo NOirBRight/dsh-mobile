@@ -58,6 +58,8 @@ export class TunnelManager {
   constructor(
     private readonly offerUrl: string,
     private readonly onState: (state: TunnelState) => void,
+    /** Diagnostic surface for connection failures (debug line on the boot screen). */
+    private readonly onError?: (message: string) => void,
   ) {}
 
   start(): void {
@@ -92,6 +94,8 @@ export class TunnelManager {
         if (error instanceof TunnelError && (error.code === 'expired' || error.code === 'bad-code')) {
           localStorage.removeItem(RESUME_KEY)
         }
+        const code = error instanceof TunnelError ? error.code : null
+        this.onError?.(code !== null ? code + ': ' + (error as Error).message : String(error))
       }
       if (this.stopped) return
       this.setState('connecting')
