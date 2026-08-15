@@ -14,6 +14,22 @@ import type { TunnelClient, TunnelState } from '@dsh-mobile/e2e-tunnel'
 const OFFER_KEY = 'dsh-mobile.offer'
 const RESUME_KEY = 'dsh-mobile.resumeToken'
 
+/**
+ * Fetch the boot manifest through the tunnel and install it as
+ * window.__DSH_BOOT__. The VPS serves the raw dist (no host-side injection),
+ * so the roster the shell needs must come from the home dsh — through the
+ * tunnel, before AppWebEntry runs (upstream format: modules/src/index.ts
+ * injectBootManifest).
+ */
+export async function injectBootManifestFromTunnel(client: TunnelClient): Promise<void> {
+  const res = await client.fetch('/')
+  if (!res.ok) throw new Error('boot manifest fetch failed: HTTP ' + res.status)
+  const html = await res.text()
+  const match = /window\.__DSH_BOOT__ = (\{.*?\})<\/script>/s.exec(html)
+  if (match === null) throw new Error('boot manifest not found in tunneled index')
+  ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = JSON.parse(match[1])
+}
+
 /** Read the active offer: fresh #offer= hash wins and is persisted; else the stored one. */
 export function readOfferUrl(): string | null {
   if (/#offer=/.test(location.hash)) {
