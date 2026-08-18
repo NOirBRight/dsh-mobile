@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@deepseek-ai/dsh-client-web": ["../../../deepseek-harness/packages/client/web/lib/types/index.d.ts"],
+      "@dsh-mobile/e2e-tunnel": ["../../packages/e2e-tunnel/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "capacitor.config.ts"]
+}

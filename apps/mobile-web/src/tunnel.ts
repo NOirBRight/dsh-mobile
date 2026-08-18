@@ -3,116 +3,198 @@
  * manager with reconnect, and the fetch/WebSocket shims that route the
  * shell's same-origin traffic through the E2E tunnel (docs/tunnel-protocol.md).
  *
- * Offer persistence: a scanned #offer= URL is moved to localStorage and the
- * hash is stripped (screenshots/shares must not leak it); later boots reuse
- * the stored offer. A new scan overwrites it. The offer is the durable
- * connection credential — the deviceToken (permanent until revoked) reconnects it.
+ * Host metadata comes from ProfileRepository; every reconnect acquires a
+ * short-lived credential lease from the app-private vault. Pairing fragments
+ * and Android credentials never enter Web localStorage.
  */
-import { connect, parseOffer, TunnelError } from '@dsh-mobile/e2e-tunnel'
-import type { TunnelClient, TunnelState } from '@dsh-mobile/e2e-tunnel'
-
-const OFFER_KEY = 'dsh-mobile.offer'
-const DEVICE_KEY = 'dsh-mobile.deviceToken'
+import { connect, HeartbeatController, TunnelError } from '@dsh-mobile/e2e-tunnel'
+import type { ClientKeypair, ConnectionPolicy, ConnectionStatus, ConnectOptions, TunnelClient, TunnelState } from '@dsh-mobile/e2e-tunnel'
+import { extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, selectResponsiveBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
 
 /**
  * Fetch the boot manifest through the tunnel and install it as
- * window.__DSH_BOOT__. The VPS serves the raw dist (no host-side injection),
- * so the roster the shell needs must come from the home dsh — through the
- * tunnel, before AppWebEntry runs (upstream format: modules/src/index.ts
- * injectBootManifest).
+ * window.__DSH_BOOT__. The Host Gateway serves packaged assets without
+ * injecting the roster, so the shell must read the live DSH index through
+ * the authenticated session before AppWebEntry runs.
  */
-export async function injectBootManifestFromTunnel(client: TunnelClient): Promise<void> {
+export async function injectBootManifestFromTunnel(
+  client: TunnelClient,
+  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean } = { viewportWidth: window.innerWidth },
+): Promise<ResponsiveBootSelection> {
   const res = await client.fetch('/')
   if (!res.ok) throw new Error('boot manifest fetch failed: HTTP ' + res.status)
-  const html = await res.text()
-  const match = /window\.__DSH_BOOT__ = (\{.*?\})<\/script>/s.exec(html)
-  if (match === null) throw new Error('boot manifest not found in tunneled index')
-  ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = JSON.parse(match[1])
-}
-
-/** Read the active offer: fresh #offer= hash wins and is persisted; else the stored one. */
-export function readOfferUrl(): string | null {
-  if (/#offer=/.test(location.hash)) {
-    const url = location.href
-    localStorage.setItem(OFFER_KEY, url)
-    history.replaceState(null, '', location.pathname + location.search)
-    return url
+  const hostManifest = extractBootManifestJson(await res.text(), 'boot manifest not found in tunneled index')
+  const selection = selectResponsiveBootManifest(hostManifest, {
+    ...responsive,
+    narrowContractAvailable: responsive.narrowContractAvailable ?? officialNarrowContractAvailable(hostManifest),
+  })
+  if (responsive.localizePlugins === false) {
+    ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = selection.manifest
+    return selection
   }
-  return localStorage.getItem(OFFER_KEY)
+  const localizedManifest = await localizePluginBundles(selection.manifest, {
+    load: async (url) => {
+      let last = 'failed to load host plugin ' + url
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const response = await client.fetch(url)
+        if (response.ok) return response.text()
+        last = 'failed to load host plugin ' + url + ': HTTP ' + response.status
+        if (response.status !== 502 && response.status !== 503) break
+        await new Promise(resolve => setTimeout(resolve, 250 * attempt))
+      }
+      throw new Error(last)
+    },
+    createUrl: (source, id) => URL.createObjectURL(new Blob([
+      source + '\n//# sourceURL=dsh-plugin:' + id,
+    ], { type: 'text/javascript' })),
+  })
+  ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = localizedManifest
+  return { ...selection, manifest: localizedManifest }
 }
 
-/** Whether a device token from a previous pairing is stored. */
-export function hasDeviceToken(): boolean {
-  return localStorage.getItem(DEVICE_KEY) !== null
+export interface TunnelCredentialLease {
+  clientKeypair: ClientKeypair
+  deviceToken?: string
+  onDeviceToken(token: string): Promise<void>
+  dispose(): void
 }
 
-/** Forget offer + device token (pair with a different host / start over). */
-export function clearPairing(): void {
-  localStorage.removeItem(OFFER_KEY)
-  localStorage.removeItem(DEVICE_KEY)
+export interface TunnelManagerOptions {
+  offerUrl: string
+  connectionPolicy: ConnectionPolicy
+  loadCredentials(): Promise<TunnelCredentialLease>
+  onState(state: TunnelState): void
+  onConnectionStatus?: (status: ConnectionStatus) => void
+  onError?: (message: string) => void
+  connect?: (offerUrl: string, options?: ConnectOptions) => Promise<TunnelClient>
+  wait?: (delayMs: number) => Promise<void>
+  random?: () => number
+  deviceLabel?: string
+  clientType?: 'android' | 'browser'
+  /** Wait for armHeartbeat() after Host UI boot; default starts probing immediately. */
+  deferHeartbeat?: boolean
 }
 
-/** Manages the tunnel lifecycle: connect, expose the open client, reconnect forever. */
+const TERMINAL_CONNECTION_ERRORS = new Set([
+  'bad-token', 'bad-code', 'expired', 'bad-offer', 'bad-key', 'unauthorized', 'identity-mismatch', 'incompatible', 'no-route', 'limit',
+])
+
+/** Own one Active Host session, heartbeat it, and reconnect transport failures with jitter. */
 export class TunnelManager {
   private client: TunnelClient | null = null
-  private waiters: ((client: TunnelClient) => void)[] = []
+  private heartbeat: HeartbeatController | null = null
+  private waiters: Array<{ resolve: (client: TunnelClient) => void; reject: (error: Error) => void }> = []
   private closeWaiter: (() => void) | null = null
   private stopped = false
-  private state: TunnelState = 'connecting'
+  private started = false
+  private terminalError: Error | null = null
+  private lastRoute: 'direct' | 'tunnel' | null = null
+  private preferTunnelOnce = false
+  private heartbeatArmed = false
+  private readonly options: TunnelManagerOptions
 
-  constructor(
-    private readonly offerUrl: string,
-    private readonly onState: (state: TunnelState) => void,
-    /** Diagnostic surface for connection failures (debug line on the boot screen). */
-    private readonly onError?: (message: string) => void,
-  ) {}
+  constructor(options: TunnelManagerOptions) { this.options = options }
 
   start(): void {
+    if (this.started) return
+    this.started = true
     void this.loop()
   }
 
+  stop(): void {
+    if (this.stopped) return
+    this.stopped = true
+    this.heartbeat?.stop()
+    this.heartbeat = null
+    this.client?.close()
+    this.client = null
+    this.closeWaiter?.()
+    this.closeWaiter = null
+    const stopped = new TunnelError('closed', 'Active Host connection stopped')
+    for (const waiter of this.waiters.splice(0)) waiter.reject(stopped)
+  }
+
+  async probeNow(): Promise<void> {
+    if (this.options.deferHeartbeat === true && !this.heartbeatArmed) return
+    await this.heartbeat?.probeNow()
+  }
+
+  /** Start liveness probes after Host UI boot has finished using the session. */
+  armHeartbeat(): void {
+    this.heartbeatArmed = true
+    this.heartbeat?.start()
+  }
+
   private setState(state: TunnelState): void {
-    this.state = state
-    this.onState(state)
+    this.options.onState(state)
     if (state === 'closed') this.closeWaiter?.()
   }
 
   private async loop(): Promise<void> {
     let backoff = 1000
+    const connector = this.options.connect ?? connect
+    const wait = this.options.wait ?? ((delayMs: number) => new Promise<void>(resolve => setTimeout(resolve, delayMs)))
+    const random = this.options.random ?? Math.random
     while (!this.stopped) {
+      let lease: TunnelCredentialLease | null = null
       try {
-        const client = await connect(this.offerUrl, {
-          deviceToken: localStorage.getItem(DEVICE_KEY) ?? undefined,
-          onDeviceToken: (token) => localStorage.setItem(DEVICE_KEY, token),
-          onStateChange: (state) => this.setState(state),
+        lease = await this.options.loadCredentials()
+        if (this.stopped) { lease.dispose(); return }
+        const policy = this.preferTunnelOnce && this.options.connectionPolicy === 'automatic' ? 'tunnel-only' : this.options.connectionPolicy
+        this.preferTunnelOnce = false
+        const client = await connector(this.options.offerUrl, {
+          clientKeypair: lease.clientKeypair, deviceToken: lease.deviceToken, onDeviceToken: lease.onDeviceToken,
+          connectionPolicy: policy, onConnectionStatus: status => {
+            if (status.route === 'direct' || status.route === 'tunnel') this.lastRoute = status.route
+            this.options.onConnectionStatus?.(status)
+          },
+          deviceLabel: this.options.deviceLabel, clientType: this.options.clientType,
+          onStateChange: state => this.setState(state),
         })
+        if (this.stopped) {
+          lease.dispose()
+          client.close()
+          return
+        }
+        lease.dispose(); lease = null
         this.client = client
         backoff = 1000
-        for (const wake of this.waiters.splice(0)) wake(client)
-        await new Promise<void>((resolve) => {
-          this.closeWaiter = resolve
+        this.heartbeat = new HeartbeatController({
+          target: client,
+          onStale: error => { this.options.onError?.(error.code + ': ' + error.message); client.close() },
         })
+        if (this.options.deferHeartbeat !== true || this.heartbeatArmed) this.heartbeat.start()
+        for (const waiter of this.waiters.splice(0)) waiter.resolve(client)
+        await new Promise<void>(resolve => { this.closeWaiter = resolve })
         this.closeWaiter = null
+        this.heartbeat.stop(); this.heartbeat = null
         this.client = null
+        if (this.lastRoute === 'direct' && this.options.connectionPolicy === 'automatic') this.preferTunnelOnce = true
       } catch (error) {
-        // Host verdicts: a dead device token is dropped; transport failures keep it.
-        if (error instanceof TunnelError && error.code === 'bad-token') {
-          localStorage.removeItem(DEVICE_KEY)
-        }
+        lease?.dispose()
+        const failure = error instanceof Error ? error : new Error(String(error))
         const code = error instanceof TunnelError ? error.code : null
-        this.onError?.(code !== null ? code + ': ' + (error as Error).message : String(error))
+        this.setState('connecting')
+        this.options.onError?.(code === null ? failure.message : code + ': ' + failure.message)
+        if (code !== null && TERMINAL_CONNECTION_ERRORS.has(code)) {
+          this.terminalError = failure
+          for (const waiter of this.waiters.splice(0)) waiter.reject(failure)
+          return
+        }
       }
       if (this.stopped) return
       this.setState('connecting')
-      await new Promise((resolve) => setTimeout(resolve, backoff))
+      await wait(Math.round(backoff * (0.8 + random() * 0.4)))
       backoff = Math.min(backoff * 2, 10_000)
     }
   }
 
-  /** The open client; waits out the current (re)connect when the tunnel is down. */
+  /** The open client; waits out connectivity retries but rejects terminal Host verdicts. */
   current(): Promise<TunnelClient> {
-    if (this.client !== null) return Promise.resolve(this.client)
-    return new Promise((resolve) => this.waiters.push(resolve))
+    if (this.client !== null && this.client.state === 'open') return Promise.resolve(this.client)
+    if (this.terminalError !== null) return Promise.reject(this.terminalError)
+    if (this.stopped) return Promise.reject(new TunnelError('closed', 'Active Host connection stopped'))
+    return new Promise((resolve, reject) => this.waiters.push({ resolve, reject }))
   }
 }
 
@@ -124,7 +206,7 @@ type Handler = (ev: never) => void
  * campaign lands). send() is queued until open; cross-origin URLs bypass the
  * tunnel entirely and construct a native socket.
  */
-class DeferredWebSocket {
+export class DeferredWebSocket {
   static readonly CONNECTING = 0
   static readonly OPEN = 1
   static readonly CLOSING = 2
@@ -150,17 +232,27 @@ class DeferredWebSocket {
     const u = new URL(String(url), location.origin)
     // Compare by HOST, not origin: the shell builds downlinks as ws(s)://<host>/api/...,
     // and wss://x != https://x as origins even for the same server.
-    if (u.host !== location.host) {
+    // Gateway /signal and /tunnel are also same-origin on the browser shell; they
+    // must use the native socket or connect() deadlocks on its own shim.
+    if (u.host !== location.host || isHostGatewaySocketPath(u.pathname)) {
       this.bind(new NativeWS(String(url), protocols) as never)
       return
     }
     void mgr.current().then((client) => {
       if (this.forced === 3) return
       this.bind(client.openWebSocket(u.pathname + u.search) as never)
-    })
+    }, () => { this.fail() })
   }
 
-  private bind(sock: DeferredWebSocket['inner']): void {
+  private fail(): void {
+    if (this.forced === 3) return
+    this.forced = 3
+    this.queue.length = 0
+    this.emit('error', { type: 'error' })
+    this.emit('close', { type: 'close', code: 1011, reason: 'tunnel unavailable' })
+  }
+
+  private bind(sock: NonNullable<DeferredWebSocket['inner']>): void {
     this.inner = sock
     for (const type of ['open', 'message', 'error', 'close'] as const) {
       sock.addEventListener(type, ((ev: unknown) => {
@@ -205,6 +297,26 @@ class DeferredWebSocket {
   }
 }
 
+/** Packaged Android/browser-shell assets that must not be fetched from the Host. */
+export function isPackagedShellPluginPath(pathname: string): boolean {
+  return pathname === '/plugins/@dsh-mobile/ui-layout-mobile/client.js'
+    || pathname.startsWith('/plugins/@dsh-mobile/ui-layout-mobile/')
+}
+
+/** Host Gateway rendezvous/tunnel sockets stay on the Public Endpoint, not the tunneled Host. */
+export function isHostGatewaySocketPath(pathname: string): boolean {
+  return pathname === '/signal/check' || pathname.startsWith('/signal/') || pathname.startsWith('/tunnel/')
+}
+
+/** Browser-shell Host plugin bundles are Gateway HTTP assets, not tunneled application frames. */
+export function isPublicEndpointPluginPath(pathname: string): boolean {
+  return pathname.startsWith('/plugins/')
+}
+
+function isPublicHttpsOrigin(): boolean {
+  return location.protocol === 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1'
+}
+
 /** Route the shell's same-origin fetch/WebSocket traffic through the tunnel. */
 export function installShims(mgr: TunnelManager): void {
   const nativeFetch = window.fetch.bind(window)
@@ -212,6 +324,8 @@ export function installShims(mgr: TunnelManager): void {
     const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     const u = new URL(raw, location.origin)
     if (u.origin !== location.origin) return nativeFetch(input, init)
+    if (isPackagedShellPluginPath(u.pathname) || isHostGatewaySocketPath(u.pathname)) return nativeFetch(input, init)
+    if (isPublicHttpsOrigin() && isPublicEndpointPluginPath(u.pathname)) return nativeFetch(input, init)
     const client = await mgr.current()
     return client.fetch(u.pathname + u.search, init as never)
   }) as typeof fetch
@@ -225,15 +339,20 @@ export function installShims(mgr: TunnelManager): void {
 }
 
 /** Bottom-right tunnel state dot (green open / yellow connecting / red closed). */
-export function installBadge(): (state: TunnelState) => void {
-  const el = document.createElement('div')
+export function installBadge(onActivate?: () => void): (state: TunnelState, route?: string) => void {
+  const el = document.createElement('button')
   el.style.cssText =
-    'position:fixed;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));width:10px;height:10px;' +
-    'border-radius:50%;z-index:9999;transition:background .3s;box-shadow:0 0 0 2px rgba(0,0,0,.15)'
+    'position:fixed;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));min-height:24px;padding:3px 8px;' +
+    'display:flex;align-items:center;border-radius:999px;z-index:9999;transition:background .3s;color:white;' +
+    'font:600 11px/1.2 system-ui,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.28)'
+  el.type = 'button'
+  el.setAttribute('aria-label', 'Connection route and Host Profiles')
+  if (onActivate !== undefined) el.addEventListener('click', onActivate)
   document.body.appendChild(el)
   const titles: Record<TunnelState, string> = { open: '隧道已连接', connecting: '隧道连接中…', closed: '隧道已断开,重连中' }
-  return (state) => {
+  return (state, route = '') => {
     el.style.background = state === 'open' ? '#22c55e' : state === 'connecting' ? '#eab308' : '#ef4444'
-    el.title = titles[state]
+    el.title = route === '' ? titles[state] : route + ' · ' + titles[state]
+    el.textContent = route === '' ? titles[state] : route
   }
 }

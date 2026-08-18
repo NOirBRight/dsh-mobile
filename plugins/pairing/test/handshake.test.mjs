@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import nacl from 'tweetnacl'
 import { loadOrCreateKeypair } from '../src/keys.ts'
 import { PairingOfferManager } from '../src/pairing.ts'
-import { DeviceTokenStore } from '../src/tokens.ts'
+import { DeviceTokenStore, MAX_LIVE_DEVICES } from '../src/tokens.ts'
 import { hostHandshake } from '../src/handshake.ts'
 
 let dir, keypair, offers, store, deps
@@ -52,24 +52,35 @@ function errorOf(outcome) {
 test('code handshake pairs a new device: ack carries a device token bound to the room', () => {
   const offer = offers.mint('relay', 'wss://relay.test', ROOM, keypair.publicKeyBase64Url)
   assert.equal(offer.v, 2) // relay offers are protocol v2
-  const { frame, clientKeys } = makeClientFrame({ code: offer.code })
+  const { frame, clientKeys } = makeClientFrame({ code: offer.code, label: 'Pixel 9', clientType: 'android' })
   const ack = openAck(hostHandshake(frame, deps), clientKeys)
   assert.equal(ack.ok, true)
   assert.equal(typeof ack.deviceToken, 'string')
   const device = store.authenticate(ack.deviceToken)
   assert.notEqual(device, null)
   assert.equal(device.room, ROOM) // campaign revival binding (protocol §5)
+  assert.equal(device.label, 'Pixel 9')
+  assert.equal(device.clientType, 'android')
+  assert.equal(typeof device.lastSeenAt, 'number')
   assert.equal(store.hasLiveForRoom(ROOM), true)
   assert.deepEqual(store.liveRooms(), [ROOM])
 })
 
-test('unknown code → bad-code; code is multi-use within its window (ack-loss safe)', () => {
+test('one-time code is idempotent only for the Client Instance that claimed it', () => {
   const offer = offers.mint('relay', 'wss://relay.test', 'b'.repeat(32), keypair.publicKeyBase64Url)
-  const good = makeClientFrame({ code: offer.code })
-  assert.equal(hostHandshake(good.frame, deps).ok, true)
-  // same code again inside the window: pairs ANOTHER device (a lost ack must not brick the phone)
-  const again = makeClientFrame({ code: offer.code })
-  assert.equal(hostHandshake(again.frame, deps).ok, true)
+  const before = store.list().length
+  const first = makeClientFrame({ code: offer.code })
+  const firstAck = openAck(hostHandshake(first.frame, deps), first.clientKeys)
+
+  // An ack-loss retry from the same client key receives the same token and creates no device.
+  const retry = makeClientFrame({ code: offer.code }, first.clientKeys)
+  const retryAck = openAck(hostHandshake(retry.frame, deps), retry.clientKeys)
+  assert.equal(retryAck.deviceToken, firstAck.deviceToken)
+  assert.equal(store.list().length, before + 1)
+
+  // A different client cannot consume the already-claimed offer.
+  const otherClient = makeClientFrame({ code: offer.code })
+  assert.equal(errorOf(hostHandshake(otherClient.frame, deps)), 'bad-code')
   const unknown = makeClientFrame({ code: 'never-minted' })
   assert.equal(errorOf(hostHandshake(unknown.frame, deps)), 'bad-code')
 })
@@ -85,24 +96,33 @@ test('expired code → expired on every presentation (validate never burns)', as
   assert.equal(errorOf(hostHandshake(second.frame, shortDeps)), 'expired')
 })
 
-test('deviceToken handshake reconnects forever and re-binds the room; revoked token → bad-token', () => {
-  const { id, token } = store.issue(undefined, 'd'.repeat(32))
-  const first = makeClientFrame({ deviceToken: token })
-  const ack = openAck(hostHandshake(first.frame, deps), first.clientKeys)
+test('deviceToken handshake reconnects only the claiming Client Instance; revoked token → bad-token', () => {
+  const first = makeClientFrame({ deviceToken: 'pending' })
+  const claimant = Buffer.from(first.clientKeys.publicKey).toString('base64url')
+  const originalRoom = 'd'.repeat(32)
+  const { id, token } = store.issue(undefined, originalRoom, claimant)
+  const frame = makeClientFrame({ deviceToken: token }, first.clientKeys)
+  const ack = openAck(hostHandshake(frame.frame, deps), first.clientKeys)
   assert.equal(ack.ok, true)
   assert.equal(ack.deviceToken, undefined) // bearer token persists; no rotation in the ack
-  // the handshake landed on deps.room: the device re-binds to it (keeps the new room's campaign alive)
-  assert.equal(store.authenticate(token)?.room, ROOM)
-  // same token again — still valid (permanent until revoked)
-  const second = makeClientFrame({ deviceToken: token })
+  assert.equal(store.authenticate(token)?.room, originalRoom)
+  const second = makeClientFrame({ deviceToken: token }, first.clientKeys)
   assert.equal(hostHandshake(second.frame, deps).ok, true)
-  // unknown token
+  const stolen = makeClientFrame({ deviceToken: token })
+  assert.equal(errorOf(hostHandshake(stolen.frame, deps)), 'bad-token')
+  assert.equal(store.authenticate(token)?.room, originalRoom)
   const unknown = makeClientFrame({ deviceToken: 'nope' })
   assert.equal(errorOf(hostHandshake(unknown.frame, deps)), 'bad-token')
-  // revoked
   assert.equal(store.revoke(id), true)
-  const third = makeClientFrame({ deviceToken: token })
+  const third = makeClientFrame({ deviceToken: token }, first.clientKeys)
   assert.equal(errorOf(hostHandshake(third.frame, deps)), 'bad-token')
+})
+
+test('a pairing hello at the live-device ceiling returns limit', () => {
+  while (store.liveCount() < MAX_LIVE_DEVICES) store.issue('n' + store.liveCount())
+  const offer = offers.mint('relay', 'wss://relay.test', 'e'.repeat(32), keypair.publicKeyBase64Url)
+  const { frame } = makeClientFrame({ code: offer.code })
+  assert.equal(errorOf(hostHandshake(frame, deps)), 'limit')
 })
 
 test('hello without credentials → bad-hello; garbage frame → bad-hello; frame sealed to a wrong host key → bad-hello', () => {

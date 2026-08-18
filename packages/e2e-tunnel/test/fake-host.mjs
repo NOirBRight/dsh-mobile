@@ -16,6 +16,7 @@ export async function startFakeHost(relayUrl, room, opts = {}) {
   const expectedCode = opts.expectedCode ?? 'test-code'
   const deviceTokens = new Set()
   let tokenCounter = 0
+  let pairingClaim = null // { claimant, token }; retries from that key are idempotent
 
   const ws = new WebSocket(relayUrl + '/r/' + room + '?role=host')
   ws.binaryType = 'arraybuffer'
@@ -46,11 +47,17 @@ export async function startFakeHost(relayUrl, room, opts = {}) {
   const adoptHello = (clientPub, hello) => {
     let issued = null
     if (typeof hello.code === 'string') {
-      // multi-use within the window: wrong code is bad-code, right code pairs another device
       if (hello.code !== expectedCode) return replyError('bad-code')
-      tokenCounter += 1
-      issued = 'dev-' + tokenCounter
-      deviceTokens.add(issued)
+      const claimant = b64urlEncode(clientPub)
+      if (pairingClaim !== null) {
+        if (pairingClaim.claimant !== claimant) return replyError('bad-code')
+        issued = pairingClaim.token
+      } else {
+        tokenCounter += 1
+        issued = 'dev-' + tokenCounter
+        pairingClaim = { claimant, token: issued }
+        deviceTokens.add(issued)
+      }
     } else if (typeof hello.deviceToken === 'string') {
       if (!deviceTokens.has(hello.deviceToken)) return replyError('bad-token')
     } else {
@@ -96,6 +103,9 @@ export async function startFakeHost(relayUrl, room, opts = {}) {
 
   function handle(msg) {
     switch (msg.t) {
+      case 'ping':
+        sendMsg({ t: 'pong', id: msg.id })
+        return
       case 'http-req': {
         seen.requests.push({ id: msg.id, method: msg.method, path: msg.path })
         if (msg.body !== undefined) {

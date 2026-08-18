@@ -1,9 +1,9 @@
 {
-  "name": "dsh-relay",
+  "name": "dsh-signaling",
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "Untrusted WebSocket room relay for dsh-mobile (E2E ciphertext pipe)",
+  "description": "Untrusted signaling-only WebSocket rooms for dsh-mobile WebRTC setup",
   "engines": {
     "node": ">=22"
   },

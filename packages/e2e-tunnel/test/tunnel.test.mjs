@@ -2,6 +2,7 @@
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
+import nacl from 'tweetnacl'
 import { connect, parseOffer, TunnelError, TunnelWebSocket } from '../src/index.ts'
 import { b64urlEncode, utf8Encode } from '../src/bytes.ts'
 import { startFakeRelay } from './fake-relay.mjs'
@@ -44,6 +45,84 @@ test('parseOffer rejects an expired offer', () => {
   assert.throws(() => parseOffer(expired), (e) => e.code === 'expired')
 })
 
+// ── v3 direct offers (WebRTC DataChannel; room is signaling-only) ─────────
+
+const makeDirectOffer = (over = {}) => 'https://app.noirbright.top/#offer=' + b64urlEncode(utf8Encode(JSON.stringify({
+  v: 3, mode: 'direct', addr: 'wss://relay.noirbright.top', room: randomBytes(16).toString('hex'),
+  pubkey: b64urlEncode(new Uint8Array(32)), code: 'test-code', exp: Math.floor(Date.now() / 1000) + 300,
+  ...over,
+})))
+
+test('parseOffer accepts a v3 direct offer with STUN-only ice', () => {
+  const o = parseOffer(makeDirectOffer({ ice: ['stun:stun.example.com:3478', 'stuns://stun.example.com:5349'] }))
+  assert.equal(o.v, 3)
+  assert.equal(o.mode, 'direct')
+  assert.deepEqual(o.ice, ['stun:stun.example.com:3478', 'stuns://stun.example.com:5349'])
+  assert.match(o.room, /^[0-9a-f]{32}$/)
+})
+
+test('parseOffer accepts a v3 direct offer without ice', () => {
+  const o = parseOffer(makeDirectOffer())
+  assert.equal(o.v, 3)
+  assert.equal(o.mode, 'direct')
+  assert.equal(o.ice, undefined)
+})
+
+test('parseOffer rejects v3 shape violations', () => {
+  // version/mode mismatch, both directions
+  assert.throws(() => parseOffer(makeDirectOffer({ mode: 'relay' })), (e) => e.code === 'bad-offer')
+  assert.throws(() => parseOffer(makeOffer({ v: 3, mode: 'direct' })), (e) => e.code === 'bad-offer')
+  // TURN is never accepted — there is no relay fallback by design
+  assert.throws(() => parseOffer(makeDirectOffer({ ice: ['turn:turn.example.com:3478'] })), (e) => e.code === 'bad-offer')
+  assert.throws(() => parseOffer(makeDirectOffer({ ice: ['stun:ok.example.com', 'turns://no.example.com'] })), (e) => e.code === 'bad-offer')
+  // ice shape: must be an array of strings
+  assert.throws(() => parseOffer(makeDirectOffer({ ice: 'stun:stun.example.com' })), (e) => e.code === 'bad-offer')
+  assert.throws(() => parseOffer(makeDirectOffer({ ice: [42] })), (e) => e.code === 'bad-offer')
+  // ice is a v3 field only
+  assert.throws(() => parseOffer(makeOffer({ ice: ['stun:stun.example.com'] })), (e) => e.code === 'bad-offer')
+  // room stays mandatory on v3
+  assert.throws(() => parseOffer(makeDirectOffer({ room: null })), (e) => e.code === 'bad-offer')
+})
+
+const publicCapabilities = { browser: true, direct: true, tunnel: true, endpointRefresh: true }
+const makePublicOffer = (over = {}) => 'https://host.example/#offer=' + b64urlEncode(utf8Encode(JSON.stringify({
+  v: 4, mode: 'public', protocol: 1, endpoint: 'https://host.example', endpointKind: 'temporary',
+  room: randomBytes(16).toString('hex'), pubkey: b64urlEncode(new Uint8Array(32)), code: 'test-code',
+  exp: Math.floor(Date.now() / 1000) + 300, ice: ['stun:stun.example.com:3478'],
+  capabilities: publicCapabilities, ...over,
+})))
+
+test('parseOffer accepts a v4 Host-owned Public Endpoint offer', () => {
+  const o = parseOffer(makePublicOffer())
+  assert.equal(o.v, 4)
+  assert.equal(o.mode, 'public')
+  assert.equal(o.protocol, 1)
+  assert.equal(o.endpoint, 'https://host.example')
+  assert.equal(o.endpointKind, 'temporary')
+  assert.deepEqual(o.capabilities, publicCapabilities)
+  assert.deepEqual(o.ice, ['stun:stun.example.com:3478'])
+})
+
+test('parseOffer expands compact v4 QR payloads below the previous scanner-safe size', () => {
+  const compact = [4, 'https://host.example', 0, 'a'.repeat(32), b64urlEncode(new Uint8Array(32)), 'test-code', Math.floor(Date.now() / 1000) + 300, 15, ['stun:stun.example.com:3478']]
+  const url = 'dsh-mobile://pair#offer=' + b64urlEncode(utf8Encode(JSON.stringify(compact)))
+  assert.ok(url.length < 377)
+  const offer = parseOffer(url)
+  assert.equal(offer.v, 4)
+  assert.equal(offer.endpointKind, 'temporary')
+  assert.deepEqual(offer.capabilities, publicCapabilities)
+  assert.deepEqual(offer.ice, ['stun:stun.example.com:3478'])
+})
+
+test('parseOffer rejects unsafe or malformed v4 Public Endpoint offers', () => {
+  assert.throws(() => parseOffer(makePublicOffer({ endpoint: 'http://host.example' })), (e) => e.code === 'bad-offer')
+  assert.throws(() => parseOffer(makePublicOffer({ endpointKind: 'managed' })), (e) => e.code === 'bad-offer')
+  assert.throws(() => parseOffer(makePublicOffer({ capabilities: { ...publicCapabilities, tunnel: 'yes' } })), (e) => e.code === 'bad-offer')
+  assert.throws(() => parseOffer(makePublicOffer({ ice: ['turn:turn.example.com'] })), (e) => e.code === 'bad-offer')
+  assert.throws(() => parseOffer(makePublicOffer({ mode: 'direct' })), (e) => e.code === 'bad-offer')
+})
+
+
 // ── handshake ────────────────────────────────────────────────────────────────
 
 test('handshake with one-time code pairs the device and yields a deviceToken', async () => {
@@ -59,6 +138,36 @@ test('handshake with one-time code pairs the device and yields a deviceToken', a
   assert.equal(client.state, 'closed')
 })
 
+test('first pairing does not report open before durable token persistence finishes', async () => {
+  const { offer } = await hostAndOffer()
+  let release
+  let callbackEntered
+  let connected = false
+  const persisted = new Promise(resolve => { release = resolve })
+  const entered = new Promise(resolve => { callbackEntered = resolve })
+  const pending = connect(offer, {
+    onDeviceToken: async () => { callbackEntered(); await persisted },
+  })
+  void pending.then(() => { connected = true })
+  await entered
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(connected, false)
+  release()
+  const client = await pending
+  client.close()
+})
+
+test('same Client Instance key retries a claimed offer without minting another device', async () => {
+  const { offer } = await hostAndOffer()
+  const clientKeypair = nacl.box.keyPair()
+  const first = await connect(offer, { clientKeypair })
+  const token = first.deviceToken
+  first.close()
+  const retry = await connect(offer, { clientKeypair })
+  assert.equal(retry.deviceToken, token)
+  retry.close()
+})
+
 test('handshake rejects a bad code with the host error', async () => {
   const { offer } = await hostAndOffer({ expectedCode: 'right-code' })
   const parsed = parseOffer(offer)
@@ -69,6 +178,14 @@ test('handshake rejects a bad code with the host error', async () => {
 test('handshake times out when no host answers', async () => {
   const offer = makeOffer({ pubkey: b64urlEncode(new Uint8Array(32)) })
   await assert.rejects(connect(offer, { handshakeTimeoutMs: 300 }), (e) => e.code === 'timeout')
+})
+
+test('heartbeat probe round-trips inside the encrypted session', async () => {
+  const { offer } = await hostAndOffer()
+  const client = await connect(offer)
+  await client.probe(500)
+  assert.equal(client.state, 'open')
+  client.close()
 })
 
 // ── tunneled fetch ───────────────────────────────────────────────────────────
@@ -212,11 +329,9 @@ test('deviceToken reconnects indefinitely; unknown tokens and the burned code ar
   // connect() retries absorb the 4409 release lag
   await assert.rejects(connect(offer, { deviceToken: 'no-such-token' }), (e) => e.code === 'bad-token')
 
-  // codes are multi-use within their window: re-pairing with the same code
-  // yields a fresh device (this is what makes a lost ack recoverable)
-  const third = await connect(offer)
-  assert.equal(third.deviceToken, 'dev-2')
-  third.close()
+  // The offer is already claimed by the first Client Instance. A new key
+  // cannot use it to create another authorization.
+  await assert.rejects(connect(offer), (e) => e.code === 'bad-code')
 })
 
 test('a paired device reconnects after its original QR offer expires', async () => {

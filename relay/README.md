@@ -1,8 +1,18 @@
-# dsh-relay
+# dsh-signaling
 
-不可信 WebSocket 房间中继:dsh-mobile 手机端与家中 DSH 主机之间的 E2E 密文哑管道。
+不可信的 WebRTC 信令房间服务。它只在一个 Host 和一个 Android client 之间转发有界 SDP envelope；不会转发 NaCl tunnel frame、HTTP、WebSocket 或其他应用流量。
 
-- 帧内容对 relay 是 NaCl box 密文,relay 不解读、不记录,只转发;房间号(128 位随机,来自配对 QR)即唯一能力凭证。
-- 路由:GET /healthz;WS /r/<roomId>?role=host|client(每房间恰好两方,第三方 4409;单方离开不拖垮对端,便于手机漫游重连)。
-- 部署:VPS 上 deploy/deploy.sh 构建容器(加入 vps-net),并在 Caddy 的 noirbright.top 站点挂 handle_path /relay*。规范外部入口 wss://relay.noirbright.top(子域,LE 证书);兼容入口 wss://noirbright.top/relay。
-- 本地:npm install && npm test(行为测试);RELAY_URL=... node test/e2e-wss.mjs(端到端)。
+- HTTP：GET /healthz
+- WebSocket：/r/<128-bit hex room>?role=host|client
+- 第三个 peer 或重复 role：4409
+- binary、任意其他 text、超限或超速信令：4400
+- 单帧上限 64 KiB；每连接每分钟 64 个 signal
+
+本地验证：
+
+~~~sh
+npm install
+npm test
+~~~
+
+不要在该 VPS 部署 TURN，也不要恢复 binary 透明转发。

@@ -29,14 +29,28 @@ export interface Config {
   tokenStorePath?: string
   /** One-time pairing-code lifetime in milliseconds. */
   codeTtlMs: number
-  /** Relay WSS base URL for relay-mode offers (tunnel-protocol.md §1). */
-  relayUrl: string
-  /** When true, /pair mints relay-mode (v2) offers and drives the relay connector; false keeps M1 LAN offers. */
-  enableRelay: boolean
+  /** Product Public Endpoint mode. Quick Tunnel is the zero-configuration default. */
+  endpointMode: 'quick' | 'custom'
+  /** Operator-provisioned URL, required only in custom mode. */
+  customEndpointUrl?: string
+  /** Standalone Host Gateway is always loopback-bound. */
+  gatewayBind: '127.0.0.1' | '::1' | 'localhost'
+  /** Standalone Host Gateway listen port; 0 asks the OS. */
+  gatewayPort: number
+  /** Packaged browser shell root. */
+  browserShellPath?: string
+  /** cloudflared executable used in quick mode. */
+  cloudflaredPath: string
+  /** Legacy outbound signaling URL; never a product default. */
+  signalingUrl?: string
+  /** Public STUN discovery URLs. TURN/TURNS are rejected. */
+  stunUrls: string[]
+  /** Legacy flag retained for config compatibility; product /pair mints v4 Public Endpoint offers. */
+  enableDirect: boolean
 }
 
 export const Config: z<Config> = z.object({
-  appUrl: z.string().default('https://app.noirbright.top/'),
+  appUrl: z.string().default('dsh-mobile://pair'),
   advertiseUrl: z.string(),
   bind: z.string().default('0.0.0.0'),
   port: z.natural().max(65535).default(0),
@@ -46,14 +60,22 @@ export const Config: z<Config> = z.object({
   keyStorePath: z.string(),
   tokenStorePath: z.string(),
   codeTtlMs: z.natural().default(300_000),
-  relayUrl: z.string().default('wss://relay.noirbright.top'),
-  enableRelay: z.boolean().default(true),
+  endpointMode: z.string().default('quick') as z<'quick' | 'custom'>,
+  customEndpointUrl: z.string(),
+  gatewayBind: z.string().default('127.0.0.1') as z<'127.0.0.1' | '::1' | 'localhost'>,
+  gatewayPort: z.natural().max(65535).default(0),
+  browserShellPath: z.string(),
+  cloudflaredPath: z.string().default('cloudflared'),
+  signalingUrl: z.string(),
+  stunUrls: z.array(z.string()).default(['stun:stun.cloudflare.com:3478']),
+  enableDirect: z.boolean().default(true),
 })
 
 /** The config after the resolve step: every derivable field is concrete and checked. */
 export interface ResolvedConfig extends Config {
   keyStorePath: string
   tokenStorePath: string
+  browserShellPath: string
 }
 
 /**
@@ -66,11 +88,26 @@ export function resolveConfig(config: Config): ResolvedConfig {
   if (config.advertiseUrl !== undefined && !/^(https?|wss?):\/\//.test(config.advertiseUrl)) {
     throw new Error(`dsh-mobile-pairing: advertiseUrl must be an http(s)/ws(s) URL, got "${config.advertiseUrl}"`)
   }
-  if (!/^https?:\/\//.test(config.appUrl)) {
-    throw new Error(`dsh-mobile-pairing: appUrl must be an http(s) URL, got "${config.appUrl}"`)
+  if (!/^(https?:\/\/|dsh-mobile:\/\/pair(?:$|[?#]))/.test(config.appUrl)) {
+    throw new Error(`dsh-mobile-pairing: appUrl must be an http(s) URL or dsh-mobile://pair, got "${config.appUrl}"`)
   }
-  if (!/^wss?:\/\//.test(config.relayUrl)) {
-    throw new Error(`dsh-mobile-pairing: relayUrl must be a ws(s) URL, got "${config.relayUrl}"`)
+  if (config.endpointMode !== 'quick' && config.endpointMode !== 'custom') throw new Error('dsh-mobile-pairing: endpointMode must be quick or custom')
+  if (!['127.0.0.1', '::1', 'localhost'].includes(config.gatewayBind)) throw new Error('dsh-mobile-pairing: gatewayBind must be loopback')
+  if (config.endpointMode === 'custom') {
+    if (config.customEndpointUrl === undefined) throw new Error('dsh-mobile-pairing: customEndpointUrl is required in custom mode')
+    let endpoint: URL
+    try { endpoint = new URL(config.customEndpointUrl) } catch { throw new Error('dsh-mobile-pairing: customEndpointUrl must be HTTPS') }
+    if (endpoint.protocol !== 'https:') throw new Error('dsh-mobile-pairing: customEndpointUrl must be HTTPS')
+    if (endpoint.username !== '' || endpoint.password !== '') throw new Error('dsh-mobile-pairing: customEndpointUrl must not contain credentials')
+  }
+  if (config.signalingUrl !== undefined && !/^wss?:\/\//.test(config.signalingUrl)) {
+    throw new Error(`dsh-mobile-pairing: signalingUrl must be a ws(s) URL, got "${config.signalingUrl}"`)
+  }
+  if (config.dshHost !== '127.0.0.1' && config.dshHost !== '::1' && config.dshHost !== 'localhost') {
+    throw new Error('dsh-mobile-pairing: dshHost must be loopback')
+  }
+  if (config.stunUrls.some(url => !/^stuns?:(\/\/)?/i.test(url))) {
+    throw new Error('dsh-mobile-pairing: stunUrls must contain STUN-only URLs; TURN is never accepted')
   }
   if (config.codeTtlMs <= 0) {
     throw new Error('dsh-mobile-pairing: codeTtlMs must be positive')
@@ -79,5 +116,6 @@ export function resolveConfig(config: Config): ResolvedConfig {
     ...config,
     keyStorePath: config.keyStorePath ?? join(config.dshHome, 'mobile', 'daemon-keypair.json'),
     tokenStorePath: config.tokenStorePath ?? join(config.dshHome, 'mobile', 'devices.json'),
+    browserShellPath: config.browserShellPath ?? join(config.dshHome, 'mobile', 'browser-shell'),
   }
 }

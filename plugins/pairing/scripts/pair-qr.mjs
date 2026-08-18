@@ -16,6 +16,9 @@ import { PairingOfferManager, buildOfferUrl } from '../src/pairing.ts'
 const args = process.argv.slice(2)
 const liveAt = args.indexOf('--live')
 const portAt = args.indexOf('--port')
+// Product default: native app deep link. Set DSH_MOBILE_APP_URL explicitly
+// when checking an independently deployed HTTPS browser shell.
+const appUrl = process.env.DSH_MOBILE_APP_URL ?? 'dsh-mobile://pair'
 
 async function printQr(url) {
   console.log(await QRCode.toString(url, { type: 'terminal', small: true }))
@@ -40,7 +43,7 @@ if (liveAt !== -1) {
   const offer = offers.mint('lan', 'http://' + lan + ':' + port, null, keypair.publicKeyBase64Url)
   console.error('offline mode: this code lives only in this process and cannot be exchanged;')
   console.error('run with --live against a running dsh for a real pairing. Port is 0 unless --port is given.')
-  await printQr(buildOfferUrl('https://app.noirbright.top/', offer))
+  await printQr(buildOfferUrl(appUrl, offer))
 }
 
 function firstLanIPv4() {

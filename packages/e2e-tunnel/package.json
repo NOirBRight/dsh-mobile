@@ -1,14 +1,20 @@
 {
   "name": "@dsh-mobile/e2e-tunnel",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "description": "M3 隧道协议 client 端:经不可信 relay 的 NaCl E2E 隧道,对上游载体暴露 fetch/WebSocket 接口",
+  "description": "NaCl-authenticated DSH tunnel over direct WebRTC DataChannels",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
     "./package.json": "./package.json"
   },
+  "files": ["lib"],
   "scripts": {
+    "build": "rm -rf lib && tsc -p tsconfig.build.json",
     "test": "node --test test/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },

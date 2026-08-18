@@ -9,11 +9,25 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFileSync, writeFileSync, mkdirSync, chmodSync, renameSync } from 'node:fs'
 import { dirname } from 'node:path'
 
+export type DeviceClientType = 'android' | 'browser'
+
+/** Ordinary users have no device cap; this is only a pairing-abuse ceiling. */
+export const MAX_LIVE_DEVICES = 256
+
+export class DeviceLimitError extends Error {
+  constructor() {
+    super('dsh-mobile-pairing: device pairing limit reached')
+    this.name = 'DeviceLimitError'
+  }
+}
+
 /** One paired device as exposed to list/read callers (never carries the hash). */
 export interface DeviceRecord {
   id: string
   label?: string
+  clientType?: DeviceClientType
   createdAt: number
+  lastSeenAt: number
   revokedAt: number | null
   /** Relay room this device paired on; its campaign lives while the device does (protocol §5). */
   room?: string
@@ -21,6 +35,8 @@ export interface DeviceRecord {
 
 interface StoredDevice extends DeviceRecord {
   tokenHash: string
+  /** Client Instance X25519 public key, base64url; absent on pre-binding records. */
+  claimantPublicKey?: string
 }
 
 interface StoreFile {
@@ -51,21 +67,36 @@ export class DeviceTokenStore {
   /**
    * Issue a new device token.
    * @param label - optional human name shown in the device list.
+   * @param room - v4 room bound to this authorization.
+   * @param claimantPublicKey - Client Instance X25519 public key, base64url.
    * @returns the record id and the plaintext token (this is its only showing).
    */
-  issue(label?: string, room?: string): { id: string; token: string } {
+  issue(label?: string, room?: string, claimantPublicKey?: string, clientType?: DeviceClientType): { id: string; token: string } {
+    if (claimantPublicKey !== undefined && !CLAIMANT.test(claimantPublicKey)) {
+      throw new Error('dsh-mobile-pairing: claimant public key must be 32-byte base64url')
+    }
+    if (this.liveCount() >= MAX_LIVE_DEVICES) throw new DeviceLimitError()
+    const now = Date.now()
     const token = randomBytes(32).toString('base64url')
     const record: StoredDevice = {
       id: randomBytes(8).toString('base64url'),
       label,
-      createdAt: Date.now(),
+      createdAt: now,
+      lastSeenAt: now,
       revokedAt: null,
       tokenHash: hash(token),
     }
     if (room !== undefined) record.room = room
+    if (claimantPublicKey !== undefined) record.claimantPublicKey = claimantPublicKey
+    if (clientType !== undefined) record.clientType = clientType
     this.devices.push(record)
     this.save()
     return { id: record.id, token }
+  }
+
+  /** @returns live (non-revoked) device count. */
+  liveCount(): number {
+    return this.devices.filter(device => device.revokedAt === null).length
   }
 
   /** @returns whether any live (non-revoked) device is bound to the room. */
@@ -81,30 +112,29 @@ export class DeviceTokenStore {
   /**
    * Authenticate a presented token.
    * @param token - plaintext bearer/subprotocol token.
-   * @returns the device record, or null for unknown/revoked tokens.
+   * @param claimantPublicKey - when set, must match the Client Instance that claimed the token.
+   * @returns the device record, or null for unknown/revoked/mismatched tokens.
    */
-  authenticate(token: string): DeviceRecord | null {
+  authenticate(token: string, claimantPublicKey?: string): DeviceRecord | null {
     const presented = Buffer.from(hash(token))
     for (const device of this.devices) {
       if (device.revokedAt !== null) continue
       const expected = Buffer.from(device.tokenHash)
-      if (presented.length === expected.length && timingSafeEqual(presented, expected)) return device
+      if (presented.length !== expected.length || !timingSafeEqual(presented, expected)) continue
+      if (claimantPublicKey !== undefined) {
+        if (device.claimantPublicKey === undefined) {
+          if (!CLAIMANT.test(claimantPublicKey)) return null
+          device.claimantPublicKey = claimantPublicKey
+          this.save()
+        } else if (!sameText(device.claimantPublicKey, claimantPublicKey)) {
+          return null
+        }
+      }
+      device.lastSeenAt = Date.now()
+      this.save()
+      return publicRecord(device)
     }
     return null
-  }
-
-  /**
-   * Re-bind a device to a different room (a deviceToken handshake that lands
-   * on a new room moves the binding, so the new room's campaign stays alive
-   * after the pairing window closes — protocol §5).
-   * @param id - record id from authenticate/list.
-   * @param room - the room to bind.
-   */
-  bindRoom(id: string, room: string): void {
-    const device = this.devices.find((d) => d.id === id && d.revokedAt === null)
-    if (!device || device.room === room) return
-    device.room = room
-    this.save()
   }
 
   /**
@@ -120,9 +150,23 @@ export class DeviceTokenStore {
     return true
   }
 
+  /**
+   * Rename a live device. Empty label clears the stored name.
+   * @returns whether a live device was found and updated.
+   */
+  rename(id: string, label: string): boolean {
+    const device = this.devices.find((d) => d.id === id && d.revokedAt === null)
+    if (!device) return false
+    const cleaned = label.replace(/[\0-\x1f]/g, '').trim().slice(0, 64)
+    if (cleaned === '') delete device.label
+    else device.label = cleaned
+    this.save()
+    return true
+  }
+
   /** @returns all devices (including revoked), with token hashes stripped. */
   list(): DeviceRecord[] {
-    return this.devices.map(({ id, label, createdAt, revokedAt, room }) => ({ id, label, createdAt, revokedAt, room }))
+    return this.devices.map(publicRecord)
   }
 
   private save(): void {
@@ -134,7 +178,27 @@ export class DeviceTokenStore {
   }
 }
 
+const CLAIMANT = /^[A-Za-z0-9_-]{43}$/
+
 /** @param token - plaintext token. @returns its SHA-256, base64url. */
 function hash(token: string): string {
   return createHash('sha256').update(token).digest('base64url')
+}
+
+function publicRecord(device: StoredDevice): DeviceRecord {
+  return {
+    id: device.id,
+    ...(device.label === undefined ? {} : { label: device.label }),
+    ...(device.clientType === undefined ? {} : { clientType: device.clientType }),
+    createdAt: device.createdAt,
+    lastSeenAt: device.lastSeenAt ?? device.createdAt,
+    revokedAt: device.revokedAt,
+    ...(device.room === undefined ? {} : { room: device.room }),
+  }
+}
+
+function sameText(left: string, right: string): boolean {
+  const a = Buffer.from(left)
+  const b = Buffer.from(right)
+  return a.length === b.length && timingSafeEqual(a, b)
 }

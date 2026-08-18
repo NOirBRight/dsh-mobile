@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "移动壳 Vite 入口:build 出 dsh-client-web shell 的 dist,由 mobile-web profile 的 frontend-static 行 serve",
+  "description": "Android-first Capacitor shell with camera pairing and direct WebRTC tunnel",
   "exports": {
     "./dist/*": "./dist/*",
     "./package.json": "./package.json"
@@ -12,15 +12,25 @@
     "dist"
   ],
   "scripts": {
-    "build": "vite build",
-    "watch": "vite build --watch"
+    "build": "npm run build --workspace @dsh-mobile/ui-layout-mobile && vite build && node scripts/package-local-shell.mjs && node scripts/package-browser-shell.mjs",
+    "test": "node --test test/*.test.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "watch": "vite build --watch",
+    "android:copy": "npm run build && cap copy android && node scripts/package-android-layout.mjs",
+    "android:sync": "npm run build && cap sync android && node scripts/package-android-layout.mjs",
+    "android:debug": "bash android/build-debug.sh"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.0.1",
+    "@capacitor/barcode-scanner": "^3.1.0",
+    "@capacitor/core": "^8.5.0",
+    "@dsh-mobile/e2e-tunnel": "*",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "@dsh-mobile/e2e-tunnel": "*"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
     "@vitejs/plugin-react": "^4.0.0",
     "typescript": "^6.0.3",
     "vite": "^6.0.0"

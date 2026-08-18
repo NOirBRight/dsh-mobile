@@ -1,25 +1,54 @@
 import nacl from 'tweetnacl'
 import { b64urlDecode, concat, utf8Decode, utf8Encode } from './bytes.ts'
 import { TunnelError } from './errors.ts'
-import { parseOffer, type Offer } from './offer.ts'
+import { parseOffer, type Offer, type RelayOffer, type DirectOffer, type PublicEndpointOffer } from './offer.ts'
+import type { ConnectionPolicy } from './connection-policy.ts'
+import { ConnectionCoordinator, type ConnectionStatus } from './connection-manager.ts'
 import { TunnelWebSocket } from './socket.ts'
 import { tunnelFetch, type PendingFetch } from './http.ts'
+import { DataChannelTransport, WsFrameTransport, type FrameTransport } from './transport.ts'
+import { negotiateDirectChannel, type NegotiatedChannel } from './signal.ts'
 
 /** Tunnel lifecycle, surfaced to the app badge. */
 export type TunnelState = 'connecting' | 'open' | 'closed'
 
+export interface ClientKeypair {
+  publicKey: Uint8Array
+  secretKey: Uint8Array
+}
+
+export function generateClientKeypair(): ClientKeypair {
+  const generated = nacl.box.keyPair()
+  return { publicKey: generated.publicKey.slice(), secretKey: generated.secretKey.slice() }
+}
+
 export interface ConnectOptions {
-  /** Rotated single-use token from a previous session; takes precedence over the offer's one-time code. */
+  /** Stable Client Instance key used to make one-time-offer retries idempotent. */
+  clientKeypair?: ClientKeypair
   /** Persistent device token from a previous pairing (permanent until revoked, protocol §5). */
   deviceToken?: string
   /** Called with the device token when one is issued (first pairing only — store it). */
-  onDeviceToken?: (token: string) => void
+  onDeviceToken?: (token: string) => void | Promise<void>
   /** Called on every state transition. */
   onStateChange?: (state: TunnelState) => void
+  /** Public Endpoint policy; Automatic is the product default. */
+  connectionPolicy?: ConnectionPolicy
+  /** Visible Public Endpoint route and phase changes. */
+  onConnectionStatus?: (status: ConnectionStatus) => void
   /** Handshake wait bound; default 10_000 ms. */
   handshakeTimeoutMs?: number
   /** Transport-level reconnect attempts (roaming/4409 races); default 3. */
   connectRetries?: number
+  /** Optional Host-facing device label stored on first pairing. */
+  deviceLabel?: string
+  /** Optional Client Instance type stored on first pairing. */
+  clientType?: 'android' | 'browser'
+}
+
+/** openSession inputs: the connection callbacks plus the pairing credential the hello presents. */
+export interface OpenSessionOptions extends ConnectOptions {
+  /** One-time pairing code from the offer; required unless deviceToken is presented. */
+  code?: string
 }
 
 /** Live tunnel: multiplexed fetch + WebSocket over one sealed WSS room. */
@@ -33,6 +62,8 @@ export interface TunnelClient {
   }): Promise<Response>
   /** Open a tunneled WebSocket to a loopback path (e.g. /api/events.mux). */
   openWebSocket(path: string): TunnelWebSocket
+  /** Probe application-level liveness inside the encrypted session. */
+  probe(timeoutMs?: number): Promise<void>
   /** The device token this session runs on (permanent until revoked, protocol §5). */
   readonly deviceToken: string | null
   readonly state: TunnelState
@@ -49,12 +80,17 @@ interface WireMessage {
 const PLAINTEXT_LIMIT = 200 * 1024
 
 /**
- * Pair and connect: parse the offer, join the relay room, run the sealed
- * handshake (tunnel-protocol.md section 2), and return the live session.
+ * Pair and connect: parse the offer, establish the transport the offer's
+ * mode names, run the sealed handshake (tunnel-protocol.md section 2) over
+ * it, and return the live session. v2 'relay': all frames ride the room
+ * WebSocket. v3 'direct': the room socket carries only the SDP exchange,
+ * a WebRTC DataChannel is negotiated (non-trickle, STUN-only, no fallback),
+ * the signaling socket is closed, and the same handshake runs over the
+ * channel — the VPS never sees a handshake or application frame.
  * @param offerUrl QR content (URL with #offer= fragment or bare payload).
  * @param options resumeToken/callbacks/timeout.
  * @returns the open TunnelClient.
- * @throws TunnelError 'bad-offer' | 'expired' | 'bad-code' (host-rejected code/token) | 'handshake' | 'timeout'.
+ * @throws TunnelError 'bad-offer' | 'expired' | 'bad-code' (host-rejected code/token) | 'handshake' | 'timeout' | 'ice-failed' (direct mode only; no TURN fallback exists).
  */
 export async function connect(offerUrl: string, options: ConnectOptions = {}): Promise<TunnelClient> {
   options.onStateChange?.('connecting')
@@ -66,7 +102,9 @@ export async function connect(offerUrl: string, options: ConnectOptions = {}): P
     const maxAttempts = Math.max(1, options.connectRetries ?? 3)
     for (let attempt = 1; ; attempt++) {
       try {
-        return await attemptConnect(offer, hostPub, options)
+        if (offer.mode === 'relay') return await attemptConnect(offer, hostPub, options)
+        if (offer.mode === 'direct') return await attemptDirectConnect(offer, hostPub, options)
+        return await attemptPublicEndpoint(offer, hostPub, options)
       } catch (error) {
         // Roaming reconnects can reach the relay while it still seats the
         // previous client (4409 close before any frame); only transport-level
@@ -81,38 +119,168 @@ export async function connect(offerUrl: string, options: ConnectOptions = {}): P
   }
 }
 
-async function attemptConnect(offer: Offer, hostPub: Uint8Array, options: ConnectOptions): Promise<TunnelClient> {
-  const keys = nacl.box.keyPair()
-  const ws = new WebSocket(offer.addr + '/r/' + offer.room + '?role=client')
+/** Build a bounded WSS route under the advertised HTTPS Gateway base path. */
+export function publicEndpointSocketUrl(endpoint: string, route: 'signal' | 'tunnel', room: string): string {
+  const url = new URL(endpoint)
+  if (url.protocol !== 'https:') throw new TunnelError('bad-offer', 'Public Endpoint must use HTTPS')
+  if (!/^[0-9a-f]{32}$/.test(room)) throw new TunnelError('bad-offer', 'invalid Public Endpoint room')
+  url.protocol = 'wss:'
+  url.username = ''
+  url.password = ''
+  url.search = ''
+  url.hash = ''
+  url.pathname = url.pathname.replace(/\/$/, '') + `/${route}/${room}`
+  return url.toString()
+}
+
+async function attemptPublicEndpoint(offer: PublicEndpointOffer, hostPub: Uint8Array, options: ConnectOptions): Promise<TunnelClient> {
+  const coordinator = new ConnectionCoordinator({
+    policy: options.connectionPolicy ?? 'automatic',
+    capabilities: { direct: offer.capabilities.direct, tunnel: offer.capabilities.tunnel },
+    connectDirect: () => attemptPublicDirect(offer, hostPub, options),
+    connectTunnel: () => attemptPublicTunnel(offer, hostPub, options),
+    onState: options.onConnectionStatus,
+  })
+  return coordinator.connect()
+}
+
+async function attemptPublicTunnel(offer: PublicEndpointOffer, hostPub: Uint8Array, options: ConnectOptions): Promise<TunnelClient> {
+  const ws = new WebSocket(publicEndpointSocketUrl(offer.endpoint, 'tunnel', offer.room))
   ws.binaryType = 'arraybuffer'
+  const transport = new WsFrameTransport(ws)
   try {
     await onceOpen(ws)
+    return await openSession(transport, hostPub, { ...options, code: offer.code })
+  } catch (error) {
+    try { transport.close(1000) } catch { /* already gone */ }
+    throw error
+  }
+}
 
-    const hello = options.deviceToken ? { deviceToken: options.deviceToken } : { code: offer.code }
+async function attemptPublicDirect(offer: PublicEndpointOffer, hostPub: Uint8Array, options: ConnectOptions): Promise<TunnelClient> {
+  const ws = new WebSocket(publicEndpointSocketUrl(offer.endpoint, 'signal', offer.room))
+  ws.binaryType = 'arraybuffer'
+  let negotiated: NegotiatedChannel | null = null
+  const teardown = (): void => {
+    negotiated?.closePeer()
+    try { ws.close(1000) } catch { /* already gone */ }
+  }
+  try {
+    await onceOpen(ws)
+    negotiated = await negotiateDirectChannel(ws, { ice: offer.ice, timeoutMs: options.handshakeTimeoutMs })
+    const onStateChange = options.onStateChange
+    return await openSession(new DataChannelTransport(negotiated.channel), hostPub, {
+      ...options,
+      code: offer.code,
+      onStateChange: (state) => {
+        if (state === 'closed') teardown()
+        onStateChange?.(state)
+      },
+    })
+  } catch (error) {
+    teardown()
+    throw error
+  }
+}
+
+async function attemptConnect(offer: RelayOffer, hostPub: Uint8Array, options: ConnectOptions): Promise<TunnelClient> {
+  const ws = new WebSocket(offer.addr + '/r/' + offer.room + '?role=client')
+  ws.binaryType = 'arraybuffer'
+  const transport = new WsFrameTransport(ws)
+  try {
+    await onceOpen(ws)
+    return await openSession(transport, hostPub, { ...options, code: offer.code })
+  } catch (error) {
+    // A rejected/failed attempt must release the room seat (one client per
+    // room); the host stays seated and never closes on a bad hello.
+    try { transport.close(1000) } catch { /* already gone */ }
+    throw error
+  }
+}
+
+/**
+ * One v3 'direct' attempt: join the room for signaling only, negotiate the
+ * DataChannel, then run the unchanged sealed handshake over the channel.
+ * The signaling socket stays open while the peer lives (renegotiation /
+ * ICE-restart channel); peer connection AND signaling socket are closed
+ * together when the tunnel closes or the attempt fails. No binary frame
+ * ever touches the signaling socket — the NaCl hello and all session
+ * traffic ride the DataChannel, so the VPS carries SDP and nothing else.
+ */
+async function attemptDirectConnect(offer: DirectOffer, hostPub: Uint8Array, options: ConnectOptions): Promise<TunnelClient> {
+  const ws = new WebSocket(offer.addr + '/r/' + offer.room + '?role=client')
+  ws.binaryType = 'arraybuffer'
+  const teardown = (negotiated: NegotiatedChannel | null): void => {
+    if (negotiated !== null) negotiated.closePeer()
+    try { ws.close(1000) } catch { /* already gone */ }
+  }
+  let negotiated: NegotiatedChannel | null = null
+  try {
+    await onceOpen(ws)
+    negotiated = await negotiateDirectChannel(ws, { ice: offer.ice, timeoutMs: options.handshakeTimeoutMs })
+    // Tie lifetimes: tunnel close (local teardown, protocol violation, or a
+    // dead DataChannel) closes the peer connection and the signaling socket.
+    const onStateChange = options.onStateChange
+    const session = await openSession(new DataChannelTransport(negotiated.channel), hostPub, {
+      ...options,
+      code: offer.code,
+      onStateChange: (state) => {
+        if (state === 'closed') teardown(negotiated)
+        onStateChange?.(state)
+      },
+    })
+    return session
+  } catch (error) {
+    teardown(negotiated)
+    throw error
+  }
+}
+
+/**
+ * Run the sealed handshake (tunnel-protocol.md §2) over any already-open
+ * frame transport and return the live session. This is the factory a
+ * separately established channel (e.g. a WebRTC DataChannel brought up by
+ * out-of-band signaling) uses to construct a TunnelSession: the caller owns
+ * transport setup and teardown-on-failure, this package owns the pairing
+ * credential exchange and everything above it.
+ * @param transport open, reliable, ordered frame pipe (see transport.ts).
+ * @param hostPub host X25519 public key — the pairing trust anchor from the offer.
+ * @param options code or deviceToken (the hello credential), callbacks, timeout.
+ * @returns the open TunnelClient.
+ * @throws TunnelError host verdict codes | 'handshake' | 'timeout'.
+ */
+export async function openSession(transport: FrameTransport, hostPub: Uint8Array, options: OpenSessionOptions = {}): Promise<TunnelClient> {
+  const sourceKeys = options.clientKeypair ?? generateClientKeypair()
+  if (sourceKeys.publicKey.length !== nacl.box.publicKeyLength || sourceKeys.secretKey.length !== nacl.box.secretKeyLength) {
+    throw new TunnelError('bad-key', 'Client Instance keypair must be X25519')
+  }
+  // Own session copies so callers may wipe transient vault material after connect().
+  const keys = { publicKey: sourceKeys.publicKey.slice(), secretKey: sourceKeys.secretKey.slice() }
+  const hello = options.deviceToken
+    ? { deviceToken: options.deviceToken }
+    : {
+      code: options.code,
+      ...(options.deviceLabel === undefined || options.deviceLabel.trim() === '' ? {} : { label: options.deviceLabel.trim().slice(0, 64) }),
+      ...(options.clientType === 'android' || options.clientType === 'browser' ? { clientType: options.clientType } : {}),
+    }
   const helloNonce = nacl.randomBytes(nacl.box.nonceLength)
   const helloBox = nacl.box(utf8Encode(JSON.stringify(hello)), helloNonce, hostPub, keys.secretKey)
-  ws.send(concat(keys.publicKey, helloNonce, helloBox))
+  transport.send(concat(keys.publicKey, helloNonce, helloBox))
 
-  const first = await firstFrame(ws, options.handshakeTimeoutMs ?? 10_000)
+  const first = await firstFrame(transport, options.handshakeTimeoutMs ?? 10_000)
   const plainError = plaintextError(first)
   if (plainError !== null) throw new TunnelError(plainError)
   if (typeof first === 'string') throw new TunnelError('handshake', 'unexpected text frame from host')
   const ackBytes = unseal(first, hostPub, keys.secretKey)
   if (ackBytes === null) throw new TunnelError('handshake', 'could not unseal host ack')
   const ack = JSON.parse(utf8Decode(ackBytes)) as { ok?: boolean; deviceToken?: string }
-    // Code path: the ack must carry a freshly issued token; reconnect path: the presented bearer token persists.
-    const deviceToken = typeof ack.deviceToken === 'string' ? ack.deviceToken : (options.deviceToken ?? null)
-    if (ack.ok !== true || deviceToken === null) {
-      throw new TunnelError('handshake', 'malformed ack')
-    }
-    if (typeof ack.deviceToken === 'string') options.onDeviceToken?.(ack.deviceToken)
-    return new TunnelSession(ws, hostPub, keys.secretKey, deviceToken, options)
-  } catch (error) {
-    // A rejected/failed attempt must release the room seat (one client per
-    // room); the host stays seated and never closes on a bad hello.
-    try { ws.close(1000) } catch { /* already gone */ }
-    throw error
+  // Code path: the ack must carry a freshly issued token; reconnect path: the presented bearer token persists.
+  const deviceToken = typeof ack.deviceToken === 'string' ? ack.deviceToken : (options.deviceToken ?? null)
+  if (ack.ok !== true || deviceToken === null) {
+    throw new TunnelError('handshake', 'malformed ack')
   }
+  if (typeof ack.deviceToken === 'string') await options.onDeviceToken?.(ack.deviceToken)
+  return new TunnelSession(transport, hostPub, keys.secretKey, deviceToken, options)
 }
 
 /** Session implementation; socket.ts and http.ts ride its demux maps. */
@@ -124,30 +292,29 @@ export class TunnelSession implements TunnelClient {
   private idCounter = 0
   private readonly fetches = new Map<string, PendingFetch>()
   private readonly sockets = new Map<string, TunnelWebSocket>()
+  private readonly probes = new Map<string, { resolve: () => void; reject: (error: TunnelError) => void; timer: ReturnType<typeof setTimeout> }>()
 
-  private readonly ws: WebSocket
+  private readonly transport: FrameTransport
   private readonly hostPub: Uint8Array
   private readonly ownSec: Uint8Array
   private readonly options: ConnectOptions
 
   constructor(
-    ws: WebSocket,
+    transport: FrameTransport,
     hostPub: Uint8Array,
     ownSec: Uint8Array,
     deviceToken: string,
     options: ConnectOptions,
   ) {
-    this.ws = ws
+    this.transport = transport
     this.hostPub = hostPub
     this.ownSec = ownSec
     this.options = options
     this.deviceToken = deviceToken
-    ws.addEventListener('message', (ev) => {
-      // Blob payloads force async reads; the queue keeps seq-order regardless.
-      this.frameQueue = this.frameQueue.then(() => this.onFrame(ev)).catch(() => {})
-    })
-    ws.addEventListener('close', () => this.teardown())
-    ws.addEventListener('error', () => {}) // close always follows; teardown owns the bookkeeping
+    // The transport owns ordered delivery (its normalization queue), so the
+    // session handler is synchronous from here on.
+    transport.onFrame((frame) => this.onFrame(frame))
+    transport.onClose(() => this.teardown())
     options.onStateChange?.('open')
   }
 
@@ -169,7 +336,7 @@ export class TunnelSession implements TunnelClient {
     const plain = utf8Encode(JSON.stringify(wire))
     if (plain.length > PLAINTEXT_LIMIT) throw new TunnelError('too-large', 'frame plaintext exceeds 200 KiB')
     const nonce = nacl.randomBytes(nacl.box.nonceLength)
-    this.ws.send(concat(nonce, nacl.box(plain, nonce, this.hostPub, this.ownSec)))
+    this.transport.send(concat(nonce, nacl.box(plain, nonce, this.hostPub, this.ownSec)))
   }
 
   fetch(path: string, init?: Parameters<TunnelClient['fetch']>[1]): Promise<Response> {
@@ -182,9 +349,28 @@ export class TunnelSession implements TunnelClient {
     return new TunnelWebSocket(this, path)
   }
 
+  probe(timeoutMs = 10_000): Promise<void> {
+    if (this.currentState !== 'open') return Promise.reject(new TunnelError('closed', 'tunnel is closed'))
+    const id = this.mintId()
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.probes.delete(id)
+        reject(new TunnelError('stale', 'heartbeat pong deadline exceeded'))
+      }, timeoutMs)
+      this.probes.set(id, { resolve, reject, timer })
+      try {
+        this.send({ t: 'ping', id })
+      } catch (error) {
+        clearTimeout(timer)
+        this.probes.delete(id)
+        reject(error instanceof TunnelError ? error : new TunnelError('closed', String(error)))
+      }
+    })
+  }
+
   close(): void {
     try {
-      this.ws.close(1000)
+      this.transport.close(1000)
     } finally {
       this.teardown()
     }
@@ -206,12 +392,9 @@ export class TunnelSession implements TunnelClient {
     this.sockets.delete(id)
   }
 
-  private frameQueue: Promise<void> = Promise.resolve()
-
-  private async onFrame(ev: MessageEvent): Promise<void> {
-    const data = await frameData(ev).catch(() => null)
-    if (data === null || typeof data === 'string') return // no plaintext frames exist post-handshake
-    const plain = unseal(data, this.hostPub, this.ownSec)
+  private onFrame(frame: Uint8Array | string): void {
+    if (typeof frame === 'string') return // no plaintext frames exist post-handshake
+    const plain = unseal(frame, this.hostPub, this.ownSec)
     if (plain === null) return this.protocolClose('unseal failure')
     let message: WireMessage
     try {
@@ -243,6 +426,15 @@ export class TunnelSession implements TunnelClient {
       case 'ws-err': return void (id !== undefined && this.sockets.get(id)?.onErr(String(message.message ?? 'refused')))
       case 'ws-msg': return void (id !== undefined && this.sockets.get(id)?.onMsg(message.data as string))
       case 'ws-close': return void (id !== undefined && this.sockets.get(id)?.onHostClose(message.code as number | undefined, message.reason as string | undefined))
+      case 'pong': {
+        const probe = id === undefined ? undefined : this.probes.get(id)
+        if (probe !== undefined && id !== undefined) {
+          clearTimeout(probe.timer)
+          this.probes.delete(id)
+          probe.resolve()
+        }
+        return
+      }
       default: return // unknown types are ignored, never fatal
     }
   }
@@ -250,9 +442,9 @@ export class TunnelSession implements TunnelClient {
   private protocolClose(reason: string): void {
     this.teardown()
     try {
-      this.ws.close(1008, reason)
+      this.transport.close(1008, reason)
     } catch {
-      // the socket is already gone; teardown above owns the state
+      // the transport is already gone; teardown above owns the state
     }
   }
 
@@ -264,42 +456,45 @@ export class TunnelSession implements TunnelClient {
     this.fetches.clear()
     for (const socket of [...this.sockets.values()]) socket.tunnelClosed()
     this.sockets.clear()
+    for (const probe of this.probes.values()) {
+      clearTimeout(probe.timer)
+      probe.reject(error)
+    }
+    this.probes.clear()
     this.options.onStateChange?.('closed')
   }
 }
 
-function onceOpen(ws: WebSocket): Promise<void> {
+function onceOpen(ws: WebSocket, timeoutMs = 10_000): Promise<void> {
   return new Promise((resolve, reject) => {
-    ws.addEventListener('open', () => resolve(), { once: true })
-    ws.addEventListener('error', () => reject(new TunnelError('handshake', 'relay connection failed')), { once: true })
+    let settled = false
+    const timer = setTimeout(() => finish(new TunnelError('timeout', 'endpoint WebSocket connection timed out')), timeoutMs)
+    const finish = (error?: TunnelError): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (error === undefined) resolve()
+      else reject(error)
+    }
+    ws.addEventListener('open', () => finish(), { once: true })
+    ws.addEventListener('error', () => finish(new TunnelError('handshake', 'endpoint WebSocket connection failed')), { once: true })
+    ws.addEventListener('close', () => finish(new TunnelError('handshake', 'endpoint WebSocket connection failed')), { once: true })
   })
 }
 
-/**
- * Normalize a WS message payload to bytes or text. binaryType='arraybuffer'
- * is a HINT some WebViews (WeChat/TBS among them) ignore and deliver Blobs
- * anyway; slicing those as ArrayBuffer ends in tweetnacl size errors.
- */
-async function frameData(ev: MessageEvent): Promise<Uint8Array | string> {
-  const data = ev.data as unknown
-  if (typeof data === 'string') return data
-  if (data instanceof ArrayBuffer) return new Uint8Array(data)
-  if (typeof Blob !== 'undefined' && data instanceof Blob) return new Uint8Array(await data.arrayBuffer())
-  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-  throw new TunnelError('handshake', 'unsupported frame payload type')
-}
-
-function firstFrame(ws: WebSocket, timeoutMs: number): Promise<Uint8Array | string> {
+function firstFrame(transport: FrameTransport, timeoutMs: number): Promise<Uint8Array | string> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new TunnelError('timeout', 'host handshake timed out')), timeoutMs)
-    ws.addEventListener('message', (ev) => {
+    // Single-slot handlers: the session constructor replaces both right after
+    // the handshake resolves, so nothing accumulates.
+    transport.onFrame((frame) => {
       clearTimeout(timer)
-      void frameData(ev).then(resolve, reject)
-    }, { once: true })
-    ws.addEventListener('close', () => {
+      resolve(frame)
+    })
+    transport.onClose(() => {
       clearTimeout(timer)
-      reject(new TunnelError('handshake', 'relay closed during handshake'))
-    }, { once: true })
+      reject(new TunnelError('handshake', 'transport closed during handshake'))
+    })
   })
 }
 

@@ -13,6 +13,19 @@ test('schema fills defaults', () => {
   assert.equal(c.advertiseUrl, undefined)
 })
 
+
+test('defaults to a loopback Gateway with a Quick Public Endpoint', () => {
+  const c = Config({})
+  assert.equal(c.appUrl, 'dsh-mobile://pair')
+  assert.equal(c.endpointMode, 'quick')
+  assert.equal(c.customEndpointUrl, undefined)
+  assert.equal(c.gatewayBind, '127.0.0.1')
+  assert.equal(c.gatewayPort, 0)
+  assert.equal(c.signalingUrl, undefined)
+  assert.equal(c.enableDirect, true)
+  assert.deepEqual(c.stunUrls, ['stun:stun.cloudflare.com:3478'])
+})
+
 test('schema rejects out-of-range values at load', () => {
   assert.throws(() => Config({ port: 70000 }))
   assert.throws(() => Config({ dshPort: -1 }))
@@ -34,7 +47,12 @@ test('resolveConfig keeps explicit store paths', () => {
 test('resolveConfig rejects malformed URLs (fail loud)', () => {
   assert.throws(() => resolveConfig(Config({ advertiseUrl: 'not-a-url' })), /advertiseUrl/)
   assert.throws(() => resolveConfig(Config({ appUrl: 'ftp://x' })), /appUrl/)
+  assert.throws(() => resolveConfig(Config({ endpointMode: 'custom' })), /customEndpointUrl/)
+  assert.throws(() => resolveConfig(Config({ endpointMode: 'custom', customEndpointUrl: 'http://x' })), /HTTPS/)
+  assert.throws(() => resolveConfig(Config({ signalingUrl: 'https://x' })), /signalingUrl/)
+  assert.throws(() => resolveConfig(Config({ stunUrls: ['turn:relay.example.com'] })), /STUN-only/)
   assert.throws(() => resolveConfig(Config({ codeTtlMs: 0 })), /codeTtlMs/)
+  assert.throws(() => resolveConfig(Config({ dshHost: '8.8.8.8' })), /dshHost must be loopback/)
 })
 
 test('resolveConfig accepts ws(s) advertiseUrl for relay mode', () => {

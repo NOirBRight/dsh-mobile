@@ -1,8 +1,10 @@
-// dsh-relay — untrusted WebSocket room relay.
+// dsh-signaling — untrusted WebRTC signaling rooms.
 //
-// Pipes frames between the two sides of one room (role=host, role=client).
-// Frames are NaCl-box ciphertext to this process: it never inspects, parses,
-// or logs payloads — only join/leave metadata and byte counters. The room id
+// Forwards only small JSON signaling envelopes between one host and one client.
+// The envelope payload is base64url-encoded SDP JSON. This process validates only
+// the bounded outer shape; endpoint authentication remains the NaCl hello sent over
+// the resulting DataChannel. Binary and arbitrary text are rejected so this server
+// cannot silently become a DSH data relay. The room id
 // in the URL is the only capability; it is minted by the pairing host inside
 // a QR code and never travels anywhere else.
 //
@@ -19,7 +21,10 @@ import { createServer } from 'node:http'
 import { WebSocketServer, WebSocket } from 'ws'
 
 const PORT = Number(process.env.PORT ?? 8787)
-const MAX_PAYLOAD = 1024 * 1024 // 1 MiB; E2E frames are small, this only bounds abuse
+const MAX_PAYLOAD = 64 * 1024 // encrypted SDP/ICE only; application frames never belong here
+const MAX_SIGNALS_PER_MIN = 64
+const SIGNAL_PAYLOAD = /^[A-Za-z0-9_-]+$/
+const SDP_PREFIX = 'v=0'
 const PING_INTERVAL_MS = 30_000
 const EMPTY_ROOM_TTL_MS = 10 * 60_000
 const MAX_UPGRADES_PER_IP_PER_MIN = 100
@@ -80,14 +85,31 @@ function joinRoom(roomId, role, ws) {
   }
   room[role] = ws
   room.emptySince = 0
-  ws.meta = { roomId, role, alive: true, bytes: 0 }
+  ws.meta = { roomId, role, alive: true, bytes: 0, signals: 0, signalResetAt: Date.now() + 60_000 }
   log(roomId, role + ' joined')
 
   ws.on('pong', () => { ws.meta.alive = true })
   ws.on('message', (data, isBinary) => {
+    if (isBinary) { ws.close(4400, 'signaling envelopes must be text'); return }
+    let message
+    try { message = JSON.parse(data.toString()) } catch { ws.close(4400, 'invalid signaling envelope'); return }
+    if (
+      message === null || typeof message !== 'object' ||
+      message.type !== 'signal' || message.phase !== 'sdp' ||
+      Object.keys(message).sort().join(',') !== 'payload,phase,type' ||
+      typeof message.payload !== 'string' || message.payload.length === 0 ||
+      !SIGNAL_PAYLOAD.test(message.payload) ||
+      !isRoleSdpPayload(message.payload, role)
+    ) {
+      ws.close(4400, 'invalid signaling envelope')
+      return
+    }
+    const now = Date.now()
+    if (now >= ws.meta.signalResetAt) { ws.meta.signals = 0; ws.meta.signalResetAt = now + 60_000 }
+    if (++ws.meta.signals > MAX_SIGNALS_PER_MIN) { ws.close(4429, 'signaling rate exceeded'); return }
     ws.meta.bytes += data.length
     const peer = room[role === 'host' ? 'client' : 'host']
-    if (peer && peer.readyState === WebSocket.OPEN) peer.send(data, { binary: isBinary })
+    if (peer && peer.readyState === WebSocket.OPEN) peer.send(data.toString())
   })
   const leave = () => {
     if (room[role] !== ws) return
@@ -97,6 +119,27 @@ function joinRoom(roomId, role, ws) {
   }
   ws.on('close', leave)
   ws.on('error', () => {}) // close follows every error; leave() owns the bookkeeping
+}
+
+
+/** @param {string} encoded @param {'host' | 'client'} role */
+function isRoleSdpPayload(encoded, role) {
+  try {
+    const signal = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'))
+    if (signal === null || typeof signal !== 'object') return false
+    if (Object.keys(signal).sort().join(',') !== 'description,kind') return false
+    const expected = role === 'client' ? 'offer' : 'answer'
+    const description = signal.description
+    return signal.kind === expected &&
+      description !== null && typeof description === 'object' &&
+      Object.keys(description).sort().join(',') === 'sdp,type' &&
+      description.type === expected &&
+      typeof description.sdp === 'string' &&
+      description.sdp.startsWith(SDP_PREFIX) &&
+      !description.sdp.includes('\0')
+  } catch {
+    return false
+  }
 }
 
 const reaper = setInterval(() => {
