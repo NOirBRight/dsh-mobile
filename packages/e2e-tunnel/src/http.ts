@@ -51,7 +51,9 @@ export function tunnelFetch(session: TunnelSession, path: string, init?: {
       settled = true
       session.dropFetch(id)
       const body = concat(...parts)
-      resolve(new Response(body.length > 0 ? body : null, { status: head.status, headers: head.headers }))
+      // concat() returns a fresh array over a real ArrayBuffer; the cast
+      // satisfies TS 5.7+ generic-Uint8Array BodyInit narrowing.
+      resolve(new Response(body.length > 0 ? (body as Uint8Array<ArrayBuffer>) : null, { status: head.status, headers: head.headers }))
     }
 
     const pending: PendingFetch = {

@@ -1,17 +1,30 @@
 # @dsh-mobile/mobile-web
 
-移动壳的 Vite + React 18 入口:构建 `@deepseek-ai/dsh-client-web` shell 的 dist,由 mobile-web profile 的 `frontend-static` 行 serve。只打包 shell;全部业务插件(leaf UI)在运行时经 host 的 client-module 扫描从 /plugins 到达,**不进入本 dist**。
+Android-first 的 Capacitor 本地应用壳。运行 origin 为 https://localhost，APK 内含 Vite shell、全部前端基础资产和优化版移动布局；产品默认不依赖公共 Web 域名、CDN 或 VPS 静态托管。相同 dist 可以由运维方独立部署为 offer 启动的可选 HTTPS 浏览器入口。
 
-## 依赖方式:源码别名,而非 npm/file 依赖
+## 配对
 
-`npm view` 实测:上游 0.1.0-rc.5 未发布(npm 上是错位的 rc.2/rc.3/rc.6),且预发布期上游内部版本互相咬合——从 npm 混合解析必然错位。因此:
+1. 没有已配对设备时，App 自动调用 @capacitor/barcode-scanner 的后置摄像头扫描 QR。
+2. 产品默认 QR/Deep Link 为 `dsh-mobile://pair#offer=<base64url(JSON)>`。若运维方部署了独立浏览器 shell，可显式配置 Host `appUrl`（离线检查脚本使用 `DSH_MOBILE_APP_URL`）生成 `https://mobile.example.com/#offer=...`。
+3. v4 offer 包含 Host-owned HTTPS Public Endpoint、房间、Host 公钥、短期 code、能力位和仅 STUN 的 ICE 列表。TURN 会被拒绝。
+4. 默认 Automatic：先建立 RTCDataChannel，直连传输失败后走同一 Endpoint 上的加密 Tunnel Fallback。NaCl hello/ack 和 DSH 流量只走已认证会话。deviceToken 保存在 App 私有 vault，用于后续自动重连。
 
-- **构建期**:`vite.config.ts` 把 `@deepseek-ai/dsh-client-web` 等 7 个包**别名到上游 checkout 的 src**(与上游 apps/web 的策略一致:浏览器 bundle 必须直接编译 src,CSS 才能走 vite 管线)。上游位置取 `DSH_UPSTREAM` 环境变量,默认 `../../deepseek-harness`(兄弟目录)。
-- **类型期**:根 `tsconfig.base.json` 的 `paths` 指向上游已构建的 `lib/types/*.d.ts`。
-- **运行期**:本 dist 只是壳;leaf 插件代码由 host 从它自己的安装里 serve——所以 host(上游 checkout)必须先 `pnpm run build` 过。
+用户取消或扫码失败时显示“重新扫码”；运行中的 Deep Link 由 Capacitor App listener 接收并自动重载配对。
 
-切换到 npm 依赖的条件:上游发布节奏稳定、且 `dsh-client-web` 及其全部传递依赖同版本发布后,删除别名、改为正常依赖即可(shell 包是纯库,无运行时上游文件依赖)。
+## Personal Recovery Surface 示例
 
-## 构建
+维护者当前把 `dshweb.noirbright.top` 与 `dshapp.noirbright.top` 作为个人恢复入口，并在个人 Host profile 中显式将 `appUrl` 配置为后者。这两个域名不是产品默认值、公共服务或运行依赖；其他部署必须使用自己的域名和配置。
 
-`npm run build` → `dist/`(`index.html` + assets)。bare `vite dev`/`vite preview` 被故意拒绝(与上游一致):只有 `dsh web` 系列会注入 `window.__DSH_BOOT__`。启动验证见 `bundle/mobile-web/README.md`。
+## 本地插件资产
+
+npm run build 会先构建 @dsh-mobile/ui-layout-mobile，再复制到 dist/plugins/@dsh-mobile/ui-layout-mobile/client.js。Host 其余插件 bundle 经 tunnel fetch，转为本地 Blob URL 后交给 DSH ModuleLoader。没有静态镜像步骤。
+
+## Android 命令
+
+| 命令 | 作用 |
+|---|---|
+| npm run android:copy | 构建并刷新 WebView 资产 |
+| npm run android:sync | 构建、刷新资产并同步 Capacitor 插件 |
+| npm run android:debug | build → sync → Gradle assembleDebug |
+
+默认工具链为 Java 21 JDK、ANDROID_HOME=/home/noirbright/Android/Sdk、Android minSdk 26。权限为 INTERNET 与 CAMERA，并声明摄像头硬件。APK 输出在 android/app/build/outputs/apk/debug/app-debug.apk。

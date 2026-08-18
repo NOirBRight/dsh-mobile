@@ -9,16 +9,18 @@
  *   unparseable), bad-code (unknown or burned pairing code), expired
  *   (out-of-window code), bad-token (unknown or revoked device token).
  *
- * helloJson is { code } | { deviceToken }. A valid code pairs a NEW device:
+ * helloJson is { code, label?, clientType? } | { deviceToken }. A valid code pairs a NEW device:
  * the ack carries { ok, deviceToken } — the token's only showing; the store
- * keeps its hash (protocol §5: permanent until revoked). Codes are multi-use
- * within their window (§1). A valid deviceToken reconnects an already-paired
- * device: ack is { ok }.
+ * keeps its hash (protocol §5: permanent until revoked). A code is claimed by
+ * one Client Instance key; retries from that key receive the same token while
+ * every other key is rejected. A valid deviceToken reconnects only that same
+ * Client Instance key: ack is { ok }. A stolen token presented by another key
+ * is bad-token. Token reconnect does not move the device's room.
  */
 import nacl from 'tweetnacl'
 import type { DaemonKeypair } from './keys.ts'
 import type { PairingOfferManager } from './pairing.ts'
-import type { DeviceTokenStore } from './tokens.ts'
+import { DeviceLimitError, type DeviceClientType, type DeviceTokenStore } from './tokens.ts'
 
 /** clientPub(32) || nonce(24) prefix length of a client handshake frame. */
 export const HANDSHAKE_PREFIX_BYTES = 56
@@ -60,27 +62,30 @@ export function hostHandshake(frame: Uint8Array, deps: HandshakeDeps): Handshake
   const opened = nacl.box.open(sealed, nonce, peerPub, deps.keypair.secretKeyRaw)
   if (opened === null) return fail('bad-hello')
 
-  let hello: { code?: unknown; deviceToken?: unknown }
+  let hello: { code?: unknown; deviceToken?: unknown; label?: unknown; clientType?: unknown }
   try {
-    hello = JSON.parse(decoder.decode(opened)) as { code?: unknown; deviceToken?: unknown }
+    hello = JSON.parse(decoder.decode(opened)) as { code?: unknown; deviceToken?: unknown; label?: unknown; clientType?: unknown }
   } catch {
     return fail('bad-hello')
   }
 
   let deviceToken: string | null = null
   if (typeof hello.code === 'string') {
-    // Multi-use within the pairing window (validate, not redeem): a lost ack
-    // must not leave the phone with a burned code and no device token.
-    const status = deps.offers.validate(hello.code)
-    if (status !== 'ok') return fail(status === 'expired' ? 'expired' : 'bad-code')
-    // New device: issue its permanent token (plaintext shows here only).
-    deviceToken = deps.devices.issue(undefined, deps.room).token
+    const claimant = Buffer.from(peerPub).toString('base64url')
+    const label = sanitizeDeviceLabel(hello.label)
+    const clientType = parseClientType(hello.clientType)
+    try {
+      const claim = deps.offers.claim(hello.code, claimant, () => deps.devices.issue(label, deps.room, claimant, clientType).token)
+      if (claim.status !== 'ok') return fail(claim.status === 'expired' ? 'expired' : 'bad-code')
+      deviceToken = claim.deviceToken
+    } catch (error) {
+      if (error instanceof DeviceLimitError) return fail('limit')
+      throw error
+    }
   } else if (typeof hello.deviceToken === 'string') {
-    const device = deps.devices.authenticate(hello.deviceToken)
+    const claimant = Buffer.from(peerPub).toString('base64url')
+    const device = deps.devices.authenticate(hello.deviceToken, claimant)
     if (device === null) return fail('bad-token')
-    // Re-bind to the room this handshake landed on: without it the new room's
-    // campaign dies at window close and the phone times out forever (§5).
-    if (deps.room !== undefined) deps.devices.bindRoom(device.id, deps.room)
   } else {
     return fail('bad-hello')
   }
@@ -92,4 +97,14 @@ export function hostHandshake(frame: Uint8Array, deps: HandshakeDeps): Handshake
   ackFrame.set(ackNonce, 0)
   ackFrame.set(ack, nacl.box.nonceLength)
   return { ok: true, peerPub: new Uint8Array(peerPub), ackFrame, deviceToken }
+}
+
+function sanitizeDeviceLabel(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const label = value.replace(/[\0-\x1f]/g, '').trim().slice(0, 64)
+  return label === '' ? undefined : label
+}
+
+function parseClientType(value: unknown): DeviceClientType | undefined {
+  return value === 'android' || value === 'browser' ? value : undefined
 }

@@ -1,24 +1,35 @@
 # dsh-mobile
 
-DeepSeek Harness 的手机客户端,独立项目:out-of-tree,不进入、不修改上游仓库(deepseek-harness),跟随其 release 升级。
+DeepSeek Harness 的 Android 客户端，独立于上游 deepseek-harness 开发。
 
-- 规划与架构:[PLAN.md](PLAN.md)(目标、四组件、连接模式三级回落、里程碑)
-- `relay/` —— 不可信 WebSocket 房间中继(M0,已部署):见 [relay/README.md](relay/README.md) 与 [relay/PROTOCOL.md](relay/PROTOCOL.md)
-- `packages/ui-layout-mobile` —— 移动端根布局(M2):替换上游 ui-layout 的单栏抽屉壳,slot 契约逐字一致
-- `apps/mobile-web` —— 移动壳 Vite 入口(构建 dsh-client-web shell 的 dist)
-- `bundle/mobile-web` —— 移动浏览器表面 bundle(patch 层 + webRuntime 胶水),安装与启动验证见其 README
+## 终态架构
 
-## 快速开始
+- **Android 本地壳**：Capacitor APK 内含 WebView shell、字体、样式和优化版移动布局，不访问 CDN 或静态站。
+- **相机自动配对**：首次启动自动扫描桌面端 QR；也接受 dsh-mobile://pair#offer=... Deep Link。
+- **Host-owned Public Endpoint**：每个 Host 用 Cloudflare Quick Tunnel 或运维方 Custom HTTPS 暴露回环 Host Gateway。Gateway 只做 WebRTC 信令和加密 Tunnel Fallback，从不暴露 DSH :3080。
+- **连接策略**：默认 Automatic，先走可靠有序 RTCDataChannel；直连传输失败后使用同一 Endpoint 上的加密 Tunnel Fallback。Direct Only 与 Tunnel Only 可选。无 TURN，也无项目运营的应用数据 Relay。
+- **端到端认证**：WebRTC 或 Tunnel 建立后仍执行以 QR Host 公钥为信任锚的 NaCl hello/ack。Endpoint 提供者不可信。
+- **一个 DSH writer**：@dsh-mobile/pairing 必须挂入日常 web profile，同进程回环到 3080。不得启动共享同一 DSH_HOME 的第二个 DSH。
+
+Host 的插件清单和业务插件 bundle 经已认证会话获取；移动壳在窄屏把桌面布局条目替换为 APK 内置的 @dsh-mobile/ui-layout-mobile。
+
+## 目录
+
+- apps/mobile-web：Android shell、扫码入口、fetch/WebSocket shim。
+- packages/e2e-tunnel：可发布的 NaCl tunnel、WebRTC 信令、连接策略与不超过 60 KiB 的 DataChannel 分片。
+- packages/ui-layout-mobile：单栏抽屉移动布局。
+- plugins/pairing：可发布的 Cordis Host 插件（Host Gateway、werift answerer、回环 tunnel endpoint）。
+- relay：遗留 signaling-only 房间服务，不是产品数据面。
+
+## 构建与测试
 
 ~~~sh
-npm_config_cache=/tmp/.npm-cache npm install
+npm install
+npm test
 npm run build
+npm run android:debug --workspace @dsh-mobile/mobile-web
 ~~~
 
-启动 mobile-web profile 的完整步骤(含一次性 profile 初始化)见 [bundle/mobile-web/README.md](bundle/mobile-web/README.md)。
+APK：apps/mobile-web/android/app/build/outputs/apk/debug/app-debug.apk。
 
-## 约定
-
-- 包名 `@dsh-mobile/*`;npm workspaces(根 package.json `workspaces` 字段;选 npm 而非 pnpm:零额外工具、file:/workspace 协议无歧义)。
-- 对上游的类型依赖一律走根 `tsconfig.base.json` 的 `paths`(指向上游已构建的 lib/types),**不使用 file: 依赖**——上游包内部互相用 `workspace:^` 协议,file: 链接进外部安装会炸。
-- 默认上游 checkout 在兄弟目录 `../deepseek-harness`;否则设 `DSH_UPSTREAM`(apps/mobile-web 构建)并调整 tsconfig paths 与 bundle/mobile-web 的 distIndex。
+Android 工具链默认使用 Java 21 JDK 和 ANDROID_HOME=/home/noirbright/Android/Sdk。

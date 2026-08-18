@@ -17,8 +17,7 @@ const src = (rel: string): string => fileURLToPath(new URL(rel, import.meta.url)
 const UP = process.env.DSH_UPSTREAM ?? fileURLToPath(new URL('../../../deepseek-harness', import.meta.url))
 const up = (rel: string): string => UP + '/' + rel
 
-const STANDALONE_ERROR = 'apps/mobile-web is not a standalone application: bare Vite cannot inject window.__DSH_BOOT__. '
-  + 'Boot the mobile-web dsh profile instead (see bundle/mobile-web/README.md).'
+const STANDALONE_ERROR = 'apps/mobile-web is an Android shell, not a standalone browser server: bare Vite cannot supply a paired tunnel or window.__DSH_BOOT__. Build/sync the Capacitor app instead.'
 
 /** Fail before a Vite dev or preview server can expose the boot-manifest-free shell. */
 function rejectStandaloneServe(): Plugin {
