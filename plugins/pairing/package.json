@@ -14,6 +14,9 @@
     "./package.json": "./package.json"
   },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-locale",
@@ -26,8 +29,15 @@
   },
   "files": [
     "lib",
-    "scripts"
+    "scripts",
+    "cordis.patch.yml",
+    "README.md"
   ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NOirBRight/dsh-mobile-pairing.git"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json && ../../node_modules/.bin/tsdown --config tsdown.client.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",

@@ -33,7 +33,7 @@ Quick Tunnel is the product default:
 
 For an operator-provisioned endpoint, use `endpointMode: custom` and `customEndpointUrl: https://operator.example`. The endpoint must preserve HTTPS and WebSocket upgrades for the Gateway and pass the staged identity, protocol, capability, and `/signal/check` checks. Provisioning DNS, certificates, accounts, and reverse proxies is deliberately manual.
 
-The Host settings page is `http://127.0.0.1:3082/pair/ui` on the lab profile. It shows the current endpoint and Host Identity, produces an Android QR offer, lists authorized devices, creates room-preserving Endpoint Refresh offers, and performs Host-side revocation. The Public Endpoint itself does **not** expose `/pair`, token exchange, credential minting, generic proxy targets, or raw DSH port 3080. Do not pair or bind Gateway `:43169` on the 3080 production plane.
+The Host settings page is `/pair/ui` on whichever profile owns the plugin (`http://127.0.0.1:3080/pair/ui` for the daily profile or `http://127.0.0.1:3082/pair/ui` for lab). It shows the current endpoint and Host Identity, produces an Android QR offer, lists authorized devices, creates room-preserving Endpoint Refresh offers, and performs Host-side revocation. The Public Endpoint itself does **not** expose `/pair`, token exchange, credential minting, generic proxy targets, or raw DSH ports. If both profiles install the plugin, keep their Host identities, Gateway ports, and Public Endpoint hostnames separate.
 
 ## Connection and lifecycle behavior
 

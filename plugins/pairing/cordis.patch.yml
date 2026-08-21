@@ -1,0 +1,14 @@
+# Insert DSH Mobile Remote as one loader row on the current Host profile.
+- insert:
+    - id: dsh-mobile-pairing
+      name: '@dsh-mobile/pairing'
+      config:
+        appUrl: dsh-mobile://pair
+        endpointMode: quick
+        gatewayBind: 127.0.0.1
+        gatewayPort: 0
+        dshHost: 127.0.0.1
+        dshPort: 3080
+        stunUrls:
+          - stun:stun.cloudflare.com:3478
+        enableDirect: true

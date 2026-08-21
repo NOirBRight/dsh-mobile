@@ -1,6 +1,6 @@
 # @dsh-mobile/pairing
 
-DSH Mobile 的 Host 插件。它安装在日常 web profile 中，同一进程提供配对管理、回环 Host Gateway、WebRTC Direct 与加密 Tunnel Fallback。
+DSH Mobile 的 Host 插件。正式版可安装在日常 `:3080` 或 lab `:3082` web profile 中；每个 DSH 进程独立提供配对管理、回环 Host Gateway、WebRTC Direct 与加密 Tunnel Fallback。
 
 ## 数据路径
 
@@ -23,25 +23,24 @@ DSH Mobile 的 Host 插件。它安装在日常 web profile 中，同一进程�
 
 ## 配置位置
 
-编辑正在运行的 profile 的 cordis.patch.yml，找到：
+正式版安装：
+
+~~~sh
+pnpm add github:NOirBRight/dsh-mobile-pairing#v0.1.0
+~~~
+
+然后把 `@dsh-mobile/pairing` 加入 profile 的 `dsh.profile.bundles`。包内的 `cordis.patch.yml` 会插入 Remote loader；默认配置面向日常 `:3080`：
 
 ~~~yaml
 - id: dsh-mobile-pairing
-  name: '@dsh-mobile/pairing'
   config:
-    appUrl: dsh-mobile://pair
-    endpointMode: quick
+    dshHost: 127.0.0.1
+    dshPort: 3080
     gatewayBind: 127.0.0.1
     gatewayPort: 0
-    dshHost: 127.0.0.1
-    dshPort: 3082
-    cloudflaredPath: /home/USER/.dsh-lab/mobile/bin/cloudflared
-    stunUrls:
-      - stun:stun.cloudflare.com:3478
-    enableDirect: true
 ~~~
 
-本机验收走 lab profile：`~/.dsh-lab/profiles/web/cordis.patch.yml`（DSH `:3082`）。不要把 pairing 挂到 `:3080`。
+lab profile 使用 `:3082` 时，将该 profile 的配置覆盖为 `dshPort: 3082`，并使用独立的 Gateway/Public Endpoint。两个 DSH 可以同时安装，但不能共用 `43169` 或同一个自定义域名。
 
 | 键 | 默认 | 说明 |
 |---|---|---|
