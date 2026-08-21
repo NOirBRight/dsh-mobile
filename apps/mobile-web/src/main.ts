@@ -61,6 +61,13 @@ function offerFromCurrentHash(): string | undefined {
   return /#offer=/.test(location.hash) && validOfferUrl(location.href) !== null ? location.href : undefined
 }
 
+/** Persist a newly scanned offer across a real shell bootstrap. Hash-only navigation does not reload a WebView. */
+function reloadForOffer(offerUrl: string): void {
+  const hash = new URL(offerUrl).hash
+  history.replaceState(null, '', location.pathname + location.search + hash)
+  location.reload()
+}
+
 async function showProfileMenu(repository: ProfileRepository, onActiveHostChanged: () => Promise<void>): Promise<void> {
   if (document.getElementById('dsh-profile-menu') !== null) return
   const [profiles, active] = await Promise.all([repository.list(), repository.getActive()])
@@ -84,7 +91,7 @@ async function showProfileMenu(repository: ProfileRepository, onActiveHostChange
     const remove = document.createElement('button'); remove.textContent = 'Remove locally'; remove.style.marginLeft = '8px'; remove.onclick = async () => { if (!confirm('Remove this Host Profile and its local credential? This does not revoke the device on Host.')) return; const wasActive = profile.hostId === active?.hostId; await repository.remove(profile.hostId); overlay.remove(); if (wasActive) await onActiveHostChanged() }; actions.append(remove)
     row.append(actions); panel.append(row)
   }
-  const add = document.createElement('button'); add.textContent = 'Scan Host / Endpoint Refresh'; add.onclick = async () => { const offer = await scanUntilPaired(); location.replace(location.pathname + location.search + new URL(offer).hash) }; panel.append(add)
+  const add = document.createElement('button'); add.textContent = 'Scan Host / Endpoint Refresh'; add.onclick = async () => { const offer = await scanUntilPaired(); reloadForOffer(offer) }; panel.append(add)
   const close = document.createElement('button'); close.textContent = 'Close'; close.style.marginLeft = '8px'; close.onclick = () => overlay.remove(); panel.append(close)
   overlay.onclick = event => { if (event.target === overlay) overlay.remove() }
   overlay.append(panel); document.body.append(overlay)
@@ -92,8 +99,7 @@ async function showProfileMenu(repository: ProfileRepository, onActiveHostChange
 
 void (async () => {
   const appLinks = new AppLinkInbox(validOfferUrl, url => {
-    const hash = new URL(url).hash
-    location.replace(location.pathname + location.search + hash)
+    reloadForOffer(url)
   })
   await App.addListener('appUrlOpen', ({ url }) => appLinks.capture(url))
 
@@ -288,7 +294,7 @@ void (async () => {
         if (lastError === 'no Active Host Profile') {
           await waitForScanRetry('Host Profile 已移除，请重新扫描配对二维码')
           const offer = await scanUntilPaired()
-          location.replace(location.pathname + location.search + new URL(offer).hash)
+          reloadForOffer(offer)
           return
         }
         render()
