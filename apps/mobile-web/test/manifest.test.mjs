@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { adaptBootManifestForMobile, createMemoryPluginCache, readCachedBootManifest, writeCachedBootManifest, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability } from '../src/manifest.ts'
+import { adaptBootManifestForMobile, createMemoryPluginCache, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability } from '../src/manifest.ts'
 
 test('replaces desktop layout and drops browser HMR without mutating host manifest', () => {
   const host = {
@@ -110,6 +110,7 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
     entries: [
       { id: 'runtime', url: '/plugins/runtime/client.js?rev=a', rev: 'a', inject: [] },
       { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.23', rev: '0.1.23', inject: [] },
+      { id: CONNECTION_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23', rev: '0.1.23', inject: [] },
       { id: 'leaf', url: '/plugins/leaf/client.js?rev=b', rev: 'b', inject: ['runtime'] },
     ],
   }
@@ -125,10 +126,12 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
   ])
   assert.equal(localized.entries[0].url, 'blob:test/runtime/35')
   assert.equal(localized.entries[1].url, manifest.entries[1].url)
-  assert.equal(localized.entries[2].url, 'blob:test/leaf/32')
+  assert.equal(localized.entries[2].url, manifest.entries[2].url)
+  assert.equal(localized.entries[3].url, 'blob:test/leaf/32')
   assert.deepEqual(manifest.entries.map(entry => entry.url), [
     '/plugins/runtime/client.js?rev=a',
     '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.23',
+    '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23',
     '/plugins/leaf/client.js?rev=b',
   ])
 })
@@ -277,4 +280,12 @@ test('cache-only localization fails instead of fetching on a miss', async () => 
     /plugin cache miss: @deepseek-ai\/dsh-client-ui-layout|plugin cache miss/,
   )
   assert.equal(loads, 0)
+})
+
+test('plugin bundle cache is isolated per Host Identity', async () => {
+  const first = createMemoryPluginCache('host-a')
+  const second = createMemoryPluginCache('host-b')
+  await first.write('plugin-a', '1', 'from-a')
+  assert.equal(await first.read('plugin-a', '1'), 'from-a')
+  assert.equal(await second.read('plugin-a', '1'), undefined)
 })

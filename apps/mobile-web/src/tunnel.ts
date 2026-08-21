@@ -46,7 +46,7 @@ export async function injectBootManifestFromTunnel(
       throw new Error(last)
     },
     createUrl: pluginBlobUrl,
-    cache: createLocalStoragePluginCache(),
+    cache: createLocalStoragePluginCache(undefined, responsive.hostId ?? ''),
   })
   ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = localizedManifest
   return { ...selection, manifest: localizedManifest }
@@ -80,7 +80,7 @@ export async function hydrateBootManifestFromCache(
     const localizedManifest = await localizePluginBundles(selection.manifest, {
       load: async () => { throw new Error('plugin cache miss') },
       createUrl: pluginBlobUrl,
-      cache: createLocalStoragePluginCache(),
+      cache: createLocalStoragePluginCache(undefined, hostId),
       cacheOnly: true,
     })
     ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = localizedManifest
@@ -346,13 +346,9 @@ export function isHostGatewaySocketPath(pathname: string): boolean {
   return pathname === '/signal/check' || pathname.startsWith('/signal/') || pathname.startsWith('/tunnel/')
 }
 
-/** Public Endpoint Host plugin bundles are Gateway HTTP assets, not tunneled application frames. */
+/** Host plugin bundles travel as tunneled application frames, except the packaged mobile layout. */
 export function isPublicEndpointPluginPath(pathname: string): boolean {
-  return pathname.startsWith('/plugins/')
-}
-
-function isPublicHttpsOrigin(): boolean {
-  return location.protocol === 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1'
+  return pathname.startsWith('/plugins/') && !isPackagedShellPluginPath(pathname)
 }
 
 /** Swap the live TunnelManager without reinstalling fetch/WebSocket shims. */
@@ -382,7 +378,6 @@ export function installShims(mgr: TunnelClientSource): void {
     const u = new URL(raw, location.origin)
     if (u.origin !== location.origin) return nativeFetch(input, init)
     if (isPackagedShellPluginPath(u.pathname) || isHostGatewaySocketPath(u.pathname)) return nativeFetch(input, init)
-    if (isPublicHttpsOrigin() && isPublicEndpointPluginPath(u.pathname)) return nativeFetch(input, init)
     const client = await mgr.current()
     return client.fetch(u.pathname + u.search, init as never)
   }) as typeof fetch

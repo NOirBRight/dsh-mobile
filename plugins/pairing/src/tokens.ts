@@ -113,9 +113,10 @@ export class DeviceTokenStore {
    * Authenticate a presented token.
    * @param token - plaintext bearer/subprotocol token.
    * @param claimantPublicKey - when set, must match the Client Instance that claimed the token.
+   * @param room - when set, must match the device's bound room (legacy unbound devices are bound here).
    * @returns the device record, or null for unknown/revoked/mismatched tokens.
    */
-  authenticate(token: string, claimantPublicKey?: string): DeviceRecord | null {
+  authenticate(token: string, claimantPublicKey?: string, room?: string): DeviceRecord | null {
     const presented = Buffer.from(hash(token))
     for (const device of this.devices) {
       if (device.revokedAt !== null) continue
@@ -129,6 +130,10 @@ export class DeviceTokenStore {
         } else if (!sameText(device.claimantPublicKey, claimantPublicKey)) {
           return null
         }
+      }
+      if (room !== undefined) {
+        if (device.room === undefined) device.room = room
+        else if (device.room !== room) return null
       }
       device.lastSeenAt = Date.now()
       this.save()

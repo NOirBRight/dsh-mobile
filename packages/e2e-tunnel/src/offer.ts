@@ -147,6 +147,7 @@ export function parseOffer(offerUrl: string, options: ParseOfferOptions = {}): O
     for (const key of ['browser', 'direct', 'tunnel', 'endpointRefresh']) {
       if (typeof capabilities[key] !== 'boolean') throw new TunnelError('bad-offer', 'public endpoint capabilities must be boolean')
     }
+    if (capabilities.browser !== false) throw new TunnelError('incompatible', 'public endpoint offers are APK-only')
     const common = { room: o.room, pubkey: o.pubkey, code: o.code, exp: o.exp }
     const ice = validateIce()
     return {

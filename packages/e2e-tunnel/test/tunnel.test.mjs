@@ -84,7 +84,7 @@ test('parseOffer rejects v3 shape violations', () => {
   assert.throws(() => parseOffer(makeDirectOffer({ room: null })), (e) => e.code === 'bad-offer')
 })
 
-const publicCapabilities = { browser: true, direct: true, tunnel: true, endpointRefresh: true }
+const publicCapabilities = { browser: false, direct: true, tunnel: true, endpointRefresh: true }
 const makePublicOffer = (over = {}) => 'https://host.example/#offer=' + b64urlEncode(utf8Encode(JSON.stringify({
   v: 4, mode: 'public', protocol: 1, endpoint: 'https://host.example', endpointKind: 'temporary',
   room: randomBytes(16).toString('hex'), pubkey: b64urlEncode(new Uint8Array(32)), code: 'test-code',
@@ -104,7 +104,7 @@ test('parseOffer accepts a v4 Host-owned Public Endpoint offer', () => {
 })
 
 test('parseOffer expands compact v4 QR payloads below the previous scanner-safe size', () => {
-  const compact = [4, 'https://host.example', 0, 'a'.repeat(32), b64urlEncode(new Uint8Array(32)), 'test-code', Math.floor(Date.now() / 1000) + 300, 15, ['stun:stun.example.com:3478']]
+  const compact = [4, 'https://host.example', 0, 'a'.repeat(32), b64urlEncode(new Uint8Array(32)), 'test-code', Math.floor(Date.now() / 1000) + 300, 14, ['stun:stun.example.com:3478']]
   const url = 'dsh-mobile://pair#offer=' + b64urlEncode(utf8Encode(JSON.stringify(compact)))
   assert.ok(url.length < 377)
   const offer = parseOffer(url)
@@ -120,6 +120,7 @@ test('parseOffer rejects unsafe or malformed v4 Public Endpoint offers', () => {
   assert.throws(() => parseOffer(makePublicOffer({ capabilities: { ...publicCapabilities, tunnel: 'yes' } })), (e) => e.code === 'bad-offer')
   assert.throws(() => parseOffer(makePublicOffer({ ice: ['turn:turn.example.com'] })), (e) => e.code === 'bad-offer')
   assert.throws(() => parseOffer(makePublicOffer({ mode: 'direct' })), (e) => e.code === 'bad-offer')
+  assert.throws(() => parseOffer(makePublicOffer({ capabilities: { ...publicCapabilities, browser: true } })), (e) => e.code === 'incompatible')
 })
 
 

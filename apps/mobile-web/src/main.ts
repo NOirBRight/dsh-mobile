@@ -81,7 +81,7 @@ async function showProfileMenu(repository: ProfileRepository, onActiveHostChange
     row.append(policy)
     const actions = document.createElement('div')
     if (profile.hostId !== active?.hostId) { const activate = document.createElement('button'); activate.textContent = 'Set Active'; activate.onclick = async () => { await repository.setActiveHost(profile.hostId); overlay.remove(); await onActiveHostChanged() }; actions.append(activate) }
-    const remove = document.createElement('button'); remove.textContent = 'Remove locally'; remove.style.marginLeft = '8px'; remove.onclick = async () => { if (!confirm('Remove this Host Profile and its local credential? This does not revoke the device on Host.')) return; await repository.remove(profile.hostId); overlay.remove(); await onActiveHostChanged() }; actions.append(remove)
+    const remove = document.createElement('button'); remove.textContent = 'Remove locally'; remove.style.marginLeft = '8px'; remove.onclick = async () => { if (!confirm('Remove this Host Profile and its local credential? This does not revoke the device on Host.')) return; const wasActive = profile.hostId === active?.hostId; await repository.remove(profile.hostId); overlay.remove(); if (wasActive) await onActiveHostChanged() }; actions.append(remove)
     row.append(actions); panel.append(row)
   }
   const add = document.createElement('button'); add.textContent = 'Scan Host / Endpoint Refresh'; add.onclick = async () => { const offer = await scanUntilPaired(); location.replace(location.pathname + location.search + new URL(offer).hash) }; panel.append(add)
@@ -185,8 +185,44 @@ void (async () => {
     let endpointRefreshAvailable = false
     const updateBadge = installBadge(() => { void showProfileMenu(repository, reconnectActiveHost) })
     const render = (): void => {
-      if (shellMounted) return
-      if (state === 'open') return
+      const needsRecovery = endpointRefreshAvailable || lastError !== ''
+      if (shellMounted && !needsRecovery) return
+      if (shellMounted && needsRecovery) {
+        let banner = document.getElementById('endpoint-refresh-banner')
+        if (banner === null) {
+          banner = document.createElement('div')
+          banner.id = 'endpoint-refresh-banner'
+          banner.style.cssText = 'position:sticky;top:0;z-index:10002;padding:8px 12px;background:#854d0e;color:#fff;font:13px/1.4 system-ui,sans-serif'
+          document.body.prepend(banner)
+        }
+        banner.replaceChildren()
+        const hint = document.createElement('div')
+        hint.textContent = endpointRefreshAvailable
+          ? 'Host 的临时 Public Endpoint 可能已轮换。'
+          : (/credential is missing/i.test(lastError) ? '登录凭证已丢失，请重新扫描 Host 二维码配对。' : lastError)
+        banner.append(hint)
+        const refresh = document.createElement('button')
+        refresh.id = 'endpoint-refresh'
+        refresh.style.cssText = 'margin-top:.6em;padding:.5em 1em'
+        refresh.textContent = '扫描 Endpoint Refresh'
+        refresh.onclick = async () => {
+          refresh.disabled = true
+          session?.stop()
+          shellMounted = false
+          const offerUrl = await scanUntilPaired()
+          try {
+            activeConnection = await prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange })
+            await session?.connect(activeConnection)
+            document.getElementById('endpoint-refresh-banner')?.remove()
+          } catch (error) {
+            lastError = 'Endpoint Refresh: ' + (error instanceof Error ? error.message : 'unknown error')
+            render()
+          }
+        }
+        banner.append(refresh)
+        return
+      }
+      if (state === 'open' && !needsRecovery) return
       const wrap = document.createElement('div')
       wrap.style.cssText = 'padding:2em;text-align:center;font-family:sans-serif'
       const title = document.createElement('div')
@@ -240,9 +276,23 @@ void (async () => {
       render()
     }
     async function reconnectActiveHost(): Promise<void> {
-      const next = await prepareProfileConnection({ repository, vault, acknowledgeIdentityChange })
-      activeConnection = next
-      await session?.connect(next)
+      session?.stop()
+      shellMounted = false
+      document.getElementById('endpoint-refresh-banner')?.remove()
+      try {
+        const next = await prepareProfileConnection({ repository, vault, acknowledgeIdentityChange })
+        activeConnection = next
+        await session?.connect(next)
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error)
+        if (lastError === 'no Active Host Profile') {
+          await waitForScanRetry('Host Profile 已移除，请重新扫描配对二维码')
+          const offer = await scanUntilPaired()
+          location.replace(location.pathname + location.search + new URL(offer).hash)
+          return
+        }
+        render()
+      }
     }
     session = new HostSession({
       slot,
@@ -298,7 +348,14 @@ void (async () => {
     render()
     window.addEventListener('online', () => { void session?.probeNow() })
     await App.addListener('appStateChange', ({ isActive }) => { if (isActive) void session?.probeNow() })
-    await session.connect(activeConnection)
+    try {
+      await session.connect(activeConnection)
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error)
+      endpointRefreshAvailable ||= endpointRefreshRequired(activeConnection.profile.endpoint.kind, lastError)
+      shellMounted = false
+      render()
+    }
   }
 
   const media = matchMedia('(max-width: ' + (NARROW_LAYOUT_BREAKPOINT - 1) + 'px)')

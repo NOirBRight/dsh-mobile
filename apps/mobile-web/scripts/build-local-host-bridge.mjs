@@ -1,9 +1,11 @@
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const appRoot = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const upstream = process.env.DSH_UPSTREAM ?? resolve(appRoot, '../../../deepseek-harness')
+const preferred = resolve(appRoot, '../../../dsh-wt-02')
+const upstream = process.env.DSH_UPSTREAM ?? (existsSync(preferred) ? preferred : resolve(appRoot, '../../../deepseek-harness'))
 const npm = process.env.npm_execpath ?? 'npm'
 
 // The root build:lib:client task type-checks every upstream package before

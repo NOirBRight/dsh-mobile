@@ -36,13 +36,27 @@ export interface QuickTunnelOptions {
 }
 const QUICK_URL = /https:\/\/[a-z0-9-]+\.trycloudflare\.com\b/ig
 
+function publicHttpsEndpoint(value: string): string | null {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '') return null
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return null
+  }
+}
+
 export class QuickTunnelController {
   private child: QuickTunnelChild | null = null
   private currentEndpoint: string | null = null
   private currentLocal: string | null = null
   private stopping = false
   private readonly options: QuickTunnelOptions
-  constructor(options: QuickTunnelOptions) { this.options = options }
+  private onStatus: QuickTunnelOptions['onStatus']
+  constructor(options: QuickTunnelOptions) {
+    this.options = options
+    this.onStatus = options.onStatus
+  }
   endpoint(): string | null { return this.currentEndpoint }
   localGateway(): string | null { return this.currentLocal }
   alive(): boolean { return this.child !== null && !this.stopping }
@@ -56,6 +70,8 @@ export class QuickTunnelController {
   }
   /** Keep the child process; used when the pairing plugin reloads. */
   detach(): void {}
+  /** Bind a new apply's status listener after detach/reuse. */
+  reattach(onStatus: QuickTunnelOptions['onStatus']): void { this.onStatus = onStatus }
   async stop(): Promise<void> {
     const child = this.child
     this.stopping = true
@@ -63,12 +79,12 @@ export class QuickTunnelController {
     this.currentEndpoint = null
     this.currentLocal = null
     if (child !== null) child.kill('SIGTERM')
-    this.options.onStatus({ state: 'stopped' })
+    this.onStatus({ state: 'stopped' })
   }
   private spawnChild(): void {
     const localGateway = this.currentLocal
     if (localGateway === null) throw new Error('Quick Tunnel origin is missing')
-    this.options.onStatus({ state: 'starting' })
+    this.onStatus({ state: 'starting' })
     const provider = this.options.provider ?? CLOUDFLARED_QUICK_PROVIDER
     const child = this.options.spawn(provider.command, provider.args(localGateway))
     this.child = child
@@ -77,25 +93,25 @@ export class QuickTunnelController {
       if (this.stopping || this.child !== child) return
       buffered = (buffered + chunk.toString()).slice(-8192)
       for (const match of buffered.matchAll(provider.endpointPattern ?? QUICK_URL)) {
-        const endpoint = match[0]
-        if (endpoint === this.currentEndpoint) continue
+        const endpoint = publicHttpsEndpoint(match[0])
+        if (endpoint === null || endpoint === this.currentEndpoint) continue
         const previous = this.currentEndpoint
         this.currentEndpoint = endpoint
-        this.options.onStatus(previous === null ? { state: 'ready', endpoint } : { state: 'rotated', endpoint, previousEndpoint: previous })
+        this.onStatus(previous === null ? { state: 'ready', endpoint } : { state: 'rotated', endpoint, previousEndpoint: previous })
       }
     }
     child.stdout?.on('data', consume); child.stderr?.on('data', consume)
     child.once('error', error => {
       if (this.child !== child) return
       this.child = null; this.currentEndpoint = null
-      this.options.onStatus({ state: 'error', error: error.message })
+      this.onStatus({ state: 'error', error: error.message })
     })
     child.once('exit', (code, signal) => {
       if (this.child !== child) return
       this.child = null
       if (this.stopping || code === 0) {
         this.currentEndpoint = null
-        this.options.onStatus({ state: 'stopped' })
+        this.onStatus({ state: 'stopped' })
         return
       }
       if (this.options.restartOnUnexpectedExit === true && this.currentLocal !== null) {
@@ -103,7 +119,7 @@ export class QuickTunnelController {
         return
       }
       this.currentEndpoint = null
-      this.options.onStatus({ state: 'error', error: 'cloudflared exited ' + (signal ?? code) })
+      this.onStatus({ state: 'error', error: 'cloudflared exited ' + (signal ?? code) })
     })
   }
 }

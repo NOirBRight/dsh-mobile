@@ -1,5 +1,5 @@
 /** Standalone loopback Host Gateway: bounded protocol HTTP and WebSocket entry. */
-import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { WebSocketServer, type WebSocket } from 'ws'
 import type { PublicEndpointCapabilities } from './pairing.ts'
@@ -12,8 +12,6 @@ export interface HostGatewayOptions {
   hostIdentity: string
   /** Optional static files. HTML product shells are never served; the APK is the only client. */
   shellAsset?(path: string): GatewayAsset | null
-  /** Fixed loopback DSH origin for Host plugin client bundles. Not a generic proxy. */
-  pluginOrigin?: { host: string; port: number }
   /** Host-side authorization lookup; no token material crosses this interface. */
   isPersistentRoom?: (room: string) => boolean
   onSignal(socket: WebSocket, room: string): void
@@ -48,37 +46,18 @@ export function createHostGateway(options: HostGatewayOptions): HostGateway {
         res.writeHead(200, { 'content-type': asset.contentType, 'cache-control': asset.cacheControl ?? 'no-cache', 'x-content-type-options': 'nosniff' })
         res.end(req.method === 'HEAD' ? undefined : asset.body); return
       }
-      if (await proxyPluginAsset(req, res, url)) return
     }
     json(res, 404, { error: 'not found' })
   }
-  function proxyPluginAsset(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
-    const origin = options.pluginOrigin
-    const path = origin === undefined ? null : safePluginPath(url.pathname, url.search)
-    if (origin === undefined || path === null) return Promise.resolve(false)
-    return new Promise(resolve => {
-      const upstream = httpRequest({
-        host: origin.host, port: origin.port, method: req.method, path,
-        headers: { host: origin.host + ':' + origin.port },
-        timeout: 60_000, agent: false,
-      }, up => {
-        const headers: Record<string, string | string[]> = { 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' }
-        const type = up.headers['content-type']
-        if (typeof type === 'string') headers['content-type'] = type
-        res.writeHead(up.statusCode ?? 502, headers)
-        if (req.method === 'HEAD') { up.resume(); res.end(); resolve(true); return }
-        up.pipe(res)
-        up.on('error', () => { if (!res.writableEnded) res.end(); resolve(true) })
-        res.on('finish', () => resolve(true))
-      })
-      upstream.on('error', () => { if (!res.headersSent) json(res, 502, { error: 'plugin origin unavailable' }); resolve(true) })
-      upstream.on('timeout', () => upstream.destroy())
-      upstream.end()
-    })
-  }
   function safeAsset(path: string): GatewayAsset | null {
-    let decoded: string
-    try { decoded = decodeURIComponent(path) } catch { return null }
+    let decoded = path
+    try {
+      for (let i = 0; i < 3; i++) {
+        const next = decodeURIComponent(decoded)
+        if (next === decoded) break
+        decoded = next
+      }
+    } catch { return null }
     if (decoded.includes('..') || decoded.includes('://') || decoded.includes(String.fromCharCode(92)) || !decoded.startsWith('/')) return null
     const asset = options.shellAsset?.(decoded) ?? null
     if (asset !== null && asset.contentType.includes('html')) return null
@@ -131,11 +110,5 @@ export function createHostGateway(options: HostGatewayOptions): HostGateway {
       server.close(() => { listenedPort = null; resolve() }); server.closeAllConnections()
     }),
   }
-}
-function safePluginPath(pathname: string, search: string): string | null {
-  let decoded: string
-  try { decoded = decodeURIComponent(pathname) } catch { return null }
-  if (decoded.includes('..') || decoded.includes('://') || decoded.includes(String.fromCharCode(92)) || !decoded.startsWith('/plugins/')) return null
-  return decoded + search
 }
 function json(res: ServerResponse, status: number, body: unknown): void { if (res.headersSent) return; res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)) }

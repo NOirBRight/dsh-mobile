@@ -68,6 +68,8 @@ export interface TunnelClient {
   readonly deviceToken: string | null
   readonly state: TunnelState
   close(): void
+  /** Close without emitting onStateChange. Used when this session lost the Automatic race. */
+  discard(): void
 }
 
 interface WireMessage {
@@ -376,6 +378,11 @@ export class TunnelSession implements TunnelClient {
     }
   }
 
+  discard(): void {
+    this.teardown(false)
+    try { this.transport.close(1000) } catch { /* already gone */ }
+  }
+
   registerFetch(id: string, pending: PendingFetch): void {
     this.fetches.set(id, pending)
   }
@@ -448,7 +455,7 @@ export class TunnelSession implements TunnelClient {
     }
   }
 
-  private teardown(): void {
+  private teardown(notify = true): void {
     if (this.currentState === 'closed') return
     this.currentState = 'closed'
     const error = new TunnelError('closed', 'tunnel is closed')
@@ -461,7 +468,7 @@ export class TunnelSession implements TunnelClient {
       probe.reject(error)
     }
     this.probes.clear()
-    this.options.onStateChange?.('closed')
+    if (notify) this.options.onStateChange?.('closed')
   }
 }
 

@@ -12,7 +12,7 @@ const keypair = { publicKey: new Uint8Array(32).fill(1), secretKey: new Uint8Arr
 const offerUrl = (over = {}) => 'dsh-mobile://pair#offer=' + b64urlEncode(new TextEncoder().encode(JSON.stringify({
   v: 4, mode: 'public', protocol: 1, endpoint: 'https://host.example', endpointKind: 'temporary',
   room, pubkey: hostId, code: '123456', exp: Math.floor(Date.now() / 1000) + 300, ice: ['stun:stun.example.com:3478'],
-  capabilities: { browser: true, direct: true, tunnel: true, endpointRefresh: true }, ...over,
+  capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true }, ...over,
 })))
 
 function fixture() {

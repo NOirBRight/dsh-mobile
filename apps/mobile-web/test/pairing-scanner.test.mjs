@@ -11,7 +11,7 @@ function publicUrl() {
     pubkey: Buffer.from(new Uint8Array(32).fill(7)).toString('base64url'),
     code: 'code', exp: Math.floor(Date.now() / 1000) + 300,
     ice: ['stun:stun.example.com:3478'],
-    capabilities: { browser: true, direct: true, tunnel: true, endpointRefresh: true },
+    capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true },
   }
   return 'dsh-mobile://pair#offer=' + Buffer.from(JSON.stringify(offer)).toString('base64url')
 }

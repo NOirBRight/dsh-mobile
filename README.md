@@ -10,7 +10,7 @@ DeepSeek Harness 的 Android 客户端，独立于上游 deepseek-harness 开发
 - **连接策略**：默认隧道优先——立即经所配置端点建立加密 Tunnel 会话；WebRTC 直连仅作为同网场景的限时并行优化。Direct Only 与 Tunnel Only 可选。无 TURN；端点只做不可信管道。
 - **端到端认证**：任何路由建立后仍执行以 QR Host 公钥为信任锚的 NaCl hello/ack。Endpoint 提供者不可信。
 - **带宽预算**：隧道只承载封装协议帧;素材全部打包在 APK,插件 bundle 按内容哈希缓存。
-- **一个 DSH writer**：@dsh-mobile/pairing 必须挂入日常 web profile，同进程回环到 3080。不得启动共享同一 DSH_HOME 的第二个 DSH。
+- **一个 DSH writer**：@dsh-mobile/pairing 挂入 lab web profile（:3082），同进程回环到该 DSH。不得挂到 :3080 日常平面，也不得启动共享同一 DSH_HOME 的第二个 DSH。
 
 Host 的插件清单和业务插件 bundle 经已认证会话获取；移动壳在窄屏把桌面布局条目替换为 APK 内置的 @dsh-mobile/ui-layout-mobile。
 

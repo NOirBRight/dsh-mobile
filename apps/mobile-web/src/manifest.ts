@@ -83,30 +83,32 @@ export interface PluginBundleCache {
 
 const PLUGIN_CACHE_PREFIX = 'dsh-mobile:plugin:'
 
-export function createMemoryPluginCache(): PluginBundleCache {
+export function createMemoryPluginCache(hostId = ''): PluginBundleCache {
   const records = new Map<string, string>()
+  const scope = hostId + '\0'
   return {
-    async read(id, rev) { return records.get(id + '\0' + rev) },
-    async write(id, rev, source) { records.set(id + '\0' + rev, source) },
+    async read(id, rev) { return records.get(scope + id + '\0' + rev) },
+    async write(id, rev, source) { records.set(scope + id + '\0' + rev, source) },
   }
 }
 
-export function createLocalStoragePluginCache(storage?: Pick<Storage, 'getItem' | 'setItem'> | null): PluginBundleCache | undefined {
+export function createLocalStoragePluginCache(storage?: Pick<Storage, 'getItem' | 'setItem'> | null, hostId = ''): PluginBundleCache | undefined {
   let resolved = storage
   if (resolved === undefined) {
     try { resolved = globalThis.localStorage } catch { resolved = undefined }
   }
   if (resolved === undefined || resolved === null) return undefined
+  const scope = PLUGIN_CACHE_PREFIX + hostId + ':'
   return {
     async read(id, rev) {
       try {
-        return resolved.getItem(PLUGIN_CACHE_PREFIX + id + ':' + rev) ?? undefined
+        return resolved.getItem(scope + id + ':' + rev) ?? undefined
       } catch {
         return undefined
       }
     },
     async write(id, rev, source) {
-      try { resolved.setItem(PLUGIN_CACHE_PREFIX + id + ':' + rev, source) } catch { /* quota or private mode */ }
+      try { resolved.setItem(scope + id + ':' + rev, source) } catch { /* quota or private mode */ }
     },
   }
 }
@@ -124,6 +126,7 @@ export async function localizePluginBundles(
 ): Promise<BootManifest> {
   const entries = await mapPool(manifest.entries, PLUGIN_LOAD_CONCURRENCY, async (entry) => {
     if (entry.id === MOBILE_LAYOUT_ID) return { ...entry }
+    if (entry.id === CONNECTION_ID && entry.url.startsWith('/plugins/@dsh-mobile/ui-layout-mobile/connection.js')) return { ...entry }
     if (!entry.url.startsWith('/plugins/')) {
       throw new Error('host plugin URL must stay under /plugins/: ' + entry.id)
     }
@@ -303,7 +306,11 @@ export function selectResponsiveBootManifest(
     manifest: {
       ...manifest,
       rev: manifest.rev + '+mobile-layout-' + MOBILE_LAYOUT_REV,
-      entries: hostEntries.map(entry => entry.id === DESKTOP_LAYOUT_ID ? mobileLayout : { ...entry }),
+      entries: hostEntries.map(entry => {
+        if (entry.id === DESKTOP_LAYOUT_ID) return mobileLayout
+        if (entry.id === CONNECTION_ID) return { ...entry, url: MOBILE_CONNECTION_URL, rev: MOBILE_CONNECTION_REV }
+        return { ...entry }
+      }),
     },
     layout: 'narrow',
     compatibility: revisionMismatch ? 'revision-mismatch' : 'compatible',

@@ -42,6 +42,9 @@ export async function checkCustomEndpoint(value: string, adapters: CustomEndpoin
   if (typeof record.hostIdentity !== 'string') return { ok: false, stage: 'identity', error: 'Gateway identity is missing' }
   const caps = capabilities(record.capabilities)
   if (caps === null) return { ok: false, stage: 'capabilities', error: 'Gateway capabilities are invalid' }
+  if (caps.browser !== false || caps.tunnel !== true || caps.endpointRefresh !== true) {
+    return { ok: false, stage: 'capabilities', error: 'Gateway must advertise APK-only tunnel capabilities' }
+  }
   const wsUrl = new URL(endpoint)
   wsUrl.protocol = 'wss:'
   wsUrl.pathname = wsUrl.pathname.replace(/\/$/, '') + '/signal/check'
@@ -55,8 +58,14 @@ export async function checkCustomEndpoint(value: string, adapters: CustomEndpoin
 export function createNodeCustomEndpointAdapters(timeoutMs = 8_000): CustomEndpointAdapters {
   return {
     async fetch(url) {
-      const response = await globalThis.fetch(url)
-      return { ok: response.ok, status: response.status, json: () => response.json() }
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      try {
+        const response = await globalThis.fetch(url, { signal: controller.signal })
+        return { ok: response.ok, status: response.status, json: () => response.json() }
+      } finally {
+        clearTimeout(timer)
+      }
     },
     openWebSocket(url) {
       return new Promise((resolve, reject) => {

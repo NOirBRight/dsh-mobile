@@ -135,6 +135,11 @@ test('public endpoint offer carries Host-owned rendezvous and fallback capabilit
   assert.equal(offer.endpoint, 'https://host.example')
   assert.equal(offer.endpointKind, 'temporary')
   assert.deepEqual(offer.capabilities, { browser: false, direct: true, tunnel: true, endpointRefresh: true })
+  const forced = new PairingOfferManager(300_000).mintPublic({
+    endpoint: 'https://host.example', endpointKind: 'custom', room: 'd'.repeat(32), pubkey: 'A'.repeat(43),
+    capabilities: { browser: true, direct: true, tunnel: true, endpointRefresh: true },
+  })
+  assert.equal(forced.capabilities.browser, false)
   assert.deepEqual(offer.ice, ['stun:stun.example.com:3478'])
   assert.equal(offers.exchange(offer.code), true)
   assert.equal(offers.exchange(offer.code), false)

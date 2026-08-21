@@ -102,3 +102,30 @@ test('quick tunnel can spawn a configured non-cloudflared provider', () => {
   child.stderr.write('endpoint ready at https://pair.example.test\n')
   assert.deepEqual(states.at(-1), { state: 'ready', endpoint: 'https://pair.example.test' })
 })
+
+test('reattach delivers later rotations to the new apply callback', () => {
+  const child = new FakeChild(); const first = []; const second = []
+  const controller = new QuickTunnelController({ spawn: () => child, onStatus: state => first.push(state) })
+  controller.start('http://127.0.0.1:43169')
+  child.stderr.write('Visit https://keep.trycloudflare.com now\n')
+  controller.detach()
+  controller.reattach(state => second.push(state))
+  child.stderr.write('Visit https://next.trycloudflare.com now\n')
+  assert.equal(first.at(-1).state, 'ready')
+  assert.deepEqual(second.map(s => s.state), ['rotated'])
+  assert.equal(controller.endpoint(), 'https://next.trycloudflare.com')
+})
+
+test('quick tunnel ignores captured URLs that are not credential-free HTTPS', () => {
+  const child = new FakeChild(); const states = []
+  const controller = new QuickTunnelController({
+    spawn: () => child,
+    onStatus: state => states.push(state),
+    provider: { command: 'x', args: () => [], endpointPattern: /https?:\/\/\S+/ig },
+  })
+  controller.start('http://127.0.0.1:1')
+  child.stderr.write('http://insecure.example now\n')
+  child.stderr.write('https://user:secret@leaky.example now\n')
+  assert.equal(controller.endpoint(), null)
+  assert.equal(states.filter(s => s.state === 'ready').length, 0)
+})

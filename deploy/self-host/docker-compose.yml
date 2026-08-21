@@ -25,9 +25,19 @@ services:
   frps:
     image: snowdreamtech/frps:0.61.1
     restart: unless-stopped
+    environment:
+      FRP_TOKEN: ${FRP_TOKEN:?set FRP_TOKEN to a secret, not replace-me}
     volumes:
       - ./frps.toml:/etc/frp/frps.toml:ro
-    command: ["-c", "/etc/frp/frps.toml"]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -z "$$FRP_TOKEN" ] || [ "$$FRP_TOKEN" = replace-me ]; then
+          echo "FRP_TOKEN must be a non-placeholder secret" >&2
+          exit 1
+        fi
+        printf 'bindPort = 7000\nvhostHTTPPort = 8080\nauth.method = "token"\nauth.token = "%s"\n' "$$FRP_TOKEN" > /tmp/frps.toml
+        exec frps -c /tmp/frps.toml
     ports:
       - "7000:7000"
 

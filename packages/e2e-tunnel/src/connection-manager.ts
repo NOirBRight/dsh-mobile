@@ -101,7 +101,11 @@ export class ConnectionCoordinator {
 
       const discard = (client: TunnelClient): void => {
         discarded.push(client)
-        client.close()
+        client.discard()
+      }
+
+      const dropDiscarded = (): void => {
+        for (const discardedClient of discarded) discardedClient.discard()
       }
 
       const failIfIdle = (error: Error): void => {
@@ -111,7 +115,7 @@ export class ConnectionCoordinator {
         if (pending === 0) {
           settled = true
           clearTimeout(graceTimer)
-          for (const discardedClient of discarded) discardedClient.close()
+          dropDiscarded()
           this.emit('offline', null, error.message)
           reject(error)
         }
@@ -129,7 +133,7 @@ export class ConnectionCoordinator {
         }
         settled = true
         clearTimeout(graceTimer)
-        for (const discardedClient of discarded) discardedClient.close()
+        dropDiscarded()
         resolve(this.accept(route, client))
       }
 
@@ -140,7 +144,7 @@ export class ConnectionCoordinator {
         if (terminal || pending === 0) {
           settled = true
           clearTimeout(graceTimer)
-          for (const discardedClient of discarded) discardedClient.close()
+          dropDiscarded()
           this.emit('offline', null, error.message)
           reject(error)
         }

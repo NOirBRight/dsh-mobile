@@ -21,8 +21,9 @@ test('Host Gateway signal and tunnel paths are not tunneled sockets', () => {
   assert.equal(isHostGatewaySocketPath('/healthz'), false)
 })
 
-test('Public Endpoint plugin bundles are Host Gateway HTTP paths', () => {
+test('Host plugin bundles except the packaged layout are tunneled application paths', () => {
   assert.equal(isPublicEndpointPluginPath('/plugins/@deepseek-ai/dsh-typert-registry/client.js'), true)
+  assert.equal(isPublicEndpointPluginPath('/plugins/@dsh-mobile/ui-layout-mobile/client.js'), false)
   assert.equal(isPublicEndpointPluginPath('/api/host.describe'), false)
 })
 

@@ -62,6 +62,7 @@ const STUN_URL = /^stuns?:(\/\/)?/i
 
 interface PendingOffer {
   expMs: number
+  room?: string
   claim?: { claimant: string; deviceToken: string }
 }
 
@@ -103,7 +104,7 @@ export class PairingOfferManager {
     this.prune()
     const code = randomBytes(24).toString('base64url')
     const expMs = Date.now() + this.ttlMs
-    this.pending.set(code, { expMs })
+    this.pending.set(code, room === null ? { expMs } : { expMs, room })
     const v = mode === 'direct' ? 3 : mode === 'relay' ? 2 : 1
     return { v, mode, addr, room, pubkey, code, exp: Math.floor(expMs / 1000), ...(mode === 'direct' ? { ice } : {}) }
   }
@@ -126,11 +127,11 @@ export class PairingOfferManager {
     this.prune()
     const code = randomBytes(24).toString('base64url')
     const expMs = Date.now() + this.ttlMs
-    this.pending.set(code, { expMs })
+    this.pending.set(code, { expMs, room: options.room })
     return {
       v: 4, mode: 'public', protocol: 1, endpoint: options.endpoint, endpointKind: options.endpointKind,
       room: options.room, pubkey: options.pubkey, code, exp: Math.floor(expMs / 1000),
-      capabilities: { ...PUBLIC_CAPABILITIES, ...options.capabilities },
+      capabilities: { ...PUBLIC_CAPABILITIES, ...options.capabilities, browser: false },
       ...(options.ice === undefined ? {} : { ice: options.ice }),
     }
   }
@@ -161,9 +162,10 @@ export class PairingOfferManager {
    * public key receives the same transient token; every other client is
    * rejected. This keeps the offer single-use without making ACK loss fatal.
    */
-  claim(code: string, claimant: string, issue: () => string): PairingClaimOutcome {
+  claim(code: string, claimant: string, issue: () => string, room?: string): PairingClaimOutcome {
     const pending = this.pending.get(code)
     if (pending === undefined) return { status: 'unknown' }
+    if (pending.room !== undefined && pending.room !== room) return { status: 'unknown' }
     if (Date.now() > pending.expMs) return { status: 'expired' }
     if (pending.claim !== undefined) {
       return pending.claim.claimant === claimant

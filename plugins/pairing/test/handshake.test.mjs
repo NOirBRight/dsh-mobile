@@ -67,22 +67,24 @@ test('code handshake pairs a new device: ack carries a device token bound to the
 })
 
 test('one-time code is idempotent only for the Client Instance that claimed it', () => {
-  const offer = offers.mint('relay', 'wss://relay.test', 'b'.repeat(32), keypair.publicKeyBase64Url)
+  const room = 'b'.repeat(32)
+  const roomDeps = { ...deps, room }
+  const offer = offers.mint('relay', 'wss://relay.test', room, keypair.publicKeyBase64Url)
   const before = store.list().length
   const first = makeClientFrame({ code: offer.code })
-  const firstAck = openAck(hostHandshake(first.frame, deps), first.clientKeys)
+  const firstAck = openAck(hostHandshake(first.frame, roomDeps), first.clientKeys)
 
   // An ack-loss retry from the same client key receives the same token and creates no device.
   const retry = makeClientFrame({ code: offer.code }, first.clientKeys)
-  const retryAck = openAck(hostHandshake(retry.frame, deps), retry.clientKeys)
+  const retryAck = openAck(hostHandshake(retry.frame, roomDeps), retry.clientKeys)
   assert.equal(retryAck.deviceToken, firstAck.deviceToken)
   assert.equal(store.list().length, before + 1)
 
   // A different client cannot consume the already-claimed offer.
   const otherClient = makeClientFrame({ code: offer.code })
-  assert.equal(errorOf(hostHandshake(otherClient.frame, deps)), 'bad-code')
+  assert.equal(errorOf(hostHandshake(otherClient.frame, roomDeps)), 'bad-code')
   const unknown = makeClientFrame({ code: 'never-minted' })
-  assert.equal(errorOf(hostHandshake(unknown.frame, deps)), 'bad-code')
+  assert.equal(errorOf(hostHandshake(unknown.frame, roomDeps)), 'bad-code')
 })
 
 test('expired code → expired on every presentation (validate never burns)', async () => {
@@ -100,27 +102,43 @@ test('deviceToken handshake reconnects only the claiming Client Instance; revoke
   const first = makeClientFrame({ deviceToken: 'pending' })
   const claimant = Buffer.from(first.clientKeys.publicKey).toString('base64url')
   const originalRoom = 'd'.repeat(32)
+  const roomDeps = { ...deps, room: originalRoom }
   const { id, token } = store.issue(undefined, originalRoom, claimant)
   const frame = makeClientFrame({ deviceToken: token }, first.clientKeys)
-  const ack = openAck(hostHandshake(frame.frame, deps), first.clientKeys)
+  const ack = openAck(hostHandshake(frame.frame, roomDeps), first.clientKeys)
   assert.equal(ack.ok, true)
   assert.equal(ack.deviceToken, undefined) // bearer token persists; no rotation in the ack
   assert.equal(store.authenticate(token)?.room, originalRoom)
   const second = makeClientFrame({ deviceToken: token }, first.clientKeys)
-  assert.equal(hostHandshake(second.frame, deps).ok, true)
+  assert.equal(hostHandshake(second.frame, roomDeps).ok, true)
   const stolen = makeClientFrame({ deviceToken: token })
-  assert.equal(errorOf(hostHandshake(stolen.frame, deps)), 'bad-token')
+  assert.equal(errorOf(hostHandshake(stolen.frame, roomDeps)), 'bad-token')
   assert.equal(store.authenticate(token)?.room, originalRoom)
   const unknown = makeClientFrame({ deviceToken: 'nope' })
-  assert.equal(errorOf(hostHandshake(unknown.frame, deps)), 'bad-token')
+  assert.equal(errorOf(hostHandshake(unknown.frame, roomDeps)), 'bad-token')
   assert.equal(store.revoke(id), true)
   const third = makeClientFrame({ deviceToken: token }, first.clientKeys)
-  assert.equal(errorOf(hostHandshake(third.frame, deps)), 'bad-token')
+  assert.equal(errorOf(hostHandshake(third.frame, roomDeps)), 'bad-token')
+})
+
+test('a code minted for room A cannot pair on room B; a token cannot reconnect on another room', () => {
+  const roomA = '1'.repeat(32)
+  const roomB = '2'.repeat(32)
+  const offer = offers.mintPublic({
+    endpoint: 'https://host.example', endpointKind: 'custom', room: roomA, pubkey: keypair.publicKeyBase64Url,
+  })
+  const first = makeClientFrame({ code: offer.code })
+  assert.equal(errorOf(hostHandshake(first.frame, { ...deps, room: roomB })), 'bad-code')
+  const paired = makeClientFrame({ code: offer.code }, first.clientKeys)
+  const outcome = hostHandshake(paired.frame, { ...deps, room: roomA })
+  assert.equal(outcome.ok, true)
+  const token = openAck(outcome, first.clientKeys).deviceToken
+  assert.equal(errorOf(hostHandshake(makeClientFrame({ deviceToken: token }, first.clientKeys).frame, { ...deps, room: roomB })), 'bad-token')
 })
 
 test('a pairing hello at the live-device ceiling returns limit', () => {
   while (store.liveCount() < MAX_LIVE_DEVICES) store.issue('n' + store.liveCount())
-  const offer = offers.mint('relay', 'wss://relay.test', 'e'.repeat(32), keypair.publicKeyBase64Url)
+  const offer = offers.mint('relay', 'wss://relay.test', ROOM, keypair.publicKeyBase64Url)
   const { frame } = makeClientFrame({ code: offer.code })
   assert.equal(errorOf(hostHandshake(frame, deps)), 'limit')
 })

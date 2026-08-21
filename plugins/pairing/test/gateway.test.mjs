@@ -45,37 +45,18 @@ test('loopback Gateway exposes bounded HTTP and signaling/tunnel WebSockets', as
   await assert.rejects(once(unknown, 'open'), /401/)
 })
 
-test('Gateway proxies only Host plugin client bundles from the fixed loopback origin', async (t) => {
-  const { createServer } = await import('node:http')
-  const origin = createServer((req, res) => {
-    if (req.url?.startsWith('/plugins/demo/client.js')) {
-      res.writeHead(200, { 'content-type': 'text/javascript' })
-      res.end('window.__demo = 1')
-      return
-    }
-    if (req.url === '/api/host.describe') {
-      res.writeHead(200, { 'content-type': 'application/json' })
-      res.end('{"secret":true}')
-      return
-    }
-    res.writeHead(404); res.end()
-  })
-  await new Promise(resolve => origin.listen(0, '127.0.0.1', resolve))
-  t.after(() => new Promise(resolve => origin.close(resolve)))
-  const port = origin.address().port
+test('Gateway does not serve Host plugin bundles or generic DSH paths', async (t) => {
   const gateway = createHostGateway({
     bind: '127.0.0.1', port: 0, hostIdentity: 'host-key',
     shellAsset: () => null,
-    pluginOrigin: { host: '127.0.0.1', port },
     onSignal() {}, onTunnel() {},
   })
   const gwPort = await gateway.listen(); t.after(() => gateway.close())
   const base = 'http://127.0.0.1:' + gwPort
-  const plugin = await fetch(base + '/plugins/demo/client.js?rev=1')
-  assert.equal(plugin.status, 200)
-  assert.equal(await plugin.text(), 'window.__demo = 1')
+  assert.equal((await fetch(base + '/plugins/demo/client.js?rev=1')).status, 404)
   assert.equal((await fetch(base + '/api/host.describe')).status, 404)
   assert.equal((await fetch(base + '/plugins/../package.json')).status, 404)
+  assert.equal((await fetch(base + '/plugins/%252e%252e/api/host.describe')).status, 404)
   assert.equal((await fetch(base + '/pair/status')).status, 404)
 })
 

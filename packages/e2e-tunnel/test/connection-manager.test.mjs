@@ -3,7 +3,20 @@ import assert from 'node:assert/strict'
 import { ConnectionCoordinator, TunnelError } from '../src/index.ts'
 
 function fakeClient() {
-  return { state: 'open', deviceToken: 'token', fetch: async () => new Response(), openWebSocket: () => ({}), probe: async () => {}, close() {} }
+  return { state: 'open', deviceToken: 'token', fetch: async () => new Response(), openWebSocket: () => ({}), probe: async () => {}, close() {}, discard() {} }
+}
+
+function emittingClient(onState, token = 'token') {
+  const client = {
+    state: 'open',
+    deviceToken: token,
+    fetch: async () => new Response(),
+    openWebSocket: () => ({}),
+    probe: async () => {},
+    close() { client.state = 'closed'; onState?.('closed') },
+    discard() { client.state = 'closed' },
+  }
+  return client
 }
 
 test('Automatic uses Tunnel without waiting for Direct to fail', async () => {
@@ -94,4 +107,21 @@ test('Automatic ignores Direct that finishes after the grace window', async () =
   const client = await coordinator.connect()
   assert.equal(client.deviceToken, 'tunnel')
   assert.equal(coordinator.activeRoute, 'tunnel')
+})
+
+test('Automatic loser close does not emit closed for the winning session', async () => {
+  const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+  const states = []
+  const coordinator = new ConnectionCoordinator({
+    policy: 'automatic', capabilities: { direct: true, tunnel: true },
+    directGraceMs: 20,
+    connectTunnel: async () => emittingClient(state => states.push(state), 'tunnel'),
+    connectDirect: async () => { await wait(50); return emittingClient(state => states.push(state), 'direct') },
+  })
+  const client = await coordinator.connect()
+  await wait(80)
+  assert.equal(client.deviceToken, 'tunnel')
+  assert.equal(coordinator.activeRoute, 'tunnel')
+  assert.equal(coordinator.activeClient?.state, 'open')
+  assert.equal(states.includes('closed'), false)
 })

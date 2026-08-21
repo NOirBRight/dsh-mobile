@@ -15,7 +15,7 @@ import { attachHandshakeTransport, attachRelaySocket } from './tunnel-server.ts'
 import { attachDirectSignaling } from './direct-signaling.ts'
 import { WeriftDataChannelTransport } from './webrtc-transport.ts'
 import { createHostGateway, type GatewayEndpoint } from './gateway.ts'
-import { QuickTunnelController } from './quick-tunnel.ts'
+import { QuickTunnelController, type QuickTunnelStatus } from './quick-tunnel.ts'
 import { validateCustomEndpoint, createNodeCustomEndpointAdapters } from './public-endpoint.ts'
 import { applyPublicEndpointSelection, loadPublicEndpointOverlay, parseEndpointSelection, savePublicEndpointOverlay } from './endpoint-settings.ts'
 import { renderPairingSettingsPage } from './settings-page.ts'
@@ -61,13 +61,18 @@ export function apply(ctx: Context, config: Config): void {
   function tunnelOptions(room: string) { return { upstreamHost: resolved.dshHost, upstreamPort: resolved.dshPort, handshake: { keypair, offers, devices: store, room }, logger: (message: string) => ctx.logger.info('dsh-mobile-pairing: ' + message) } }
   const gateway = createHostGateway({
     bind: resolved.gatewayBind, port: resolved.gatewayPort, hostIdentity: keypair.publicKeyBase64Url,
-    pluginOrigin: { host: resolved.dshHost, port: resolved.dshPort },
     isPersistentRoom: room => store.hasLiveForRoom(room),
     onSignal: (socket, room) => { attachDirectSignaling(socket, { iceServers: resolved.stunUrls.map(url => ({ urls: url })), onChannel: channel => { attachHandshakeTransport(new WeriftDataChannelTransport(channel), tunnelOptions(room)) }, onError: error => ctx.logger.error(error) }) },
     onTunnel: (socket, room) => { attachRelaySocket(socket, tunnelOptions(room)) },
   })
   for (const room of store.liveRooms()) gateway.authorizeRoom(room)
   let quick: QuickTunnelController | null = null
+  function onQuickStatus(status: QuickTunnelStatus): void {
+    if (status.state === 'ready' || status.state === 'rotated') endpoint = { url: status.endpoint, kind: 'temporary' }
+    if (status.state === 'error' || status.state === 'stopped') endpoint = null
+    if (status.state === 'error') ctx.logger.error(new Error('dsh-mobile-pairing: ' + status.error))
+    else ctx.logger.info('dsh-mobile-pairing: Quick Tunnel ' + status.state + ('endpoint' in status ? ' ' + status.endpoint : ''))
+  }
   function startQuickTunnel(local: string): void {
     quick = new QuickTunnelController({
       spawn: (command, args) => spawn(command === 'cloudflared' ? resolved.cloudflaredPath : command, args, { stdio: ['ignore', 'pipe', 'pipe'] }),
@@ -77,12 +82,7 @@ export function apply(ctx: Context, config: Config): void {
         ...(resolved.quickTunnelEndpointPattern === undefined ? {} : { endpointPattern: new RegExp(resolved.quickTunnelEndpointPattern, 'ig') }),
       },
       restartOnUnexpectedExit: true,
-      onStatus: status => {
-        if (status.state === 'ready' || status.state === 'rotated') endpoint = { url: status.endpoint, kind: 'temporary' }
-        if (status.state === 'error' || status.state === 'stopped') endpoint = null
-        if (status.state === 'error') ctx.logger.error(new Error('dsh-mobile-pairing: ' + status.error))
-        else ctx.logger.info('dsh-mobile-pairing: Quick Tunnel ' + status.state + ('endpoint' in status ? ' ' + status.endpoint : ''))
-      },
+      onStatus: onQuickStatus,
     })
     quick.start(local)
     retainQuickTunnel(quick)
@@ -93,10 +93,15 @@ export function apply(ctx: Context, config: Config): void {
       const local = 'http://' + host + ':' + port
       ctx.logger.info('dsh-mobile-pairing: bounded Host Gateway on ' + local)
       localGateway = local
-      if (live.mode !== 'quick') return
+      if (live.mode !== 'quick') {
+        void retainQuickTunnel()?.stop()
+        retainQuickTunnel(null)
+        return
+      }
       const retained = retainQuickTunnel()
       if (retained !== null && retained.alive() && retained.localGateway() === local) {
         quick = retained
+        retained.reattach(onQuickStatus)
         const existing = retained.endpoint()
         if (existing !== null) endpoint = { url: existing, kind: 'temporary' }
         ctx.logger.info('dsh-mobile-pairing: Quick Tunnel reused ' + (existing ?? local))

@@ -75,7 +75,7 @@ export function hostHandshake(frame: Uint8Array, deps: HandshakeDeps): Handshake
     const label = sanitizeDeviceLabel(hello.label)
     const clientType = parseClientType(hello.clientType)
     try {
-      const claim = deps.offers.claim(hello.code, claimant, () => deps.devices.issue(label, deps.room, claimant, clientType).token)
+      const claim = deps.offers.claim(hello.code, claimant, () => deps.devices.issue(label, deps.room, claimant, clientType).token, deps.room)
       if (claim.status !== 'ok') return fail(claim.status === 'expired' ? 'expired' : 'bad-code')
       deviceToken = claim.deviceToken
     } catch (error) {
@@ -84,7 +84,7 @@ export function hostHandshake(frame: Uint8Array, deps: HandshakeDeps): Handshake
     }
   } else if (typeof hello.deviceToken === 'string') {
     const claimant = Buffer.from(peerPub).toString('base64url')
-    const device = deps.devices.authenticate(hello.deviceToken, claimant)
+    const device = deps.devices.authenticate(hello.deviceToken, claimant, deps.room)
     if (device === null) return fail('bad-token')
   } else {
     return fail('bad-hello')

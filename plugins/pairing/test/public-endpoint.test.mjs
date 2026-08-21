@@ -41,3 +41,12 @@ test('custom endpoint checks validate HTTP identity/capabilities then WebSocket 
   assert.deepEqual(result, { ok: true, stage: 'ready', hostIdentity: 'host-key', capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true } })
   assert.deepEqual(opened, ['wss://host.example/signal/check'])
 })
+
+test('custom endpoint checks reject a retired browser capability', async () => {
+  const result = await checkCustomEndpoint('https://host.example', {
+    fetch: async () => ({ ok: true, status: 200, json: async () => ({ protocol: 1, hostIdentity: 'k', capabilities: { browser: true, direct: true, tunnel: true, endpointRefresh: true } }) }),
+    openWebSocket: async () => ({ close() {} }),
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.stage, 'capabilities')
+})
