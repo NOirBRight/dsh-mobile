@@ -10,8 +10,8 @@ export const MOBILE_LAYOUT_ID = '@dsh-mobile/ui-layout-mobile'
 export const CONNECTION_ID = '@deepseek-ai/dsh-client-connection'
 export const DSH_HOST_BRIDGE_CAPABILITY = '__DSH_HOST_BRIDGE__'
 const CLIENT_HMR_ID = '@deepseek-ai/dsh-client-hmr'
-const MOBILE_LAYOUT_REV = '0.1.22'
-const MOBILE_CONNECTION_REV = '0.1.22'
+const MOBILE_LAYOUT_REV = '0.1.23'
+const MOBILE_CONNECTION_REV = '0.1.23'
 const MOBILE_CONNECTION_URL = '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=' + MOBILE_CONNECTION_REV
 
 /** Mark the page only after the authenticated same-origin Host bridge is validated. */
