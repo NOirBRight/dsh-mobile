@@ -55,6 +55,10 @@ test('resolveConfig rejects malformed URLs (fail loud)', () => {
   assert.throws(() => resolveConfig(Config({ dshHost: '8.8.8.8' })), /dshHost must be loopback/)
 })
 
+test('resolveConfig rejects an invalid Quick Tunnel endpoint pattern', () => {
+  assert.throws(() => resolveConfig(Config({ quickTunnelEndpointPattern: '(' })), /quickTunnelEndpointPattern/)
+})
+
 test('resolveConfig accepts ws(s) advertiseUrl for relay mode', () => {
   const r = resolveConfig(Config({ advertiseUrl: 'wss://relay.example.com' }))
   assert.equal(r.advertiseUrl, 'wss://relay.example.com')

@@ -7,8 +7,19 @@
 
 export const DESKTOP_LAYOUT_ID = '@deepseek-ai/dsh-client-ui-layout'
 export const MOBILE_LAYOUT_ID = '@dsh-mobile/ui-layout-mobile'
+export const CONNECTION_ID = '@deepseek-ai/dsh-client-connection'
+export const DSH_HOST_BRIDGE_CAPABILITY = '__DSH_HOST_BRIDGE__'
 const CLIENT_HMR_ID = '@deepseek-ai/dsh-client-hmr'
-const MOBILE_LAYOUT_REV = '0.1.0'
+const MOBILE_LAYOUT_REV = '0.1.22'
+const MOBILE_CONNECTION_REV = '0.1.22'
+const MOBILE_CONNECTION_URL = '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=' + MOBILE_CONNECTION_REV
+
+/** Mark the page only after the authenticated same-origin Host bridge is validated. */
+export function setSameOriginHostBridgeCapability(enabled: boolean): void {
+  const scope = globalThis as typeof globalThis & Record<string, unknown>
+  if (enabled) scope[DSH_HOST_BRIDGE_CAPABILITY] = { loopback: true }
+  else delete scope[DSH_HOST_BRIDGE_CAPABILITY]
+}
 
 /** Current official rail-plus-center viability floor: 56px + 640px. */
 export const NARROW_LAYOUT_BREAKPOINT = 696
@@ -55,10 +66,49 @@ export interface BootManifest {
 }
 
 export interface PluginLocalizationOptions {
-  /** Fetch one host-owned plugin script through the authenticated direct tunnel. */
+  /** Fetch one host-owned plugin script through the authenticated Host tunnel. */
   load(url: string): Promise<string>
   /** Turn source into an executable local URL (Blob URL in Android WebView). */
   createUrl(source: string, id: string): string
+  /** Optional content-addressed cache keyed by plugin id + revision. */
+  cache?: PluginBundleCache
+  /** When true, a cache miss fails instead of calling load — used for offline hydrate. */
+  cacheOnly?: boolean
+}
+
+export interface PluginBundleCache {
+  read(id: string, rev: string): Promise<string | undefined>
+  write(id: string, rev: string, source: string): Promise<void>
+}
+
+const PLUGIN_CACHE_PREFIX = 'dsh-mobile:plugin:'
+
+export function createMemoryPluginCache(): PluginBundleCache {
+  const records = new Map<string, string>()
+  return {
+    async read(id, rev) { return records.get(id + '\0' + rev) },
+    async write(id, rev, source) { records.set(id + '\0' + rev, source) },
+  }
+}
+
+export function createLocalStoragePluginCache(storage?: Pick<Storage, 'getItem' | 'setItem'> | null): PluginBundleCache | undefined {
+  let resolved = storage
+  if (resolved === undefined) {
+    try { resolved = globalThis.localStorage } catch { resolved = undefined }
+  }
+  if (resolved === undefined || resolved === null) return undefined
+  return {
+    async read(id, rev) {
+      try {
+        return resolved.getItem(PLUGIN_CACHE_PREFIX + id + ':' + rev) ?? undefined
+      } catch {
+        return undefined
+      }
+    },
+    async write(id, rev, source) {
+      try { resolved.setItem(PLUGIN_CACHE_PREFIX + id + ':' + rev, source) } catch { /* quota or private mode */ }
+    },
+  }
 }
 
 /**
@@ -77,7 +127,12 @@ export async function localizePluginBundles(
     if (!entry.url.startsWith('/plugins/')) {
       throw new Error('host plugin URL must stay under /plugins/: ' + entry.id)
     }
-    const source = await options.load(entry.url)
+    let source = await options.cache?.read(entry.id, entry.rev)
+    if (source === undefined) {
+      if (options.cacheOnly === true) throw new Error('plugin cache miss: ' + entry.id)
+      source = await options.load(entry.url)
+      await options.cache?.write(entry.id, entry.rev, source)
+    }
     return { ...entry, url: options.createUrl(source, entry.id) }
   })
   return { ...manifest, entries }
@@ -118,7 +173,13 @@ export async function loadSameOriginMobileBootManifest(
   if (!response.ok) throw new Error('same-origin boot manifest fetch failed: HTTP ' + response.status)
   if (response.headers.get('x-dsh-host-bridge') !== '1') return null
 
-  return validateBootManifest(extractBootManifestJson(await response.text(), 'boot manifest not found in same-origin Host index'))
+  const manifest = validateBootManifest(extractBootManifestJson(await response.text(), 'boot manifest not found in same-origin Host index'))
+  return {
+    ...manifest,
+    entries: manifest.entries.map(entry => entry.id === CONNECTION_ID
+      ? { ...entry, url: MOBILE_CONNECTION_URL, rev: MOBILE_CONNECTION_REV }
+      : { ...entry }),
+  }
 }
 
 export function extractBootManifestJson(html: string, missing = 'boot manifest not found'): unknown {
@@ -146,6 +207,42 @@ export interface ResponsiveBootSelection {
   layout: ResponsiveRoot
   compatibility: LayoutCompatibility
   officialLayoutRevision: string
+}
+
+const BOOT_CACHE_PREFIX = 'dsh-mobile:boot:'
+
+/** Persist the last successful unlocalized Host boot roster for one Host Identity. */
+export function readCachedBootManifest(
+  hostId: string,
+  storage?: Pick<Storage, 'getItem'> | null,
+): BootManifest | undefined {
+  const resolved = resolveStorage(storage)
+  if (resolved === undefined) return undefined
+  try {
+    const raw = resolved.getItem(BOOT_CACHE_PREFIX + hostId)
+    if (raw === null) return undefined
+    return validateBootManifest(JSON.parse(raw))
+  } catch {
+    return undefined
+  }
+}
+
+export function writeCachedBootManifest(
+  hostId: string,
+  manifest: BootManifest,
+  storage?: Pick<Storage, 'setItem'> | null,
+): void {
+  const resolved = resolveStorage(storage as Pick<Storage, 'getItem' | 'setItem'> | null | undefined)
+  if (resolved === undefined) return
+  if (typeof resolved.setItem !== 'function') return
+  try { resolved.setItem(BOOT_CACHE_PREFIX + hostId, JSON.stringify(manifest)) } catch { /* quota or private mode */ }
+}
+
+function resolveStorage(storage?: Pick<Storage, 'getItem' | 'setItem'> | Pick<Storage, 'getItem'> | null): (Pick<Storage, 'getItem'> & Partial<Pick<Storage, 'setItem'>>) | undefined {
+  if (storage === undefined) {
+    try { return globalThis.localStorage } catch { return undefined }
+  }
+  return storage ?? undefined
 }
 
 function validateBootManifest(value: unknown): BootManifest {

@@ -33,7 +33,7 @@ export class HeartbeatController {
   private probePromise: Promise<void> | null = null
 
   constructor(options: HeartbeatOptions) {
-    this.options = { intervalMs: 25_000, pongTimeoutMs: 10_000, maxMisses: 2, ...options }
+    this.options = { intervalMs: 20_000, pongTimeoutMs: 15_000, maxMisses: 3, ...options }
     this.scheduler = options.scheduler ?? defaultScheduler
   }
 

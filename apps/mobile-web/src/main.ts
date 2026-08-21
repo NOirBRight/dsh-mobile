@@ -6,16 +6,30 @@ import { parseOffer, TunnelError, type ConnectionStatus, type TunnelState } from
 import { AppLinkInbox } from './app-links.ts'
 import { BrowserCredentialVault, NativeCredentialVault, purgeLegacyAndroidWebCredentials, type NativeCredentialVaultBridge, type ReadableCredentialVault } from './credential-vault.ts'
 import { claimShellNativeBridges, concealShellNativeBridges } from './native-bridges.ts'
-import { installCompatibilityNotice, loadSameOriginMobileBootManifest, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, readViewportWidth, selectResponsiveBootManifest, type ResponsiveBootSelection } from './manifest.ts'
+import { installCompatibilityNotice, loadSameOriginMobileBootManifest, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, type BootManifest, type ResponsiveBootSelection } from './manifest.ts'
 import { scanPairingQr } from './pairing-scanner.ts'
 import { prepareProfileConnection, type PreparedProfileConnection } from './profile-connection.ts'
 import { endpointRefreshRequired } from './reconnect-recovery.ts'
 import { BrowserProfileStorage, ProfileRepository } from './profiles.ts'
-import { installBadge, installShims, injectBootManifestFromTunnel, TunnelManager } from './tunnel.ts'
+import { prepareDshClientBoot } from './dsh-boot.ts'
+import { hydrateBootManifestFromCache, installBadge, installShims, injectBootManifestFromTunnel, shouldInstallTunnelShims, TunnelManager, TunnelManagerSlot } from './tunnel.ts'
+import { HostSession } from './host-session.ts'
 
 const root = document.getElementById('root')
 if (root === null) throw new Error('mobile-web app: missing #root')
 const el: HTMLElement = root
+let webEntry: AppWebEntry | null = null
+
+async function bootDshShell(selection: ResponsiveBootSelection | null): Promise<void> {
+  await webEntry?.dispose()
+  webEntry = null
+  if (selection !== null) await prepareDshClientBoot(selection.manifest)
+  el.replaceChildren()
+  if (selection !== null) installCompatibilityNotice(selection.compatibility)
+  concealShellNativeBridges()
+  webEntry = new AppWebEntry(el)
+  await webEntry.run()
+}
 
 function validOfferUrl(value: string): string | null {
   try { parseOffer(value); return value } catch { return null }
@@ -47,7 +61,7 @@ function offerFromCurrentHash(): string | undefined {
   return /#offer=/.test(location.hash) && validOfferUrl(location.href) !== null ? location.href : undefined
 }
 
-async function showProfileMenu(repository: ProfileRepository): Promise<void> {
+async function showProfileMenu(repository: ProfileRepository, onActiveHostChanged: () => Promise<void>): Promise<void> {
   if (document.getElementById('dsh-profile-menu') !== null) return
   const [profiles, active] = await Promise.all([repository.list(), repository.getActive()])
   const overlay = document.createElement('div')
@@ -63,11 +77,11 @@ async function showProfileMenu(repository: ProfileRepository): Promise<void> {
     const endpoint = document.createElement('small'); endpoint.textContent = profile.endpoint.url; endpoint.style.opacity = '.7'; row.append(endpoint)
     const policy = document.createElement('select')
     for (const [value, text] of [['automatic', 'Automatic'], ['direct-only', 'Direct Only'], ['tunnel-only', 'Tunnel Only']] as const) { const option = document.createElement('option'); option.value = value; option.textContent = text; option.selected = profile.connectionPolicy === value; policy.append(option) }
-    policy.onchange = async () => { await repository.upsert({ ...profile, connectionPolicy: policy.value as typeof profile.connectionPolicy, updatedAt: new Date().toISOString() }); if (profile.hostId === active?.hostId) location.reload() }
+    policy.onchange = async () => { await repository.upsert({ ...profile, connectionPolicy: policy.value as typeof profile.connectionPolicy, updatedAt: new Date().toISOString() }); if (profile.hostId === active?.hostId) { overlay.remove(); await onActiveHostChanged() } }
     row.append(policy)
     const actions = document.createElement('div')
-    if (profile.hostId !== active?.hostId) { const activate = document.createElement('button'); activate.textContent = 'Set Active'; activate.onclick = async () => { await repository.setActiveHost(profile.hostId); location.reload() }; actions.append(activate) }
-    const remove = document.createElement('button'); remove.textContent = 'Remove locally'; remove.style.marginLeft = '8px'; remove.onclick = async () => { if (!confirm('Remove this Host Profile and its local credential? This does not revoke the device on Host.')) return; await repository.remove(profile.hostId); location.reload() }; actions.append(remove)
+    if (profile.hostId !== active?.hostId) { const activate = document.createElement('button'); activate.textContent = 'Set Active'; activate.onclick = async () => { await repository.setActiveHost(profile.hostId); overlay.remove(); await onActiveHostChanged() }; actions.append(activate) }
+    const remove = document.createElement('button'); remove.textContent = 'Remove locally'; remove.style.marginLeft = '8px'; remove.onclick = async () => { if (!confirm('Remove this Host Profile and its local credential? This does not revoke the device on Host.')) return; await repository.remove(profile.hostId); overlay.remove(); await onActiveHostChanged() }; actions.append(remove)
     row.append(actions); panel.append(row)
   }
   const add = document.createElement('button'); add.textContent = 'Scan Host / Endpoint Refresh'; add.onclick = async () => { const offer = await scanUntilPaired(); location.replace(location.pathname + location.search + new URL(offer).hash) }; panel.append(add)
@@ -90,18 +104,21 @@ void (async () => {
   const repository = new ProfileRepository(new BrowserProfileStorage(), vault)
   let scannedOffer = offerFromCurrentHash()
   let sameOriginBoot = false
+  setSameOriginHostBridgeCapability(false)
+  let sameOriginManifest: BootManifest | null = null
   let responsiveSelection: ResponsiveBootSelection | null = null
-  const responsiveOptions = { viewportWidth: readViewportWidth() }
 
   if (!native && scannedOffer === undefined) {
     try {
       const manifest = await loadSameOriginMobileBootManifest()
       if (manifest !== null) {
+        sameOriginManifest = manifest
         responsiveSelection = selectResponsiveBootManifest(manifest, {
-          ...responsiveOptions,
+          viewportWidth: readViewportWidth(),
           narrowContractAvailable: officialNarrowContractAvailable(manifest),
         })
         ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = responsiveSelection.manifest
+        setSameOriginHostBridgeCapability(true)
         sameOriginBoot = true
       }
     } catch (error) {
@@ -138,7 +155,7 @@ void (async () => {
         prepared = await prepareProfileConnection({ repository, vault })
       } catch (error) {
         if (!native) {
-          el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">请扫描 Host 生成的浏览器配对二维码</div>'
+          el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">请用 DSH Mobile 应用扫描 Host 配对二维码</div>'
           return
         }
         while (prepared === null) {
@@ -155,14 +172,20 @@ void (async () => {
     }
   }
 
+  const slot = new TunnelManagerSlot()
+  if (shouldInstallTunnelShims(sameOriginBoot)) installShims(slot)
+  let session: HostSession | null = null
+  let shellMounted = false
+
   if (prepared !== null) {
-    const activeConnection = prepared
-    const updateBadge = installBadge(() => { void showProfileMenu(repository) })
+    let activeConnection = prepared
     let lastError = ''
     let state: TunnelState = 'connecting'
     let route = ''
     let endpointRefreshAvailable = false
+    const updateBadge = installBadge(() => { void showProfileMenu(repository, reconnectActiveHost) })
     const render = (): void => {
+      if (shellMounted) return
       if (state === 'open') return
       const wrap = document.createElement('div')
       wrap.style.cssText = 'padding:2em;text-align:center;font-family:sans-serif'
@@ -199,12 +222,12 @@ void (async () => {
       document.getElementById('endpoint-refresh')?.addEventListener('click', async event => {
         const button = event.currentTarget as HTMLButtonElement
         button.disabled = true
-        manager.stop()
+        session?.stop()
         const offerUrl = await scanUntilPaired()
         el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">正在更新临时 Endpoint…</div>'
         try {
-          await prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange })
-          location.reload()
+          activeConnection = await prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange })
+          await session?.connect(activeConnection)
         } catch (error) {
           lastError = 'Endpoint Refresh: ' + (error instanceof Error ? error.message : 'unknown error')
           render()
@@ -216,72 +239,83 @@ void (async () => {
       updateBadge(state, route)
       render()
     }
-    const manager = new TunnelManager({
-      offerUrl: activeConnection.offerUrl,
-      connectionPolicy: activeConnection.profile.connectionPolicy,
-      deviceLabel: activeConnection.profile.displayName,
-      clientType: native ? 'android' : 'browser',
-      deferHeartbeat: true,
-      loadCredentials: activeConnection.loadCredentials,
-      onConnectionStatus,
-      onState(next) { state = next; updateBadge(state, route); render() },
-      onError(message) {
-        lastError = message
-        endpointRefreshAvailable ||= endpointRefreshRequired(activeConnection.profile.endpoint.kind, message)
-        render()
-      },
-    })
-    installShims(manager)
-    manager.start()
-    render()
-    window.addEventListener('online', () => { void manager.probeNow() })
-    await App.addListener('appStateChange', ({ isActive }) => { if (isActive) void manager.probeNow() })
-    const showBootFailure = (reason: string): void => {
-      const wrap = document.createElement('div')
-      wrap.style.cssText = 'padding:2em;text-align:center;font-family:sans-serif'
-      const title = document.createElement('div')
-      title.textContent = 'Host 界面加载失败，请检查 Host 插件后重新扫码'
-      const diagnostic = document.createElement('pre')
-      diagnostic.style.cssText = 'white-space:pre-wrap;color:#b91c1c;margin-top:1em'
-      diagnostic.textContent = reason
-      wrap.append(title, diagnostic)
-      el.replaceChildren(wrap)
+    async function reconnectActiveHost(): Promise<void> {
+      const next = await prepareProfileConnection({ repository, vault, acknowledgeIdentityChange })
+      activeConnection = next
+      await session?.connect(next)
     }
-    for (;;) {
-      const client = await manager.current()
-      try {
-        const expectedOfficialLayoutRevision = typeof activeConnection.profile.presentation.officialLayoutRevision === 'string'
-          ? activeConnection.profile.presentation.officialLayoutRevision
+    session = new HostSession({
+      slot,
+      createManager(next) {
+        return new TunnelManager({
+          offerUrl: next.offerUrl,
+          connectionPolicy: next.profile.connectionPolicy,
+          deviceLabel: next.profile.displayName,
+          clientType: 'android',
+          deferHeartbeat: true,
+          loadCredentials: next.loadCredentials,
+          onConnectionStatus,
+          onState(nextState) { state = nextState; updateBadge(state, route); render() },
+          onError(message) {
+            lastError = message
+            endpointRefreshAvailable ||= endpointRefreshRequired(next.profile.endpoint.kind, message)
+            render()
+          },
+        })
+      },
+      async injectBoot(client, next) {
+        const expectedOfficialLayoutRevision = typeof next.profile.presentation.officialLayoutRevision === 'string'
+          ? next.profile.presentation.officialLayoutRevision
           : undefined
-        responsiveSelection = await injectBootManifestFromTunnel(client, { ...responsiveOptions, expectedOfficialLayoutRevision, localizePlugins: native })
-        if (responsiveSelection.officialLayoutRevision !== expectedOfficialLayoutRevision) {
-          const latest = await repository.getActive() ?? activeConnection.profile
+        const selection = await injectBootManifestFromTunnel(client, {
+          viewportWidth: readViewportWidth(),
+          expectedOfficialLayoutRevision,
+          localizePlugins: native,
+          hostId: next.profile.hostId,
+        })
+        if (selection.officialLayoutRevision !== expectedOfficialLayoutRevision) {
+          const latest = await repository.getActive() ?? next.profile
           await repository.upsert({
             ...latest,
-            presentation: { ...latest.presentation, officialLayoutRevision: responsiveSelection.officialLayoutRevision },
+            presentation: { ...latest.presentation, officialLayoutRevision: selection.officialLayoutRevision },
             updatedAt: new Date().toISOString(),
           })
         }
-        manager.armHeartbeat()
-        el.innerHTML = ''
-        break
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : 'unknown error'
-        lastError = reason
-        const terminal = error instanceof TunnelError && ['bad-token', 'bad-code', 'expired', 'bad-offer', 'bad-key', 'unauthorized', 'identity-mismatch', 'incompatible', 'no-route', 'limit'].includes(error.code)
-        if (terminal || !(error instanceof TunnelError)) {
-          showBootFailure(reason)
-          throw error
-        }
-        try { client.close() } catch { /* already gone */ }
-        render()
-      }
-    }
+        return selection
+      },
+      async hydrateBoot(next) {
+        return hydrateBootManifestFromCache(next.profile.hostId, {
+          viewportWidth: readViewportWidth(),
+          localizePlugins: native,
+        })
+      },
+      async mount(selection) {
+        responsiveSelection = selection
+        await bootDshShell(selection)
+        shellMounted = true
+      },
+    })
+    render()
+    window.addEventListener('online', () => { void session?.probeNow() })
+    await App.addListener('appStateChange', ({ isActive }) => { if (isActive) void session?.probeNow() })
+    await session.connect(activeConnection)
   }
 
   const media = matchMedia('(max-width: ' + (NARROW_LAYOUT_BREAKPOINT - 1) + 'px)')
-  media.addEventListener('change', () => location.reload())
-  if (responsiveSelection !== null) installCompatibilityNotice(responsiveSelection.compatibility)
-  concealShellNativeBridges()
-  void new AppWebEntry(el).run()
+  media.addEventListener('change', () => {
+    if (sameOriginManifest !== null) {
+      const selection = selectResponsiveBootManifest(sameOriginManifest, {
+        viewportWidth: readViewportWidth(),
+        narrowContractAvailable: officialNarrowContractAvailable(sameOriginManifest),
+      })
+      ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = selection.manifest
+      responsiveSelection = selection
+      void bootDshShell(selection)
+      return
+    }
+    void session?.remount()
+  })
+  if (!shellMounted) {
+    await bootDshShell(responsiveSelection)
+  }
 })()

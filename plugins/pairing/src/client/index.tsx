@@ -7,9 +7,9 @@ import {
   decodePairingStatus,
   endpointDraftDirty,
   livePairedDevices,
+  pairingQrUrl,
   pairingRefreshQrUrl,
   REMOTE_SETTINGS_SECTION,
-  sharedPairingQrUrl,
   type PairedDevice,
   type PairingStatus,
 } from './model.ts'
@@ -252,7 +252,7 @@ function DshMobileCard({ t }: { t: Translate }) {
           <h3 style={{ ...heading, justifySelf: 'stretch' }}>{t('scanTitle')}</h3>
           <p style={{ ...muted, margin: 0, justifySelf: 'stretch' }}>{t('scanHint')}</p>
           {endpointUrl ? <>
-            <img key={revision} src={sharedPairingQrUrl(revision)} alt={t('qrAlt')} style={{ boxSizing: 'border-box', width: 180, maxWidth: '100%', padding: 8, borderRadius: 12, background: '#fff' }} />
+            <img key={revision} src={pairingQrUrl('android', revision)} alt={t('qrAlt')} style={{ boxSizing: 'border-box', width: 180, maxWidth: '100%', padding: 8, borderRadius: 12, background: '#fff' }} />
             <button type="button" onClick={() => void copyUrl(endpointUrl)} style={{
               ...action, display: 'grid', gap: 4, width: '100%', textAlign: 'left', padding: '10px 12px',
               background: 'var(--dsw-alias-bg-layer-1)',

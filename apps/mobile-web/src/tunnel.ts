@@ -9,7 +9,7 @@
  */
 import { connect, HeartbeatController, TunnelError } from '@dsh-mobile/e2e-tunnel'
 import type { ClientKeypair, ConnectionPolicy, ConnectionStatus, ConnectOptions, TunnelClient, TunnelState } from '@dsh-mobile/e2e-tunnel'
-import { extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, selectResponsiveBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
+import { extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, readCachedBootManifest, selectResponsiveBootManifest, createLocalStoragePluginCache, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
 
 /**
  * Fetch the boot manifest through the tunnel and install it as
@@ -19,7 +19,7 @@ import { extractBootManifestJson, localizePluginBundles, officialNarrowContractA
  */
 export async function injectBootManifestFromTunnel(
   client: TunnelClient,
-  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean } = { viewportWidth: window.innerWidth },
+  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean; hostId?: string } = { viewportWidth: window.innerWidth },
 ): Promise<ResponsiveBootSelection> {
   const res = await client.fetch('/')
   if (!res.ok) throw new Error('boot manifest fetch failed: HTTP ' + res.status)
@@ -28,6 +28,7 @@ export async function injectBootManifestFromTunnel(
     ...responsive,
     narrowContractAvailable: responsive.narrowContractAvailable ?? officialNarrowContractAvailable(hostManifest),
   })
+  if (typeof responsive.hostId === 'string') writeCachedBootManifest(responsive.hostId, hostManifest as Parameters<typeof writeCachedBootManifest>[1])
   if (responsive.localizePlugins === false) {
     ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = selection.manifest
     return selection
@@ -44,12 +45,49 @@ export async function injectBootManifestFromTunnel(
       }
       throw new Error(last)
     },
-    createUrl: (source, id) => URL.createObjectURL(new Blob([
-      source + '\n//# sourceURL=dsh-plugin:' + id,
-    ], { type: 'text/javascript' })),
+    createUrl: pluginBlobUrl,
+    cache: createLocalStoragePluginCache(),
   })
   ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = localizedManifest
   return { ...selection, manifest: localizedManifest }
+}
+
+function pluginBlobUrl(source: string, id: string): string {
+  return URL.createObjectURL(new Blob([
+    source + '\n//# sourceURL=dsh-plugin:' + id,
+  ], { type: 'text/javascript' }))
+}
+
+/**
+ * Rebuild a responsive boot selection from the last cached Host roster without
+ * waiting for the tunnel. Returns null when the cache is missing or incomplete.
+ */
+export async function hydrateBootManifestFromCache(
+  hostId: string,
+  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean } = { viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth },
+): Promise<ResponsiveBootSelection | null> {
+  const cached = readCachedBootManifest(hostId)
+  if (cached === undefined) return null
+  try {
+    const selection = selectResponsiveBootManifest(cached, {
+      ...responsive,
+      narrowContractAvailable: responsive.narrowContractAvailable ?? officialNarrowContractAvailable(cached),
+    })
+    if (responsive.localizePlugins === false) {
+      ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = selection.manifest
+      return selection
+    }
+    const localizedManifest = await localizePluginBundles(selection.manifest, {
+      load: async () => { throw new Error('plugin cache miss') },
+      createUrl: pluginBlobUrl,
+      cache: createLocalStoragePluginCache(),
+      cacheOnly: true,
+    })
+    ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = localizedManifest
+    return { ...selection, manifest: localizedManifest }
+  } catch {
+    return null
+  }
 }
 
 export interface TunnelCredentialLease {
@@ -228,7 +266,7 @@ export class DeferredWebSocket {
   private listeners = new Map<string, Handler[]>()
   private forced: number | null = null
 
-  constructor(mgr: TunnelManager, NativeWS: typeof WebSocket, url: string | URL, protocols?: string | string[]) {
+  constructor(mgr: TunnelClientSource, NativeWS: typeof WebSocket, url: string | URL, protocols?: string | string[]) {
     const u = new URL(String(url), location.origin)
     // Compare by HOST, not origin: the shell builds downlinks as ws(s)://<host>/api/...,
     // and wss://x != https://x as origins even for the same server.
@@ -297,7 +335,7 @@ export class DeferredWebSocket {
   }
 }
 
-/** Packaged Android/browser-shell assets that must not be fetched from the Host. */
+/** Packaged Android shell assets that must not be fetched from the Host. */
 export function isPackagedShellPluginPath(pathname: string): boolean {
   return pathname === '/plugins/@dsh-mobile/ui-layout-mobile/client.js'
     || pathname.startsWith('/plugins/@dsh-mobile/ui-layout-mobile/')
@@ -308,7 +346,7 @@ export function isHostGatewaySocketPath(pathname: string): boolean {
   return pathname === '/signal/check' || pathname.startsWith('/signal/') || pathname.startsWith('/tunnel/')
 }
 
-/** Browser-shell Host plugin bundles are Gateway HTTP assets, not tunneled application frames. */
+/** Public Endpoint Host plugin bundles are Gateway HTTP assets, not tunneled application frames. */
 export function isPublicEndpointPluginPath(pathname: string): boolean {
   return pathname.startsWith('/plugins/')
 }
@@ -317,8 +355,27 @@ function isPublicHttpsOrigin(): boolean {
   return location.protocol === 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1'
 }
 
+/** Swap the live TunnelManager without reinstalling fetch/WebSocket shims. */
+export interface TunnelClientSource {
+  current(): Promise<TunnelClient>
+}
+
+export class TunnelManagerSlot implements TunnelClientSource {
+  private source: TunnelClientSource | null = null
+  attach(source: TunnelClientSource): void { this.source = source }
+  current(): Promise<TunnelClient> {
+    if (this.source === null) return Promise.reject(new TunnelError('closed', 'Active Host connection is not started'))
+    return this.source.current()
+  }
+}
+
+/** Bare Host bridge already owns same-origin API/WebSocket; every other shell needs tunnel shims. */
+export function shouldInstallTunnelShims(sameOriginHostBridge: boolean): boolean {
+  return !sameOriginHostBridge
+}
+
 /** Route the shell's same-origin fetch/WebSocket traffic through the tunnel. */
-export function installShims(mgr: TunnelManager): void {
+export function installShims(mgr: TunnelClientSource): void {
   const nativeFetch = window.fetch.bind(window)
   window.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url

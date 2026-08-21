@@ -1,6 +1,6 @@
 # ADR 0003: Client credential storage and isolation
 
-- Status: Accepted
+- Status: Accepted; superseded in part by [ADR 0005](0005-vps-endpoint-tunnel-first-app-only.md) (browser-credential clauses are moot after browser-client removal)
 - Date: 2026-08-16
 
 ## Context

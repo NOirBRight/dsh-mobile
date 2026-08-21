@@ -2,8 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { connectionAttempts, TunnelError } from '../src/index.ts'
 
-test('Automatic tries WebRTC Direct before Tunnel Fallback', () => {
-  assert.deepEqual(connectionAttempts('automatic', { direct: true, tunnel: true }), ['direct', 'tunnel'])
+test('Automatic tries Tunnel first and may still attempt Direct', () => {
+  assert.deepEqual(connectionAttempts('automatic', { direct: true, tunnel: true }), ['tunnel', 'direct'])
   assert.deepEqual(connectionAttempts('automatic', { direct: false, tunnel: true }), ['tunnel'])
   assert.deepEqual(connectionAttempts('automatic', { direct: true, tunnel: false }), ['direct'])
 })

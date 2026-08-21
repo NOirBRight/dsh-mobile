@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
-import { QuickTunnelController } from '../src/quick-tunnel.ts'
+import { QuickTunnelController, CLOUDFLARED_QUICK_PROVIDER } from '../src/quick-tunnel.ts'
 
 class FakeChild extends EventEmitter {
   stdout = new PassThrough()
@@ -84,4 +84,21 @@ test('unexpected cloudflared exit respawns against the same local Gateway', () =
   assert.equal(first.killed, false)
   assert.equal(controller.endpoint(), 'https://new.trycloudflare.com')
   assert.deepEqual(states.map(x => x.state), ['starting', 'ready', 'starting', 'rotated'])
+})
+
+test('quick tunnel can spawn a configured non-cloudflared provider', () => {
+  const child = new FakeChild(); const calls = []; const states = []
+  const controller = new QuickTunnelController({
+    spawn: (command, args) => { calls.push([command, args]); return child },
+    onStatus: state => states.push(state),
+    provider: {
+      command: 'frpc',
+      args: local => ['http', local],
+      endpointPattern: /https:\/\/[a-z0-9.-]+\.example\.test\b/ig,
+    },
+  })
+  controller.start('http://127.0.0.1:43123')
+  assert.deepEqual(calls, [['frpc', ['http', 'http://127.0.0.1:43123']]])
+  child.stderr.write('endpoint ready at https://pair.example.test\n')
+  assert.deepEqual(states.at(-1), { state: 'ready', endpoint: 'https://pair.example.test' })
 })

@@ -5,7 +5,7 @@
   position: relative; /* anchors drawer, sheet, scrim, overlay */
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: var(--dsh-mobile-viewport-height, 100dvh);
   overflow: hidden;
   background: var(--dsw-alias-bg-base);
 }
@@ -44,6 +44,18 @@
 .menuButton:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: -2px;
+}
+
+.sessionTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .center {
@@ -135,6 +147,58 @@
     visibility 0s;
 }
 
+/* Codex owns the details seat as a right-edge drawer on narrow screens. The
+   overlay toggle is mounted for the whole session, while .dcs-col is mounted
+   only after the Host expands the sidebar; key off that stable overlay marker
+   so the first open never begins in the generic bottom-sheet state. */
+.frame:has(:global(.dcs-overlay)) .detailsSheet {
+  inset: 0 0 0 auto;
+  width: min(360px, 100%);
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  box-shadow: none;
+  padding-bottom: 0;
+  transform: translate3d(100%, 0, 0) !important;
+  visibility: hidden !important;
+  transition:
+    transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    visibility 0s var(--ds-transition-duration-slow);
+}
+
+/* Codex mounts its content into the details seat only after the Host applies
+   the expand intent. Driving the slide from content readiness — not the raw
+   open flag — avoids sliding out a blank page and filling it a beat later. */
+.frame[data-details-open]:has(:global(.dcs-overlay)) .detailsSheet:has(:global(.dcs-root)) {
+  transform: translate3d(0, 0, 0) !important;
+  visibility: visible !important;
+  transition:
+    transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),
+    visibility 0s;
+}
+
+/* Codex supplies its own tab separators. Remove only the outer frame edges so
+   closing the right drawer cannot leave a bottom strip or a left seam behind. */
+.frame:has(:global(.dcs-overlay)) .detailsSheet :global(.dcs-root) {
+  border: 0 !important;
+}
+
+.frame:has(:global(.dcs-overlay)) .detailsSheet :global(.dcs-tabbar) {
+  border-bottom: 0 !important;
+}
+
+/* Codex's managed Browser letterboxes its canvas on a fixed gray with a card
+   shadow around it; on the phone that gray band around the stream reads as a
+   leftover frame. Blend the surround into the pane background. */
+.frame:has(:global(.dcs-overlay)) .detailsSheet :global(.dcs-b-page),
+.frame:has(:global(.dcs-overlay)) .detailsSheet :global(.dcs-managed-browser) {
+  background: var(--dsw-alias-bg-base);
+}
+
+.frame:has(:global(.dcs-overlay)) .detailsSheet :global(.dcs-managed-browser-surface) {
+  box-shadow: none;
+}
+
 /* Click-through layer; occupants opt back in (upstream parity). */
 .overlayLayer {
   position: absolute;
@@ -147,10 +211,524 @@
   pointer-events: auto;
 }
 
+/* Match the mobile panel control: a 40px hit target with a 24px mirrored
+   glyph so the Codex seam faces inward from the right edge. */
+.overlayLayer :global(.dcs-overlay > .dcs-toggle) {
+  top: calc(env(safe-area-inset-top) + 4px) !important;
+  box-sizing: border-box;
+  width: 40px !important;
+  min-width: 40px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Touch keeps :hover stuck after a tap, leaving a permanent gray block behind
+   the Codex toggle (unlike the hamburger). Only hover-capable pointers get it. */
+@media (hover: hover) {
+  .overlayLayer :global(.dcs-overlay > .dcs-toggle:hover) {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.overlayLayer :global(.dcs-overlay > .dcs-toggle > svg) {
+  width: 24px !important;
+  height: 24px !important;
+  transform: scaleX(-1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .scrim,
   .drawer,
   .detailsSheet {
     transition: none;
   }
+}
+
+/* Narrow composer: this plugin only loads on the mobile root. Hide the
+   effort caption on the official model trigger (effort stays in its menu),
+   keep a bounded model trigger, and keep the official toolbar on one row. */
+:global([data-composer-card] button[aria-haspopup="menu"] > span:nth-of-type(2)) {
+  display: none;
+}
+
+:global([data-composer-card] button[aria-haspopup="menu"]) {
+  box-sizing: border-box;
+  width: 8rem;
+  min-width: 0;
+  max-width: 8rem;
+  flex: 0 1 8rem;
+  justify-content: flex-end;
+  text-align: right;
+}
+
+:global([data-composer-card] button[aria-haspopup="menu"] > span:first-of-type) {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+}
+
+:global([data-composer-card] > div:last-child) {
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+:global([data-composer-card] > div:last-child > div:first-child),
+:global([data-composer-card] > div:last-child > div:last-child) {
+  gap: 8px;
+}
+
+:global([data-composer-card] > div:last-child > div:last-child) {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+@media (max-width: 380px) {
+  :global([data-composer-card] button[aria-haspopup="menu"]) {
+    width: 7rem;
+    max-width: 7rem;
+    flex-basis: 7rem;
+  }
+}
+
+/* Touch has no meaningful hover. Keep official tooltips for mouse users, but
+   suppress the delayed/focus bubble that otherwise remains over the plus menu
+   on Android Chrome. */
+@media (hover: none) and (pointer: coarse) {
+  :global([role="tooltip"]) {
+    display: none !important;
+  }
+}
+
+/* Narrow popup placement: official desktop menus are right-aligned to their
+   small root. On a phone that makes the wide card hug the left edge. Center
+   each composer popup on its own trigger and clamp its width to the viewport. */
+:global([data-composer-card] button[aria-haspopup="menu"] + [role="menu"]) {
+  left: 50%;
+  right: auto;
+  width: min(240px, calc(100vw - 24px));
+  transform: translateX(-50%);
+}
+
+/* ContextMeter's panel keeps the official anchor (8px above the trigger). The
+   mobile plugin only clamps a right-edge overflow in ComposerAttach — geometry
+   stays with the Host. */
+
+/* Current title lives in the mobile top bar. Recompose the official session
+   header below it as one compact row: view tabs, mode/actions, utilities. */
+.center :global(header:has(> [role="tablist"])) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 16px;
+  overflow: hidden;
+}
+
+.center :global(header:has(> [role="tablist"]) nav[aria-label]) {
+  display: none;
+}
+
+.center :global(header:has(> [role="tablist"]) > div:first-child) {
+  order: 2;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 48px;
+}
+
+.center :global(header:has(> [role="tablist"]) > div:first-child > div:first-child) {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 8px;
+}
+
+/* Fixed middle: current Agent Preset / subagents / background jobs. The
+   preset remains dynamic and localized; only the other count labels shorten. */
+.center :global(header:has(> [role="tablist"]) > div:first-child > div:first-child > div:last-child) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 194px;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.center :global(header:has(> [role="tablist"]) > div:first-child > div:first-child > div:last-child > *) {
+  flex: none;
+}
+
+/* Preserve the official dynamic/localized preset name. Long custom names
+   elide inside their own seat instead of replacing the value with PTC. */
+.center :global(header:has(> [role="tablist"]) > div:first-child > div:first-child > div:last-child span[title]) {
+  max-width: 82px;
+  padding-right: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Subagent trigger: activity slot, count label, chevron. */
+.center :global(header:has(> [role="tablist"]) button[aria-haspopup="tree"] > span:nth-of-type(2)) {
+  margin: 0 2px;
+  font-size: 0;
+}
+
+.center :global(header:has(> [role="tablist"]) button[aria-haspopup="tree"] > span:nth-of-type(2)::after) {
+  font-size: 12px;
+}
+
+.center :global(header:has(> [role="tablist"]) button[aria-haspopup="tree"] > span:nth-of-type(2):lang(zh)::after) {
+  content: '子代';
+}
+
+.center :global(header:has(> [role="tablist"]) button[aria-haspopup="tree"] > span:nth-of-type(2):lang(en)::after) {
+  content: 'Subs';
+}
+
+/* Jobs trigger has aria-expanded but no aria-haspopup. */
+.center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span:not([data-state])) {
+  margin: 0 2px;
+  font-size: 0;
+}
+
+.center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span:not([data-state])::after) {
+  font-size: 12px;
+}
+
+.center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span:not([data-state]):lang(zh)::after) {
+  content: '命令';
+}
+
+.center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span:not([data-state]):lang(en)::after) {
+  content: 'Jobs';
+}
+
+/* Keep Log pinned at the right with compact chrome. */
+.center :global(header:has(> [role="tablist"]) > div:first-child > div:last-child) {
+  display: flex;
+  align-items: center;
+  flex: 0 0 52px;
+  width: 52px;
+  max-width: 52px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.center :global(header:has(> [role="tablist"]) > div:first-child > div:last-child button) {
+  width: 52px;
+  min-width: 52px;
+  height: 28px;
+  padding: 4px 6px;
+}
+
+.center :global(header:has(> [role="tablist"]) > div:first-child > div:last-child button > span) {
+  font-size: 0;
+}
+
+.center :global(header:has(> [role="tablist"]) > div:first-child > div:last-child button > span::after) {
+  content: 'Log';
+  font-size: 12px;
+}
+
+.center :global(header:has(> [role="tablist"]) > [role="tablist"]) {
+  order: 1;
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  height: 48px;
+  gap: 8px;
+  margin: 0;
+  padding-left: 0;
+}
+
+.center :global(header:has(> [role="tablist"]) > [role="tablist"] > [role="tab"]) {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 0 2px;
+}
+
+/* English Trajectory is too wide for the fixed mobile header; preserve the
+   tab semantics and expose the compact visual label only on English UI. */
+.center :global(header:has(> [role="tablist"]) > [role="tablist"] > [role="tab"]:nth-child(2):lang(en)) {
+  font-size: 0;
+}
+
+.center :global(header:has(> [role="tablist"]) > [role="tablist"] > [role="tab"]:nth-child(2):lang(en)::after) {
+  content: 'Trace';
+  font-size: 13px;
+}
+
+/* Official narrow transcript adds clearance + 16px while the composer uses
+   clearance alone. Remove that extra layer so messages and input card share
+   the same 16px mobile edge. */
+.center :global(div:has(> [data-chat-flow])) {
+  padding-right: var(--dsh-composer-side-clearance);
+  padding-left: var(--dsh-composer-side-clearance);
+}
+
+/* Header action popovers must escape the clipped fixed row. */
+.center :global(header:has(> [role="tablist"]) [role="tree"]),
+.center :global(header:has(> [role="tablist"]) ul[aria-label]) {
+  position: fixed;
+  top: 100px;
+  right: 12px;
+  left: 12px;
+  width: auto;
+  max-width: none;
+  max-height: calc(100dvh - 112px);
+}
+
+/* Expanded mobile drawer already has the full wordmark. If the official
+   transition briefly leaves the separate 24px rail fish beside it, hide only
+   that fish; the 16px panel toggle remains. */
+.drawer > :global(div) > :global(div:first-child:has(svg[width="182"])) :global(svg[width="24"][height="24"]) {
+  display: none;
+}
+
+/* Mobile settings recomposition (official ui-settings-general shell): keep the
+   same sections and controls, but replace its desktop 188px rail + content
+   columns with a title row, horizontally scrollable category row, and a full-
+   width content column. */
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav)) {
+  box-sizing: border-box;
+  width: min(800px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  height: min(800px, calc(100dvh - 24px));
+  max-height: calc(100dvh - 24px);
+  flex-direction: column;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav) {
+  box-sizing: border-box;
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  gap: 0;
+  padding: 0;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav > div:first-child) {
+  flex: none;
+  padding: 18px 20px 10px;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav > div:last-child) {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  height: auto;
+  min-height: 40px;
+  flex-direction: row;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 14px 10px;
+  scrollbar-width: none;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav > div:last-child::-webkit-scrollbar) {
+  display: none;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav > div:last-child > button) {
+  flex: 0 0 auto;
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div) {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:last-child) {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:last-child > *) {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Settings polish stays structural: feature modules keep their content and actions;
+   the narrow shell only changes the available space and mobile affordances. */
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav)) {
+  position: relative;
+}
+
+/* Keep the official close action available at the panel corner while the
+   settings content scrolls. This reuses the Host button; it adds no second
+   settings state or navigation path. */
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button) {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Theme cards are a three-choice control, not three full-width mobile pages. */
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) div:has(> button[aria-pressed])) {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) div:has(> button[aria-pressed])::-webkit-scrollbar) {
+  display: none;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) div:has(> button[aria-pressed]) > button[aria-pressed]) {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  box-sizing: border-box;
+  height: 64px;
+  min-height: 64px;
+  padding: 8px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) div:has(> button[aria-pressed]) > button[aria-pressed] > svg) {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+}
+
+/* Keep the Chinese Enter label together; its description may still wrap. */
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:last-child > * > * > * > div:has(> span > button):last-child > div:first-child > div:first-child) {
+  white-space: nowrap;
+}
+
+/* The Usage Monitor owns these semantic hooks. Reduce only its summary values
+   and tile padding so the mobile page exposes more data without rewriting it. */
+.frame :global(.dsh-um-tiles > div) {
+  padding: 8px 10px !important;
+}
+
+.frame :global(.dsh-um-tiles > div > div:last-child) {
+  font-size: 16px !important;
+  font-weight: 650 !important;
+}
+
+/* dsh-market cards are one-column on phones. Keep the title/tabs/footer in
+   bounded rows so long names and metadata do not create one-character lines. */
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> h2 + a) > h2) {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+  white-space: nowrap;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> button:nth-of-type(5))) {
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> button:nth-of-type(5))::-webkit-scrollbar) {
+  display: none;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> a ~ button)) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "tag date source" "install install install";
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 8px;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> a ~ button) > span:first-child) {
+  grid-area: tag;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> a ~ button) > span:nth-child(2)) {
+  grid-area: date;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> a ~ button) > a) {
+  grid-area: source;
+  white-space: nowrap;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> a ~ button) > button) {
+  grid-area: install;
+  justify-self: end;
+}
+
+/* The Codex sidebar is a shell overlay (not the official settings panel).
+   Its toggle and resize seam otherwise sit at z-index 60 above the drawer,
+   while the settings dialog is nested in the drawer at z-index 40. Lower that
+   custom overlay only for the duration of the settings dialog; the dialog's
+   own controls remain interactive. */
+.frame:has(.drawer :global([role="dialog"][aria-modal="true"])) .overlayLayer {
+  z-index: 25;
+}
+
+.frame:has(.drawer :global([role="dialog"][aria-modal="true"])) .overlayLayer :global(.dcs-toggle),
+.frame:has(.drawer :global([role="dialog"][aria-modal="true"])) .overlayLayer :global(.dcs-col-handle) {
+  visibility: hidden;
+  pointer-events: none;
 }

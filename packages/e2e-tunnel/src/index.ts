@@ -6,7 +6,7 @@ export type { DirectOffer, Offer, ParseOfferOptions, PublicEndpointCapabilities,
 export { TunnelError } from './errors.ts'
 export { connectionAttempts } from './connection-policy.ts'
 export type { ConnectionPolicy, ConnectionRoute, RouteCapabilities } from './connection-policy.ts'
-export { ConnectionCoordinator } from './connection-manager.ts'
+export { ConnectionCoordinator, DEFAULT_DIRECT_GRACE_MS } from './connection-manager.ts'
 export type { ConnectionCoordinatorOptions, ConnectionPhase, ConnectionStatus } from './connection-manager.ts'
 export { HeartbeatController } from './heartbeat.ts'
 export type { HeartbeatOptions, HeartbeatScheduler, HeartbeatTarget } from './heartbeat.ts'

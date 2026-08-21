@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildEndpointSaveRequest, decodeEndpointSaveResult, decodePairedDevices, decodePairingStatus, endpointDraftDirty, livePairedDevices, pairingQrRevisionOnToggle, pairingQrUrl, pairingRefreshQrUrl, REMOTE_SETTINGS_SECTION, sharedPairingQrUrl } from '../src/client/model.ts'
+import { buildEndpointSaveRequest, decodeEndpointSaveResult, decodePairedDevices, decodePairingStatus, endpointDraftDirty, livePairedDevices, pairingQrRevisionOnToggle, pairingQrUrl, pairingRefreshQrUrl, REMOTE_SETTINGS_SECTION } from '../src/client/model.ts'
 
 test('Remote occupies its own settings sidebar section ahead of Models', () => {
   assert.equal(REMOTE_SETTINGS_SECTION.id, 'remote')
@@ -23,8 +23,7 @@ test('opening the card automatically advances to a fresh QR offer', () => {
 
 test('refresh and target produce a fresh non-secret QR URL', () => {
   assert.equal(pairingQrUrl('android', 4), '/pair?target=android&format=svg&refresh=4')
-  assert.equal(pairingQrUrl('browser', 5), '/pair?target=browser&format=svg&refresh=5')
-  assert.equal(sharedPairingQrUrl(5), pairingQrUrl('browser', 5))
+  assert.equal(pairingQrUrl('android', 5), '/pair?target=android&format=svg&refresh=5')
 })
 
 test('draft is dirty only when mode or custom URL differs from the saved endpoint', () => {
@@ -53,7 +52,7 @@ test('paired device list keeps live rows and drops revoked ones', () => {
   })
   assert.ok(devices)
   assert.deepEqual(livePairedDevices(devices).map(device => device.id), ['phone'])
-  assert.equal(pairingRefreshQrUrl('ab', 3), '/pair?target=browser&format=svg&room=ab&refresh=3')
+  assert.equal(pairingRefreshQrUrl('ab', 3), '/pair?format=svg&room=ab&refresh=3')
   assert.equal(decodePairedDevices({ devices: [{ id: 1 }] }), null)
 })
 

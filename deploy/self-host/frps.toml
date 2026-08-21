@@ -1,0 +1,5 @@
+bindPort = 7000
+vhostHTTPPort = 8080
+# Auth token is required. Replace before exposing this instance.
+auth.method = "token"
+auth.token = "replace-me"

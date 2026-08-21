@@ -9,6 +9,9 @@ const forbidden = [
   { name: 'maintainer-owned runtime endpoint', pattern: /noirbright\.top/i },
   { name: 'runtime CDN', pattern: /(?:unpkg\.com|cdn\.jsdelivr\.net|esm\.sh)/i },
   { name: 'TURN URL', pattern: /["']turns?:/i },
+  { name: 'browser shell path', pattern: /browserShellPath/ },
+  { name: 'browser-shell package', pattern: /browser-shell|package-browser-shell/ },
+  { name: 'full document reload', pattern: /location\.reload\(/ },
 ]
 const hostUiRoots = ['packages/ui-layout-mobile/src', 'plugins/pairing/src/client']
 const hostUiForbidden = [

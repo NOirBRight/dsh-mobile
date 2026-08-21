@@ -22,15 +22,23 @@ export interface ConnectionCoordinatorOptions {
   connectDirect: () => Promise<TunnelClient>
   connectTunnel: () => Promise<TunnelClient>
   onState?: (status: ConnectionStatus) => void
+  /**
+   * Automatic only: Direct may win only if it finishes within this window.
+   * After the window, late Direct is discarded and Tunnel remains the route.
+   */
+  directGraceMs?: number
 }
 
-const TERMINAL_DIRECT_ERRORS = new Set([
+/** Same-LAN Direct may steal Automatic only inside this window. */
+export const DEFAULT_DIRECT_GRACE_MS = 2_000
+
+const TERMINAL_HOST_ERRORS = new Set([
   'bad-offer', 'bad-code', 'expired', 'bad-token', 'bad-key', 'unauthorized', 'identity-mismatch', 'incompatible', 'limit',
 ])
 
 /** Authentication, identity, and compatibility failures must not be hidden by route fallback. */
 function mayFallbackAfter(error: unknown): boolean {
-  return !(error instanceof TunnelError) || !TERMINAL_DIRECT_ERRORS.has(error.code)
+  return !(error instanceof TunnelError) || !TERMINAL_HOST_ERRORS.has(error.code)
 }
 
 /** Select one visible route at a time while keeping transport creation injectable. */
@@ -54,27 +62,107 @@ export class ConnectionCoordinator {
   async connect(): Promise<TunnelClient> {
     this.close()
     const attempts = connectionAttempts(this.options.policy, this.options.capabilities)
-    let lastError: unknown = null
+    if (attempts.length === 1) return this.connectOne(attempts[0])
+    return this.connectAutomatic(attempts)
+  }
+
+  private startRoute(route: ConnectionRoute): Promise<TunnelClient> {
+    return route === 'direct' ? this.options.connectDirect() : this.options.connectTunnel()
+  }
+
+  private async connectOne(route: ConnectionRoute): Promise<TunnelClient> {
+    this.emit(route === 'direct' ? 'direct-connecting' : 'tunnel-connecting', route)
+    try {
+      const client = await this.startRoute(route)
+      return this.accept(route, client)
+    } catch (error) {
+      const failure = error instanceof Error ? error : new TunnelError('offline', String(error))
+      this.emit('offline', null, failure.message)
+      throw failure
+    }
+  }
+
+  /**
+   * Race Tunnel (started first) with Direct. Direct may win only inside the
+   * grace window; a terminal Host verdict aborts every route.
+   */
+  private async connectAutomatic(attempts: ConnectionRoute[]): Promise<TunnelClient> {
     for (const route of attempts) {
       this.emit(route === 'direct' ? 'direct-connecting' : 'tunnel-connecting', route)
-      try {
-        const client = await (route === 'direct' ? this.options.connectDirect() : this.options.connectTunnel())
-        this.client = client
-        this.route = route
-        this.emit(route === 'direct' ? 'direct-open' : 'tunnel-open', route)
-        return client
-      } catch (error) {
+    }
+    const graceMs = this.options.directGraceMs ?? DEFAULT_DIRECT_GRACE_MS
+    return new Promise<TunnelClient>((resolve, reject) => {
+      let settled = false
+      let pending = attempts.length
+      let graceOpen = true
+      let lastError: Error | null = null
+      const discarded: TunnelClient[] = []
+      const graceTimer = setTimeout(() => { graceOpen = false }, graceMs)
+
+      const discard = (client: TunnelClient): void => {
+        discarded.push(client)
+        client.close()
+      }
+
+      const failIfIdle = (error: Error): void => {
+        pending -= 1
         lastError = error
-        if (route === 'direct' && !mayFallbackAfter(error)) {
-          const terminal = error instanceof Error ? error : new TunnelError('offline', String(error))
-          this.emit('offline', null, terminal.message)
-          throw terminal
+        if (settled) return
+        if (pending === 0) {
+          settled = true
+          clearTimeout(graceTimer)
+          for (const discardedClient of discarded) discardedClient.close()
+          this.emit('offline', null, error.message)
+          reject(error)
         }
       }
-    }
-    const error = lastError instanceof Error ? lastError : new TunnelError('offline', 'no connection route succeeded')
-    this.emit('offline', null, error.message)
-    throw error
+
+      const finishOk = (route: ConnectionRoute, client: TunnelClient): void => {
+        if (settled) {
+          discard(client)
+          return
+        }
+        if (route === 'direct' && !graceOpen) {
+          discard(client)
+          failIfIdle(lastError ?? new TunnelError('offline', 'Direct finished after grace window'))
+          return
+        }
+        settled = true
+        clearTimeout(graceTimer)
+        for (const discardedClient of discarded) discardedClient.close()
+        resolve(this.accept(route, client))
+      }
+
+      const finishErr = (error: Error, terminal: boolean): void => {
+        lastError = error
+        pending -= 1
+        if (settled) return
+        if (terminal || pending === 0) {
+          settled = true
+          clearTimeout(graceTimer)
+          for (const discardedClient of discarded) discardedClient.close()
+          this.emit('offline', null, error.message)
+          reject(error)
+        }
+      }
+
+      for (const route of attempts) {
+        void this.startRoute(route).then(
+          client => finishOk(route, client),
+          error => {
+            const failure = error instanceof Error ? error : new TunnelError('offline', String(error))
+            finishErr(failure, !mayFallbackAfter(error))
+          },
+        )
+      }
+    })
+  }
+
+  private accept(route: ConnectionRoute, client: TunnelClient): TunnelClient {
+    this.client = client
+    this.route = route
+    this.emit(route === 'direct' ? 'direct-open' : 'tunnel-open', route)
+    return client
   }
 
   async probe(timeoutMs?: number): Promise<void> {

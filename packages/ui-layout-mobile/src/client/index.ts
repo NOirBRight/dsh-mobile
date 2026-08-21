@@ -14,6 +14,8 @@ import { MobileFrame } from './MobileFrame.tsx'
 import { createMobileLayoutStore } from './stores.ts'
 import { MobileLayoutController } from './service.ts'
 import { ThemePresenter } from './theme-presenter.ts'
+import { ComposerAttach } from './ComposerAttach.tsx'
+import type { DraftConversation } from './composer-attach.ts'
 
 // Contract exports only. IMobileLayout: the ctx.layout face consumers and test
 // fakes type against. OwnerShare contracts below are the render-side halves
@@ -58,6 +60,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * layer is click-through; entries opt back into pointer events.
      */
     'shell.overlay': { kind: 'list'; scope: 'root' }
+    /** Occupied by this package's plus-button attach control. Declared by ui-conversation. */
+    'conversation.input.left': { kind: 'list'; scope: 'session'; owner: object }
   }
 }
 
@@ -123,4 +127,63 @@ export function apply(ctx: ClientContext): void {
       presenter.dispose()
     }
   }, 'ui-layout-mobile: theme presenter')
+
+  ctx.effect(() => {
+    let disposeAttach: (() => void) | undefined
+    const mountAttach = (): void => {
+      if (disposeAttach !== undefined) return
+      try {
+        disposeAttach = ctx.slots.register({
+          name: 'conversation.input.left',
+          id: 'composer-attach',
+          order: 0,
+          inject: () => draftImageInject(ctx),
+        }, ComposerAttach)
+      } catch {
+        // ui-conversation declares this slot; retry when that roster lands.
+      }
+    }
+    mountAttach()
+    const off = ctx.on('slots/changed', (key: string) => {
+      if (key === 'conversation' || key === 'conversation.input.left') mountAttach()
+    })
+    return () => {
+      off()
+      disposeAttach?.()
+    }
+  }, 'ui-layout-mobile: composer attach')
+}
+
+function draftImageInject(ctx: ClientContext): {
+  createDraftImages: DraftConversation['createDraftImages']
+  releaseDraftImage: DraftConversation['releaseDraftImage']
+  releaseDraftImages: DraftConversation['releaseDraftImages']
+} {
+  const live = (): DraftConversation | undefined => liveConversation(ctx)
+  return {
+    createDraftImages: (files) => {
+      const conversation = live()
+      if (conversation?.createDraftImages === undefined) {
+        throw new Error('ui-layout-mobile: conversation draft images unavailable')
+      }
+      return conversation.createDraftImages(files)
+    },
+    releaseDraftImage: (id) => { live()?.releaseDraftImage?.(id) },
+    releaseDraftImages: (images) => { live()?.releaseDraftImages?.(images) },
+  }
+}
+
+/** Layout cannot inject `conversation` (conversation already injects `layout`). */
+function liveConversation(ctx: ClientContext): DraftConversation | undefined {
+  const holder = ctx as ClientContext & {
+    get?: (name: string, strict?: boolean) => unknown
+    conversation?: DraftConversation
+  }
+  try {
+    const value = holder.get?.('conversation', false) ?? holder.conversation
+    if (value === null || typeof value !== 'object') return undefined
+    return value as DraftConversation
+  } catch {
+    return undefined
+  }
 }

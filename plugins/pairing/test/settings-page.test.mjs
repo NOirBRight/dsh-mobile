@@ -4,19 +4,14 @@ import { renderPairingSettingsPage } from '../src/settings-page.ts'
 
 test('Host settings page exposes one shared HTTPS QR, rename, refresh and revocation', () => {
   const html = renderPairingSettingsPage({ hostIdentity: 'host&lt;identity', endpoint: { url: 'https://quick.example', kind: 'temporary' } })
-  assert.match(html, /Public Endpoint/)
-  assert.match(html, /target=browser/)
-  assert.doesNotMatch(html, /target=native/)
-  assert.ok(html.includes('/pair/devices'))
-  assert.ok(html.includes('/pair/revoke'))
-  assert.ok(html.includes('/pair/label'))
-  assert.match(html, /last seen/)
-  assert.match(html, /clientType/)
-  assert.match(html, /room=/)
-  assert.match(html, /rotateQrs/)
-  assert.match(html, /App and browser scan the same HTTPS code/)
-  assert.doesNotMatch(html, /host&lt;identity/)
-  assert.match(html, /host&amp;lt;identity/)
+  for (const snippet of ['Public Endpoint', '/pair/devices', '/pair/revoke', '/pair/label', 'last seen', 'clientType', 'rotateQrs']) {
+    assert.ok(html.includes(snippet), 'missing ' + snippet)
+  }
+  assert.equal(html.includes('href="/mobile"'), false)
+  assert.equal(html.includes('/mobile'), false)
+  assert.equal(html.includes('target=browser'), false)
+  assert.equal(html.includes('>host&lt;identity<'), false)
+  assert.ok(html.includes('host&amp;lt;identity'))
 })
 
 test('Host settings page can submit a staged Custom Endpoint save', () => {
@@ -26,10 +21,7 @@ test('Host settings page can submit a staged Custom Endpoint save', () => {
     endpointMode: 'custom',
     customEndpointUrl: 'https://custom.example',
   })
-  assert.match(html, /\/pair\/endpoint/)
-  assert.match(html, /TLS\/HTTP reachability/)
-  assert.match(html, /WebSocket upgrade/)
-  assert.match(html, /value="custom"/)
-  assert.match(html, /https:\/\/custom\.example/)
-  assert.match(html, /Check and save/)
+  for (const snippet of ['/pair/endpoint', 'TLS/HTTP reachability', 'WebSocket upgrade', 'value="custom"', 'https://custom.example', 'Check and save']) {
+    assert.ok(html.includes(snippet), 'missing ' + snippet)
+  }
 })

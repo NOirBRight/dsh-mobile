@@ -39,7 +39,7 @@ export default defineConfig({
     alias: [
       // Browserization of the vendored cordis Loader: its only node-only import.
       { find: /^node:module$/, replacement: src('./src/node-module-stub.ts') },
-      { find: /^@deepseek-ai\/dsh-client-web$/, replacement: up('packages/client/web/src/boot.tsx') },
+      { find: /^@deepseek-ai\/dsh-client-web$/, replacement: up('packages/client/web/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-web-react$/, replacement: up('packages/client/web-react/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-ui-slots$/, replacement: up('packages/client/ui-slots/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-ui-primitives$/, replacement: up('packages/client/ui-primitives/src/index.ts') },

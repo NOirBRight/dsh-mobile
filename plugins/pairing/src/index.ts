@@ -3,8 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomBytes } from 'node:crypto'
-import { readFileSync } from 'node:fs'
-import { join, normalize, relative } from 'node:path'
+import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { renderPairingQrSvg } from './qr.js'
 import z from '@deepseek-ai/schemastery'
@@ -37,7 +36,7 @@ export { attachHandshakeTransport, attachRelaySocket } from './tunnel-server.ts'
 export { attachDirectSignaling, encodeSignalDescription } from './direct-signaling.ts'; export type { DirectSignalingGate, DirectSignalingOptions } from './direct-signaling.ts'
 export { WeriftDataChannelTransport } from './webrtc-transport.ts'
 export { createHostGateway } from './gateway.ts'; export type { GatewayAsset, GatewayEndpoint, HostGateway, HostGatewayOptions } from './gateway.ts'
-export { QuickTunnelController } from './quick-tunnel.ts'; export type { QuickTunnelChild, QuickTunnelOptions, QuickTunnelStatus } from './quick-tunnel.ts'
+export { QuickTunnelController, CLOUDFLARED_QUICK_PROVIDER } from './quick-tunnel.ts'; export type { QuickTunnelChild, QuickTunnelOptions, QuickTunnelProvider, QuickTunnelStatus } from './quick-tunnel.ts'
 export { checkCustomEndpoint, createNodeCustomEndpointAdapters, validateCustomEndpoint } from './public-endpoint.ts'; export type { CustomEndpointAdapters, CustomEndpointCheck } from './public-endpoint.ts'
 export { applyPublicEndpointSelection, loadPublicEndpointOverlay, parseEndpointSelection, savePublicEndpointOverlay } from './endpoint-settings.ts'
 export type { PublicEndpointApplyResult, PublicEndpointSelection } from './endpoint-settings.ts'
@@ -62,7 +61,6 @@ export function apply(ctx: Context, config: Config): void {
   function tunnelOptions(room: string) { return { upstreamHost: resolved.dshHost, upstreamPort: resolved.dshPort, handshake: { keypair, offers, devices: store, room }, logger: (message: string) => ctx.logger.info('dsh-mobile-pairing: ' + message) } }
   const gateway = createHostGateway({
     bind: resolved.gatewayBind, port: resolved.gatewayPort, hostIdentity: keypair.publicKeyBase64Url,
-    shellAsset: path => readShellAsset(resolved.browserShellPath, path),
     pluginOrigin: { host: resolved.dshHost, port: resolved.dshPort },
     isPersistentRoom: room => store.hasLiveForRoom(room),
     onSignal: (socket, room) => { attachDirectSignaling(socket, { iceServers: resolved.stunUrls.map(url => ({ urls: url })), onChannel: channel => { attachHandshakeTransport(new WeriftDataChannelTransport(channel), tunnelOptions(room)) }, onError: error => ctx.logger.error(error) }) },
@@ -72,7 +70,12 @@ export function apply(ctx: Context, config: Config): void {
   let quick: QuickTunnelController | null = null
   function startQuickTunnel(local: string): void {
     quick = new QuickTunnelController({
-      spawn: (_command, args) => spawn(resolved.cloudflaredPath, args, { stdio: ['ignore', 'pipe', 'pipe'] }),
+      spawn: (command, args) => spawn(command === 'cloudflared' ? resolved.cloudflaredPath : command, args, { stdio: ['ignore', 'pipe', 'pipe'] }),
+      provider: {
+        command: resolved.quickTunnelCommand ?? 'cloudflared',
+        args: local => (resolved.quickTunnelArgs ?? ['tunnel', '--url', '{gateway}', '--no-autoupdate']).map(part => part.replaceAll('{gateway}', local)),
+        ...(resolved.quickTunnelEndpointPattern === undefined ? {} : { endpointPattern: new RegExp(resolved.quickTunnelEndpointPattern, 'ig') }),
+      },
       restartOnUnexpectedExit: true,
       onStatus: status => {
         if (status.state === 'ready' || status.state === 'rotated') endpoint = { url: status.endpoint, kind: 'temporary' }
@@ -147,22 +150,14 @@ async function handleLocalPair(req: IncomingMessage, res: ServerResponse, endpoi
   const offer = offers.mintPublic({ endpoint: endpoint.url, endpointKind: endpoint.kind, room, pubkey, ice: stunUrls })
   gateway.authorizeRoom(room, offer.exp * 1000)
   const nativeOfferUrl = buildOfferUrl(appUrl, offer)
-  const browserOfferUrl = buildOfferUrl(endpoint.url, offer)
-  const browserTarget = params.get('target') === 'browser'
-  const offerUrl = browserTarget ? browserOfferUrl : nativeOfferUrl
+  const offerUrl = nativeOfferUrl
   if (params.get('format') === 'svg') {
-    const compactUrl = buildCompactPublicOfferUrl(browserTarget ? endpoint.url : appUrl, offer)
+    const compactUrl = buildCompactPublicOfferUrl(appUrl, offer)
     const svg = await renderPairingQrSvg(compactUrl)
     res.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'no-store' }); res.end(svg); return
   }
-  json(res, 200, { ...offer, offerUrl, nativeOfferUrl, browserOfferUrl })
+  json(res, 200, { ...offer, offerUrl, nativeOfferUrl })
 }
-function readShellAsset(root: string, requestPath: string) {
-  const name = requestPath === '/' ? 'index.html' : requestPath.slice(1); const path = normalize(join(root, name)); const rel = relative(root, path)
-  if (rel.startsWith('..') || rel === '') return null
-  try { return { body: readFileSync(path), contentType: contentType(path), cacheControl: name === 'index.html' ? 'no-cache' : 'public, max-age=31536000, immutable' } } catch { return null }
-}
-function contentType(path: string): string { if (path.endsWith('.html')) return 'text/html; charset=utf-8'; if (path.endsWith('.js')) return 'text/javascript; charset=utf-8'; if (path.endsWith('.css')) return 'text/css; charset=utf-8'; if (path.endsWith('.svg')) return 'image/svg+xml'; if (path.endsWith('.json')) return 'application/json'; return 'application/octet-stream' }
 const RETAINED_QUICK = Symbol.for('dsh-mobile.quick-tunnel')
 function retainQuickTunnel(controller?: QuickTunnelController | null): QuickTunnelController | null {
   const holder = globalThis as typeof globalThis & { [RETAINED_QUICK]?: QuickTunnelController }

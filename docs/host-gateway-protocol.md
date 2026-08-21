@@ -14,12 +14,10 @@ The pairing plugin owns a standalone HTTP/WebSocket listener bound only to loopb
 | --- | --- | --- |
 | `GET /.well-known/dsh-mobile` | Host Identity, protocol and capabilities | Public |
 | `GET /healthz`, `GET /capabilities` | Equivalent logical health/capability seam | Public |
-| `GET /<packaged asset>` | Serve browser-shell files from the configured package directory | Public |
-| `GET /plugins/<id>/…` | Bounded loopback fetch of Host plugin client bundles for the browser shell | Public |
 
-The Public Gateway deliberately has no HTTP route that mints offers, exchanges codes, or accepts bearer device tokens. The loopback-only Host administration route mints QR offers and authorizes their rooms. Android and browser clients claim the code inside the encrypted WebRTC/WebSocket session. Endpoint Refresh is a rescan of a new signed offer for a known Host Identity; native code upserts the existing Profile and reuses its vaulted authorization.
+The Public Gateway deliberately has no HTTP route that mints offers, exchanges codes, or accepts bearer device tokens. The loopback-only Host administration route mints QR offers and authorizes their rooms. The Android APK claims the code inside the encrypted WebRTC/WebSocket session. Endpoint Refresh is a rescan of a new signed offer for a known Host Identity; native code upserts the existing Profile and reuses its vaulted authorization.
 
-Unknown routes are 404. Asset paths reject traversal, URL-shaped paths, and backslashes. The Gateway has no target URL parameter and no generic HTTP/TCP proxy operation.
+Unknown routes are 404. The Gateway has no static product shell, no target URL parameter, and no generic HTTP/TCP proxy operation.
 
 ## WebSocket surfaces
 
@@ -33,15 +31,14 @@ Only 128-bit rooms minted by this Gateway or restored from authorized devices ar
 
 `checkCustomEndpoint` uses injected fetch and WebSocket adapters and reports a precise failing stage: endpoint syntax, TLS/HTTP reachability, Host Identity, protocol, capabilities, or WebSocket upgrade. Unit tests use offline adapters. The Host settings integration must supply production adapters and present these stage names before saving an endpoint.
 
-## Browser shell integration
+## Product client
 
-`browserShellPath` defaults to `<DSH_HOME>/mobile/browser-shell`. Packaging must place an `index.html` and immutable local assets there; the Gateway never fetches a runtime CDN. Native applications continue to use packaged native assets and the same protocol endpoint.
+The APK is the only Product Client. The Gateway does not serve an HTML shell or packaged browser assets. Native applications use assets shipped in the APK and the same protocol endpoint.
 
 ## Remaining application integration
 
 Product Clients already consume v4 offers, apply Endpoint Refresh by Host Identity, and select direct versus tunnel routes. Remaining consumers of this foundation:
 
 - Host settings save Custom Endpoint mode through `POST /pair/endpoint` after staged checks. The live selection is stored in `$DSH_HOME/mobile/public-endpoint.json` and overlays the YAML default.
-- `npm run build` copies the packaged browser shell into `DSH_HOME/mobile/browser-shell` when that home is set.
 
 These are not reasons to expose the upstream web server as a Public Endpoint.

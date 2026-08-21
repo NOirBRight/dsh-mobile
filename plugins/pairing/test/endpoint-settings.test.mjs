@@ -11,7 +11,7 @@ import {
 } from '../src/endpoint-settings.ts'
 
 const ready = {
-  fetch: async () => ({ ok: true, status: 200, json: async () => ({ protocol: 1, hostIdentity: 'host-key', capabilities: { browser: true, direct: true, tunnel: true, endpointRefresh: true } }) }),
+  fetch: async () => ({ ok: true, status: 200, json: async () => ({ protocol: 1, hostIdentity: 'host-key', capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true } }) }),
   openWebSocket: async () => ({ close() {} }),
 }
 
@@ -32,7 +32,7 @@ test('custom save runs staged check and rejects a foreign Host Identity', async 
   assert.deepEqual(passed, {
     ok: true, endpointMode: 'custom',
     endpoint: { url: 'https://host.example', kind: 'custom' },
-    check: { ok: true, stage: 'ready', hostIdentity: 'host-key', capabilities: { browser: true, direct: true, tunnel: true, endpointRefresh: true } },
+    check: { ok: true, stage: 'ready', hostIdentity: 'host-key', capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true } },
   })
 
   const foreign = await applyPublicEndpointSelection(

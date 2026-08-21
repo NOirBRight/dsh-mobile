@@ -24,7 +24,7 @@ test('custom endpoint checks name every failing stage', async () => {
   assert.equal((await checkCustomEndpoint('https://host.example', { fetch: async () => ({ ok: true, status: 200, json: async () => ({ protocol: 1 }) }), openWebSocket: async () => ({ close() {} }) })).stage, 'identity')
   assert.equal((await checkCustomEndpoint('https://host.example', { fetch: async () => ({ ok: true, status: 200, json: async () => ({ protocol: 1, hostIdentity: 'k', capabilities: {} }) }), openWebSocket: async () => ({ close() {} }) })).stage, 'capabilities')
   assert.equal((await checkCustomEndpoint('https://host.example', {
-    fetch: async () => ({ ok: true, status: 200, json: async () => ({ protocol: 1, hostIdentity: 'k', capabilities: { browser: true, direct: true, tunnel: true, endpointRefresh: true } }) }),
+    fetch: async () => ({ ok: true, status: 200, json: async () => ({ protocol: 1, hostIdentity: 'k', capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true } }) }),
     openWebSocket: async () => { throw new Error('upgrade failed') },
   })).stage, 'websocket')
 })
@@ -34,10 +34,10 @@ test('custom endpoint checks validate HTTP identity/capabilities then WebSocket 
   const result = await checkCustomEndpoint('https://host.example/', {
     fetch: async (url) => {
       assert.equal(url, 'https://host.example/.well-known/dsh-mobile')
-      return { ok: true, status: 200, json: async () => ({ protocol: 1, hostIdentity: 'host-key', capabilities: { browser: true, direct: true, tunnel: true, endpointRefresh: true } }) }
+      return { ok: true, status: 200, json: async () => ({ protocol: 1, hostIdentity: 'host-key', capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true } }) }
     },
     openWebSocket: async (url) => { opened.push(url); return { close() {} } },
   })
-  assert.deepEqual(result, { ok: true, stage: 'ready', hostIdentity: 'host-key', capabilities: { browser: true, direct: true, tunnel: true, endpointRefresh: true } })
+  assert.deepEqual(result, { ok: true, stage: 'ready', hostIdentity: 'host-key', capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true } })
   assert.deepEqual(opened, ['wss://host.example/signal/check'])
 })

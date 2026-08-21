@@ -15,6 +15,8 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { createMobileLayoutStore } from './stores.ts'
 import css from './MobileFrame.module.css'
+import { blurComposer } from './composer-attach.ts'
+import { resolveMobileViewportHeight } from './mobile-viewport.ts'
 
 /** Official expanded-sidebar geometry used whenever the viewport permits it. */
 export const OFFICIAL_DRAWER_WIDTH = 280
@@ -23,6 +25,16 @@ export const OFFICIAL_DRAWER_WIDTH = 280
 export function resolveRenderedDrawerWidth(measured: number | undefined, previous: number): number {
   if (measured !== undefined && Number.isFinite(measured) && measured > 0) return measured
   return previous > 0 ? previous : OFFICIAL_DRAWER_WIDTH
+}
+
+/** Whether a sidebar navigation action should dismiss the mobile drawer. */
+export function shouldCloseDrawerForTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  if (target.closest('[role="treeitem"][aria-selected]') !== null) return true
+  const button = target.closest('button[aria-label]')
+  if (!(button instanceof HTMLButtonElement)) return false
+  const label = button.getAttribute('aria-label') ?? ''
+  return /(?:new|create)\s+session/i.test(label) || /(?:新建|创建)会话/.test(label)
 }
 
 /** Full composed props: runtime share + child-slot render share + store share. */
@@ -39,6 +51,7 @@ export function MobileFrame({
   renderSlot,
 }: MobileFrameProps) {
   const panels = useStore(s => s)
+  const frameRef = useRef<HTMLDivElement | null>(null)
   const drawerRef = useRef<HTMLElement | null>(null)
   const [drawerWidth, setDrawerWidth] = useState(OFFICIAL_DRAWER_WIDTH)
   const drawerWidthRef = useRef(drawerWidth)
@@ -47,6 +60,10 @@ export function MobileFrame({
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
   })
+  const sessionTitle = useSessions((s) => {
+    const current = s.current
+    return current === undefined ? 'DeepSeek Harness' : s.byId[current]?.displayTitle ?? current
+  })
 
   // Session switch closes the details sheet and the drawer: on mobile both
   // cover the content column, so keeping them open across navigation strands
@@ -54,12 +71,30 @@ export function MobileFrame({
   // dismissal is the mobile addition).
   const lastSession = useRef(detailsSession)
   useLayoutEffect(() => {
-    if (detailsSession === undefined) return
-    if (lastSession.current !== undefined && lastSession.current !== detailsSession) {
+    if (lastSession.current === detailsSession) return
+    // ConversationRoot intentionally reuses its textarea across sessions.
+    // Remove focus before the new session paints so Android does not reopen
+    // the IME as part of that retained DOM transition.
+    const stopLateComposerFocus = (event: FocusEvent): void => {
+      const target = event.target
+      if (target instanceof HTMLTextAreaElement && target.closest('[data-composer-card]') !== null) {
+        target.blur()
+      }
+    }
+    document.addEventListener('focus', stopLateComposerFocus, true)
+    blurComposer()
+    const release = window.setTimeout(() => {
+      document.removeEventListener('focus', stopLateComposerFocus, true)
+    }, 100)
+    if (lastSession.current !== undefined && detailsSession !== undefined) {
       actions.closeDetails()
       actions.closeDrawer()
     }
     lastSession.current = detailsSession
+    return () => {
+      window.clearTimeout(release)
+      document.removeEventListener('focus', stopLateComposerFocus, true)
+    }
   }, [actions, detailsSession])
 
   // Publish the rendered drawer box, including viewport constraints, to its owner.
@@ -77,8 +112,33 @@ export function MobileFrame({
     return () => { observer.disconnect() }
   }, [])
 
+  // Android Chrome can keep the layout viewport at full height while the IME
+  // shrinks only visualViewport. Give the shell the visible height so the
+  // official sticky composer remains above the keyboard instead of underneath it.
+  useLayoutEffect(() => {
+    const frame = frameRef.current
+    if (frame === null) return
+    const viewport = window.visualViewport
+    const update = (): void => {
+      const layoutHeight = document.documentElement.clientHeight || window.innerHeight
+      const visibleHeight = viewport?.height
+      const height = resolveMobileViewportHeight(layoutHeight, visibleHeight)
+      if (height > 0) frame.style.setProperty('--dsh-mobile-viewport-height', height + 'px')
+    }
+    update()
+    window.addEventListener('resize', update)
+    viewport?.addEventListener('resize', update)
+    viewport?.addEventListener('scroll', update)
+    return () => {
+      window.removeEventListener('resize', update)
+      viewport?.removeEventListener('resize', update)
+      viewport?.removeEventListener('scroll', update)
+    }
+  }, [])
+
   return (
     <div
+      ref={frameRef}
       className={css.frame}
       data-drawer-open={panels.drawerOpen || undefined}
       data-details-open={panels.detailsOpen || undefined}
@@ -92,6 +152,7 @@ export function MobileFrame({
         >
           ☰
         </button>
+        <div className={css.sessionTitle} title={sessionTitle}>{sessionTitle}</div>
       </header>
       <main className={css.center}>
         {renderSlot('conversation', {})}
@@ -105,10 +166,7 @@ export function MobileFrame({
           // Session rows and search results expose aria-selected; workspace
           // treeitems expose aria-expanded instead and must keep the drawer open.
           // Row action buttons stop propagation, so their menus remain usable.
-          const target = event.target
-          if (target instanceof Element && target.closest('[role="treeitem"][aria-selected]') !== null) {
-            actions.closeDrawer()
-          }
+          if (shouldCloseDrawerForTarget(event.target)) actions.closeDrawer()
         }}
       >
         {/* Owner params mirror the desktop contract: the drawer is always

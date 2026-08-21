@@ -68,6 +68,29 @@ test('a scanned offer replaces a Host Profile whose vault credential is gone', a
   assert.equal(secret.pairingCode, '654321')
 })
 
+test('a transient vault read error does not delete the Host Profile', async () => {
+  const { vault, repository } = fixture()
+  await prepareProfileConnection({
+    repository, vault, offerUrl: offerUrl(),
+    generateKeypair: () => ({ publicKey: keypair.publicKey.slice(), secretKey: keypair.secretKey.slice() }),
+  })
+  const before = await repository.getActive()
+  const failingVault = {
+    store: vault.store.bind(vault),
+    replace: vault.replace.bind(vault),
+    delete: vault.delete.bind(vault),
+    read: async () => { throw new Error('keystore busy') },
+  }
+  await assert.rejects(
+    prepareProfileConnection({ repository, vault: failingVault, offerUrl: offerUrl({ code: '654321' }) }),
+    /keystore busy/,
+  )
+  const after = await repository.getActive()
+  assert.equal((await repository.list()).length, 1)
+  assert.equal(after.hostId, before.hostId)
+  assert.equal(after.credentialRef, before.credentialRef)
+})
+
 test('persisting a device token does not delete the live vault ref if the process dies next', async () => {
   const { vault, repository } = fixture()
   const prepared = await prepareProfileConnection({ repository, vault, offerUrl: offerUrl(), generateKeypair: () => keypair })

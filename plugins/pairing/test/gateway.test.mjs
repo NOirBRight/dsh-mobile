@@ -15,8 +15,8 @@ test('loopback Gateway exposes bounded HTTP and signaling/tunnel WebSockets', as
   const port = await gateway.listen(); t.after(() => gateway.close())
   const base = 'http://127.0.0.1:' + port
   const health = await (await fetch(base + '/.well-known/dsh-mobile')).json()
-  assert.deepEqual(health, { protocol: 1, hostIdentity: 'host-key', capabilities: { browser: true, direct: true, tunnel: true, endpointRefresh: true } })
-  assert.equal(await (await fetch(base + '/')).text(), '<!doctype html>shell')
+  assert.deepEqual(health, { protocol: 1, hostIdentity: 'host-key', capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true } })
+  assert.equal((await fetch(base + '/')).status, 404)
   assert.equal((await fetch(base + '/http://127.0.0.1:3080')).status, 404)
 
   // Public callers may load the shell and capabilities, but only the local

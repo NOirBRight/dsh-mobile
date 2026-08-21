@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { adaptBootManifestForMobile, DESKTOP_LAYOUT_ID, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest } from '../src/manifest.ts'
+import { adaptBootManifestForMobile, createMemoryPluginCache, readCachedBootManifest, writeCachedBootManifest, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability } from '../src/manifest.ts'
 
 test('replaces desktop layout and drops browser HMR without mutating host manifest', () => {
   const host = {
@@ -22,12 +22,12 @@ test('replaces desktop layout and drops browser HMR without mutating host manife
   const mobile = adaptBootManifestForMobile(host)
 
   assert.deepEqual(host, snapshot)
-  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.0')
+  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.22')
   assert.deepEqual(mobile.entries.map(entry => entry.id), ['before', MOBILE_LAYOUT_ID, 'after'])
   assert.deepEqual(mobile.entries[1], {
     id: MOBILE_LAYOUT_ID,
-    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.0',
-    rev: '0.1.0',
+    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.22',
+    rev: '0.1.22',
     inject: ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-theme'],
   })
 })
@@ -109,7 +109,7 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
     rev: 'mobile',
     entries: [
       { id: 'runtime', url: '/plugins/runtime/client.js?rev=a', rev: 'a', inject: [] },
-      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.0', rev: '0.1.0', inject: [] },
+      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.22', rev: '0.1.22', inject: [] },
       { id: 'leaf', url: '/plugins/leaf/client.js?rev=b', rev: 'b', inject: ['runtime'] },
     ],
   }
@@ -128,8 +128,37 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
   assert.equal(localized.entries[2].url, 'blob:test/leaf/32')
   assert.deepEqual(manifest.entries.map(entry => entry.url), [
     '/plugins/runtime/client.js?rev=a',
-    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.0',
+    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.22',
     '/plugins/leaf/client.js?rev=b',
+  ])
+})
+
+test('cached host plugins are not fetched again until revision changes', async () => {
+  const cache = createMemoryPluginCache()
+  const manifest = {
+    rev: 'r1',
+    entries: [
+      { id: 'runtime', url: '/plugins/runtime/client.js?rev=a', rev: 'a', inject: [] },
+      { id: 'leaf', url: '/plugins/leaf/client.js?rev=b', rev: 'b', inject: [] },
+    ],
+  }
+  const loaded = []
+  const load = async url => { loaded.push(url); return '// ' + url }
+  await localizePluginBundles(manifest, { load, createUrl: (_source, id) => id, cache })
+  assert.equal(loaded.length, 2)
+  await localizePluginBundles(manifest, { load, createUrl: (_source, id) => id, cache })
+  assert.equal(loaded.length, 2)
+  await localizePluginBundles({
+    ...manifest,
+    entries: [
+      { id: 'runtime', url: '/plugins/runtime/client.js?rev=a2', rev: 'a2', inject: [] },
+      { id: 'leaf', url: '/plugins/leaf/client.js?rev=b', rev: 'b', inject: [] },
+    ],
+  }, { load, createUrl: (_source, id) => id, cache })
+  assert.deepEqual(loaded, [
+    '/plugins/runtime/client.js?rev=a',
+    '/plugins/leaf/client.js?rev=b',
+    '/plugins/runtime/client.js?rev=a2',
   ])
 })
 
@@ -158,6 +187,7 @@ test('loads a validated raw same-origin manifest before responsive root selectio
   const host = {
     rev: 'host-direct',
     entries: [
+      { id: '@deepseek-ai/dsh-client-connection', url: '/plugins/connection/client.js', rev: 'connection', inject: [] },
       { id: '@deepseek-ai/dsh-client-ui-layout', url: '/plugins/desktop/client.js', rev: 'desktop', inject: [] },
       { id: 'conversation', url: '/plugins/conversation/client.js', rev: 'conversation', inject: [] },
     ],
@@ -174,7 +204,16 @@ test('loads a validated raw same-origin manifest before responsive root selectio
   assert.equal(requests.length, 1)
   assert.equal(requests[0][0], '/__dsh_boot')
   assert.equal(requests[0][1].credentials, 'same-origin')
-  assert.deepEqual(manifest.entries.map(entry => entry.id), [DESKTOP_LAYOUT_ID, 'conversation'])
+  assert.deepEqual(manifest.entries.map(entry => entry.id), ['@deepseek-ai/dsh-client-connection', DESKTOP_LAYOUT_ID, 'conversation'])
+  assert.equal(manifest.entries[0].url, '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.22')
+  assert.equal(manifest.entries[0].rev, '0.1.22')
+})
+
+test('marks and clears the explicit same-origin Host bridge capability', () => {
+  setSameOriginHostBridgeCapability(true)
+  assert.deepEqual(globalThis[DSH_HOST_BRIDGE_CAPABILITY], { loopback: true })
+  setSameOriginHostBridgeCapability(false)
+  assert.equal(globalThis[DSH_HOST_BRIDGE_CAPABILITY], undefined)
 })
 
 test('reports an unavailable same-origin host without booting a blank shell', async () => {
@@ -200,4 +239,42 @@ test('fails loud when the host desktop layout seam is absent or duplicated', () 
     () => adaptBootManifestForMobile({ rev: 'x', entries: [desktop, desktop] }),
     /expected exactly one desktop layout entry, found 2/,
   )
+})
+
+test('cached boot manifest round-trips by Host Identity', () => {
+  const storage = new Map()
+  const adapter = {
+    getItem(key) { return storage.get(key) ?? null },
+    setItem(key, value) { storage.set(key, value) },
+  }
+  const host = {
+    rev: 'host-rev',
+    entries: [{ id: '@deepseek-ai/dsh-client-ui-layout', url: '/plugins/desktop-layout.js', rev: 'desktop', inject: [] }],
+  }
+  writeCachedBootManifest('host-a', host, adapter)
+  assert.deepEqual(readCachedBootManifest('host-a', adapter), host)
+  assert.equal(readCachedBootManifest('host-b', adapter), undefined)
+})
+
+test('cache-only localization fails instead of fetching on a miss', async () => {
+  const cache = createMemoryPluginCache()
+  await cache.write('plugin-a', '1', 'source-a')
+  const manifest = {
+    rev: 'r',
+    entries: [
+      { id: DESKTOP_LAYOUT_ID, url: '/plugins/desktop.js', rev: 'desktop', inject: [] },
+      { id: 'plugin-a', url: '/plugins/a.js', rev: '1', inject: [] },
+    ],
+  }
+  let loads = 0
+  await assert.rejects(
+    localizePluginBundles(manifest, {
+      load: async () => { loads += 1; return 'fetched' },
+      createUrl: (_source, id) => id,
+      cache,
+      cacheOnly: true,
+    }),
+    /plugin cache miss: @deepseek-ai\/dsh-client-ui-layout|plugin cache miss/,
+  )
+  assert.equal(loads, 0)
 })

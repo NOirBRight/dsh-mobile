@@ -1,6 +1,6 @@
 # @dsh-mobile/ui-layout-mobile
 
-移动端根布局:`dsh.client` 插件(platform web),注册进 web shell 内建的 `'root'` slot,**逐字实现上游 `@deepseek-ai/dsh-client-ui-layout` 的 slot 契约**,使全部 leaf 插件(ui-sidebar、ui-conversation 等)不经修改继续工作。布局本体是移动形态:单栏 + 顶栏(菜单按钮)+ sidebar 滑出抽屉 + details 全屏底部弹层 + 安全区内边距。
+移动端根布局:`dsh.client` 插件(platform web),注册进 web shell 内建的 `'root'` slot,**逐字实现上游 `@deepseek-ai/dsh-client-ui-layout` 的 slot 契约**,使全部 leaf 插件(ui-sidebar、ui-conversation 等)不经修改继续工作。布局本体是移动形态:单栏 + 顶栏(菜单按钮)+ sidebar 滑出抽屉 + details 全屏底部弹层 + 安全区内边距。维护者在 `dshapp` 上改本包时必须遵守 [docs/ops-dshapp-without-restarting-web.md](../../docs/ops-dshapp-without-restarting-web.md)：不重启 `dshweb` 的 Host，也不把本包做成第二套功能 UI 或独立设计系统。窄屏加号拦截后只弹出「命令 / 插入图片」；图片仍走 Host 官方的 draft-image 通道（PNG/JPG/WebP/GIF），不提供协议并不支持的任意文件上传入口。
 
 ## Slot 契约(本包的维护面)
 
@@ -26,6 +26,10 @@
 - 桌面三栏/拖拽把手/ concession 链 → 移动单栏 + 抽屉 + 弹层;store 状态从 px 宽度简化为 `{ drawerOpen, detailsOpen }`。
 - 会话切换时除关闭 details(上游行为)外**还关闭抽屉**(移动端导航即收起的惯例)。
 - 抽屉打开时不传 `collapsed: true`,侧边栏的紧凑轨道 UI 在移动端永不出现。
+
+## 静态加载修订号
+
+`apps/mobile-web/src/manifest.ts` 的 `MOBILE_LAYOUT_REV` 是 dshapp/APK 为本地 layout bundle 使用的缓存失效号；它不是 DSH 版本，也不是本包 `package.json` 的语义版本。每次发布静态 `client.js` 时递增，确保浏览器请求新 URL。
 
 ## 构建
 

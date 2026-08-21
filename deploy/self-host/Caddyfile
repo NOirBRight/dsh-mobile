@@ -1,0 +1,4 @@
+{$ENDPOINT_HOST} {
+  encode gzip
+  reverse_proxy frps:8080
+}

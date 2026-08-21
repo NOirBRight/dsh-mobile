@@ -42,7 +42,8 @@ export async function prepareProfileConnection(options: PrepareProfileConnection
     if (existing !== undefined) {
       try {
         await readCredential(options.vault, existing.credentialRef)
-      } catch {
+      } catch (error) {
+        if (!isMissingCredential(error)) throw error
         await options.repository.remove(existing.hostId)
         existing = undefined
       }
@@ -179,10 +180,22 @@ function offerFromProfile(profile: HostProfile, code: string, now: Date): string
   return 'dsh-mobile://pair#offer=' + b64urlEncode(new TextEncoder().encode(JSON.stringify(offer)))
 }
 
+/** Confirmed vault miss — the only credential error that may drop a Host Profile. */
+export class MissingCredentialError extends Error {
+  constructor() {
+    super('Host Profile credential is missing; re-pair this Host')
+    this.name = 'MissingCredentialError'
+  }
+}
+
 async function readCredential(vault: ReadableCredentialVault, ref: string) {
   const bytes = await vault.read(ref)
-  if (bytes === undefined) throw new Error('Host Profile credential is missing; re-pair this Host')
+  if (bytes === undefined) throw new MissingCredentialError()
   try { return decodeSessionCredential(bytes) } finally { bytes.fill(0) }
+}
+
+function isMissingCredential(error: unknown): boolean {
+  return error instanceof MissingCredentialError
 }
 
 function wipeCredential(value: { clientKeypair: ClientKeypair }): void {

@@ -1,0 +1,58 @@
+/* Host is portaled to document.body so the composer tool row stays empty. */
+
+/* Busy ordinary sessions render Stop in the primary seat. The bridge keeps the
+   official button and event path, but paints the seat as the mobile Send glyph
+   while a follow-up draft is present. */
+:global(button[data-mobile-send-draft]) {
+  font-size: 0 !important;
+}
+
+:global(button[data-mobile-send-draft] > svg:not([data-mobile-send-glyph])) {
+  display: none;
+}
+
+:global(button[data-mobile-send-draft] > [data-mobile-send-glyph]) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.host {
+  position: fixed;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.anchor {
+  display: none;
+}
+
+.fileInput {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  z-index: 10060;
+  transform: translateX(-50%);
+  max-width: min(92vw, 420px);
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-overlay, var(--dsw-alias-bg-base));
+  color: var(--dsw-alias-label-primary);
+  border: 1px solid var(--dsw-alias-border-l1);
+  font: 13px/1.4 system-ui, sans-serif;
+  pointer-events: none;
+}

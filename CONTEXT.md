@@ -13,7 +13,7 @@ The stable cryptographic public-key identity of one Host. It is independent of d
 The Product Client's persistent record for one Host. It identifies that Host, carries that Host-scoped device authorization, remembers known connection endpoints, and can be selected independently of other Host Profiles. Scanning the same Host Identity updates this Profile instead of creating a duplicate.
 
 ## Client Instance
-One native app installation or one browser origin paired to a Host. Each Client Instance receives an independent Host-scoped authorization and may be revoked without affecting other Client Instances.
+One native app installation paired to a Host. Each Client Instance receives an independent Host-scoped authorization and may be revoked without affecting other Client Instances. Browser Client Instances were retired by ADR 0005.
 
 ## Host Gateway
 The dedicated protocol entry running beside a Host. It provides WebRTC rendezvous and optional Tunnel Fallback without exposing the raw DSH web port or acting as a general-purpose network proxy.
@@ -28,7 +28,7 @@ An official DSH UI capability supplied by the Host. It owns feature content and 
 A narrow-width recomposition of Upstream UI Modules. It owns phone placement, navigation structure, and compact information presentation, but not replacement feature content or an independent visual design system. Wide surfaces retain the upstream official layout.
 
 ## Personal Recovery Surface
-A maintainer-only direct web entry to the maintainer's own DSH. It is an operational fallback, not Product Client infrastructure and not a public product dependency.
+A maintainer-only direct web entry to the maintainer's own DSH. It is an operational fallback, not Product Client infrastructure and not a public product dependency. `dshweb` is the frozen official-layout entry on the daily Host; `dshapp` is the same Host with a static Mobile Layout shell. Iterating `dshapp` must not restart the Host process that serves `dshweb`.
 
 ## Public Endpoint
 The public connection address advertised by one Host. It is part of that Host's configuration rather than a global Product Client setting. A Public Endpoint may be a provider-assigned Temporary Endpoint or an operator-configured Custom Endpoint, and may offer rendezvous plus optional Tunnel Fallback capabilities.

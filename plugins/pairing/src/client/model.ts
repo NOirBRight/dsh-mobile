@@ -1,4 +1,4 @@
-export type PairingTarget = 'android' | 'browser'
+export type PairingTarget = 'android'
 
 /** Settings nav id/order: immediately after official General. */
 export const REMOTE_SETTINGS_SECTION = { id: 'remote', order: 5 } as const
@@ -92,15 +92,10 @@ export function pairingQrUrl(target: PairingTarget, revision: number): string {
   return `/pair?target=${target}&format=svg&refresh=${revision}`
 }
 
-/** One HTTPS offer works for the in-app scanner and for a phone camera opening the browser. */
-export function sharedPairingQrUrl(revision: number): string {
-  return pairingQrUrl('browser', revision)
-}
-
 export interface PairedDevice {
   id: string
   label?: string
-  clientType?: 'android' | 'browser'
+  clientType?: 'android'
   createdAt: number
   lastSeenAt: number
   revokedAt: number | null
@@ -125,7 +120,7 @@ export function decodePairedDevices(value: unknown): PairedDevice[] | null {
       lastSeenAt,
       revokedAt,
       ...(typeof record.label === 'string' ? { label: record.label } : {}),
-      ...(record.clientType === 'android' || record.clientType === 'browser' ? { clientType: record.clientType } : {}),
+      ...(record.clientType === 'android' ? { clientType: record.clientType } : {}),
       ...(typeof record.room === 'string' ? { room: record.room } : {}),
     })
   }
@@ -133,7 +128,7 @@ export function decodePairedDevices(value: unknown): PairedDevice[] | null {
 }
 
 export function pairingRefreshQrUrl(room: string, revision: number): string {
-  return `/pair?target=browser&format=svg&room=${encodeURIComponent(room)}&refresh=${revision}`
+  return `/pair?format=svg&room=${encodeURIComponent(room)}&refresh=${revision}`
 }
 
 export function livePairedDevices(devices: readonly PairedDevice[]): PairedDevice[] {

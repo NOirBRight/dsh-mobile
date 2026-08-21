@@ -134,7 +134,7 @@ test('public endpoint offer carries Host-owned rendezvous and fallback capabilit
   assert.equal(offer.protocol, 1)
   assert.equal(offer.endpoint, 'https://host.example')
   assert.equal(offer.endpointKind, 'temporary')
-  assert.deepEqual(offer.capabilities, { browser: true, direct: true, tunnel: true, endpointRefresh: true })
+  assert.deepEqual(offer.capabilities, { browser: false, direct: true, tunnel: true, endpointRefresh: true })
   assert.deepEqual(offer.ice, ['stun:stun.example.com:3478'])
   assert.equal(offers.exchange(offer.code), true)
   assert.equal(offers.exchange(offer.code), false)
@@ -150,7 +150,7 @@ test('compact public QR stays shorter than the previously working v3 scanner pay
   assert.ok(url.length < 377, 'compact QR grew to ' + url.length + ' characters')
   const payload = JSON.parse(Buffer.from(url.split('#offer=')[1], 'base64url').toString())
   assert.equal(payload[0], 4)
-  assert.equal(payload[7], 15)
+  assert.equal(payload[7], 14)
 })
 
 test('public endpoint offers reject insecure endpoints and TURN', () => {

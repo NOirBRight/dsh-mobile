@@ -1,0 +1,11 @@
+serverAddr = "YOUR_VPS_IP"
+serverPort = 7000
+auth.method = "token"
+auth.token = "replace-me"
+
+[[proxies]]
+name = "dsh-gateway"
+type = "http"
+customDomains = ["pair.example.com"]
+localIP = "127.0.0.1"
+localPort = 43169

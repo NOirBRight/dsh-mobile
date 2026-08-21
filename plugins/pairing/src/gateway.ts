@@ -10,7 +10,8 @@ export interface HostGatewayOptions {
   bind: '127.0.0.1' | '::1' | 'localhost'
   port: number
   hostIdentity: string
-  shellAsset(path: string): GatewayAsset | null
+  /** Optional static files. HTML product shells are never served; the APK is the only client. */
+  shellAsset?(path: string): GatewayAsset | null
   /** Fixed loopback DSH origin for Host plugin client bundles. Not a generic proxy. */
   pluginOrigin?: { host: string; port: number }
   /** Host-side authorization lookup; no token material crosses this interface. */
@@ -24,7 +25,7 @@ export interface HostGateway {
   close(): Promise<void>
   authorizeRoom(room: string, expiresAtMs?: number): void
 }
-const CAPABILITIES: PublicEndpointCapabilities = { browser: true, direct: true, tunnel: true, endpointRefresh: true }
+const CAPABILITIES: PublicEndpointCapabilities = { browser: false, direct: true, tunnel: true, endpointRefresh: true }
 const ROOM = /^[0-9a-f]{32}$/
 
 export function createHostGateway(options: HostGatewayOptions): HostGateway {
@@ -79,7 +80,9 @@ export function createHostGateway(options: HostGatewayOptions): HostGateway {
     let decoded: string
     try { decoded = decodeURIComponent(path) } catch { return null }
     if (decoded.includes('..') || decoded.includes('://') || decoded.includes(String.fromCharCode(92)) || !decoded.startsWith('/')) return null
-    return options.shellAsset(decoded)
+    const asset = options.shellAsset?.(decoded) ?? null
+    if (asset !== null && asset.contentType.includes('html')) return null
+    return asset
   }
   server.on('upgrade', (req, socket, head) => {
     const path = new URL(req.url ?? '/', 'http://gateway').pathname

@@ -1,6 +1,6 @@
 # 双域名生产部署记录
 
-> **历史个人恢复记录，不是产品部署文档。** 以下维护者域名、VPS 与旧 v3 signaling 配置均不是 DSH Mobile 默认值或依赖，也不参与 Host-owned Public Endpoint、WebRTC Direct 或 Tunnel Fallback。当前产品部署以 [`deployment.md`](./deployment.md) 与 offer v4 协议为准；这些入口仅按要求保持在线。
+> **历史个人恢复记录，不是产品部署文档。** 以下维护者域名、VPS 与旧 v3 signaling 配置均不是 DSH Mobile 默认值或依赖，也不参与 Host-owned Public Endpoint、WebRTC Direct 或 Tunnel Fallback。当前产品部署以 [`deployment.md`](./deployment.md) 与 offer v4 协议为准；这些入口仅按要求保持在线。之后改 dshapp、同时保证 dshweb 不重启的工作纪律见 [`ops-dshapp-without-restarting-web.md`](ops-dshapp-without-restarting-web.md)。
 
 部署时间：2026-08-16（UTC）
 

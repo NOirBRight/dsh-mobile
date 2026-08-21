@@ -1,0 +1,36 @@
+# Self-hosted Custom Endpoint (Caddy + frps)
+#
+# Operator-owned Public Endpoint for DSH Mobile. Not a product default and
+# never baked into the APK. Point Host `endpointMode: custom` at this HTTPS URL.
+#
+# Typical budget: ~50 concurrent-active sealed sessions on a 1 Mbps-class VPS.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      ENDPOINT_HOST: ${ENDPOINT_HOST:?set ENDPOINT_HOST to the public hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - frps
+
+  frps:
+    image: snowdreamtech/frps:0.61.1
+    restart: unless-stopped
+    volumes:
+      - ./frps.toml:/etc/frp/frps.toml:ro
+    command: ["-c", "/etc/frp/frps.toml"]
+    ports:
+      - "7000:7000"
+
+volumes:
+  caddy-data:
+  caddy-config:

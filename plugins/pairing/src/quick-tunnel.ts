@@ -15,11 +15,24 @@ export interface QuickTunnelChild {
   once(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown
   kill(signal?: NodeJS.Signals): boolean
 }
+export interface QuickTunnelProvider {
+  command: string
+  args(localGateway: string): string[]
+  endpointPattern?: RegExp
+}
+
+export const CLOUDFLARED_QUICK_PROVIDER: QuickTunnelProvider = {
+  command: 'cloudflared',
+  args: (localGateway) => ['tunnel', '--url', localGateway, '--no-autoupdate'],
+}
+
 export interface QuickTunnelOptions {
   spawn(command: string, args: string[]): QuickTunnelChild
   onStatus(status: QuickTunnelStatus): void
   /** When set, an unexpected child exit starts another process against the same local Gateway. */
   restartOnUnexpectedExit?: boolean
+  /** Command that yields an HTTPS+WSS URL. Defaults to cloudflared. */
+  provider?: QuickTunnelProvider
 }
 const QUICK_URL = /https:\/\/[a-z0-9-]+\.trycloudflare\.com\b/ig
 
@@ -56,13 +69,14 @@ export class QuickTunnelController {
     const localGateway = this.currentLocal
     if (localGateway === null) throw new Error('Quick Tunnel origin is missing')
     this.options.onStatus({ state: 'starting' })
-    const child = this.options.spawn('cloudflared', ['tunnel', '--url', localGateway, '--no-autoupdate'])
+    const provider = this.options.provider ?? CLOUDFLARED_QUICK_PROVIDER
+    const child = this.options.spawn(provider.command, provider.args(localGateway))
     this.child = child
     let buffered = ''
     const consume = (chunk: Buffer | string): void => {
       if (this.stopping || this.child !== child) return
       buffered = (buffered + chunk.toString()).slice(-8192)
-      for (const match of buffered.matchAll(QUICK_URL)) {
+      for (const match of buffered.matchAll(provider.endpointPattern ?? QUICK_URL)) {
         const endpoint = match[0]
         if (endpoint === this.currentEndpoint) continue
         const previous = this.currentEndpoint

@@ -12,7 +12,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "npm run build --workspace @dsh-mobile/ui-layout-mobile && vite build && node scripts/package-local-shell.mjs && node scripts/package-browser-shell.mjs",
+    "build": "node scripts/build-local-host-bridge.mjs && npm run build --workspace @dsh-mobile/ui-layout-mobile && vite build && node scripts/verify-shell-module-boundary.mjs && node scripts/package-local-shell.mjs",
     "test": "node --test test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "watch": "vite build --watch",

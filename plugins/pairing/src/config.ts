@@ -37,8 +37,12 @@ export interface Config {
   gatewayBind: '127.0.0.1' | '::1' | 'localhost'
   /** Standalone Host Gateway listen port; 0 asks the OS. */
   gatewayPort: number
-  /** Packaged browser shell root. */
-  browserShellPath?: string
+  /** Optional Quick Tunnel executable; defaults to cloudflaredPath. */
+  quickTunnelCommand?: string
+  /** Optional argv template; `{gateway}` is replaced with the loopback Gateway URL. */
+  quickTunnelArgs?: string[]
+  /** Optional regex source that extracts the HTTPS endpoint from Quick Tunnel logs. */
+  quickTunnelEndpointPattern?: string
   /** cloudflared executable used in quick mode. */
   cloudflaredPath: string
   /** Legacy outbound signaling URL; never a product default. */
@@ -64,8 +68,10 @@ export const Config: z<Config> = z.object({
   customEndpointUrl: z.string(),
   gatewayBind: z.string().default('127.0.0.1') as z<'127.0.0.1' | '::1' | 'localhost'>,
   gatewayPort: z.natural().max(65535).default(0),
-  browserShellPath: z.string(),
   cloudflaredPath: z.string().default('cloudflared'),
+  quickTunnelCommand: z.string(),
+  quickTunnelArgs: z.array(z.string()),
+  quickTunnelEndpointPattern: z.string(),
   signalingUrl: z.string(),
   stunUrls: z.array(z.string()).default(['stun:stun.cloudflare.com:3478']),
   enableDirect: z.boolean().default(true),
@@ -75,7 +81,6 @@ export const Config: z<Config> = z.object({
 export interface ResolvedConfig extends Config {
   keyStorePath: string
   tokenStorePath: string
-  browserShellPath: string
 }
 
 /**
@@ -112,10 +117,14 @@ export function resolveConfig(config: Config): ResolvedConfig {
   if (config.codeTtlMs <= 0) {
     throw new Error('dsh-mobile-pairing: codeTtlMs must be positive')
   }
+  if (config.quickTunnelEndpointPattern !== undefined) {
+    try { void new RegExp(config.quickTunnelEndpointPattern, 'ig') } catch {
+      throw new Error('dsh-mobile-pairing: quickTunnelEndpointPattern must be a valid regular expression')
+    }
+  }
   return {
     ...config,
     keyStorePath: config.keyStorePath ?? join(config.dshHome, 'mobile', 'daemon-keypair.json'),
     tokenStorePath: config.tokenStorePath ?? join(config.dshHome, 'mobile', 'devices.json'),
-    browserShellPath: config.browserShellPath ?? join(config.dshHome, 'mobile', 'browser-shell'),
   }
 }

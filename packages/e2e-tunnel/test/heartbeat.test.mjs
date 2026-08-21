@@ -12,22 +12,23 @@ function fakeScheduler() {
   }
 }
 
-test('heartbeat uses configured cadence and marks stale after two misses', async () => {
+test('heartbeat uses configured cadence and marks stale after three misses', async () => {
   const scheduler = fakeScheduler()
   let probes = 0
   const stale = []
   const heartbeat = new HeartbeatController({
-    target: { probe: async (timeout) => { probes += 1; assert.equal(timeout, 10_000); throw new TunnelError('stale') } },
+    target: { probe: async (timeout) => { probes += 1; assert.equal(timeout, 15_000); throw new TunnelError('stale') } },
     scheduler, onStale: (error) => stale.push(error.code),
   })
   heartbeat.start()
-  assert.equal(scheduler.queue[0].delay, 25_000)
+  assert.equal(scheduler.queue[0].delay, 20_000)
   await scheduler.runNext()
   assert.deepEqual(stale, [])
-  assert.equal(scheduler.queue[0].delay, 25_000)
+  await scheduler.runNext()
+  assert.deepEqual(stale, [])
   await scheduler.runNext()
   assert.deepEqual(stale, ['stale'])
-  assert.equal(probes, 2)
+  assert.equal(probes, 3)
   assert.equal(scheduler.queue.length, 0)
 })
 
@@ -42,9 +43,10 @@ test('successful foreground probe resets missed heartbeat count', async () => {
   heartbeat.start()
   await scheduler.runNext() // one miss
   await heartbeat.probeNow() // foreground success resets
-  await scheduler.runNext() // one miss again
+  await scheduler.runNext()
+  await scheduler.runNext()
   assert.equal(stale, 0)
-  await scheduler.runNext() // second consecutive miss
+  await scheduler.runNext()
   assert.equal(stale, 1)
 })
 

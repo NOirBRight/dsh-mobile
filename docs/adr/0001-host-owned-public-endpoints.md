@@ -1,6 +1,6 @@
 # ADR 0001: Host-owned public endpoints and tunnel fallback
 
-- Status: Accepted
+- Status: Accepted; superseded in part by [ADR 0005](0005-vps-endpoint-tunnel-first-app-only.md) (direct-first Automatic policy and browser-client clauses)
 - Date: 2026-08-16
 
 ## Context

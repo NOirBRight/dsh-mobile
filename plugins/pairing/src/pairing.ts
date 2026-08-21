@@ -53,7 +53,7 @@ export interface MintPublicOfferOptions {
 }
 
 const PUBLIC_CAPABILITIES: PublicEndpointCapabilities = {
-  browser: true,
+  browser: false,
   direct: true,
   tunnel: true,
   endpointRefresh: true,

@@ -1,7 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TunnelError } from '@dsh-mobile/e2e-tunnel'
-import { DeferredWebSocket, isHostGatewaySocketPath, isPackagedShellPluginPath, isPublicEndpointPluginPath, TunnelManager } from '../src/tunnel.ts'
+import { DeferredWebSocket, isHostGatewaySocketPath, isPackagedShellPluginPath, isPublicEndpointPluginPath, shouldInstallTunnelShims, TunnelManager } from '../src/tunnel.ts'
+
+test('bare same-origin Host bridge keeps native API while paired and native shells install tunnel shims', () => {
+  assert.equal(shouldInstallTunnelShims(true), false)
+  assert.equal(shouldInstallTunnelShims(false), true)
+})
 
 test('packaged mobile layout is not a tunneled Host plugin path', () => {
   assert.equal(isPackagedShellPluginPath('/plugins/@dsh-mobile/ui-layout-mobile/client.js'), true)

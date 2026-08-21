@@ -44,7 +44,7 @@ function decodeBase64(encoded: string): VaultSecret {
   return Uint8Array.from(binary, character => character.charCodeAt(0))
 }
 
-/** Browser adapter: isolation is supplied by the browser's origin-scoped Storage instance. */
+/** Origin-scoped vault for tests and non-native shells. Not a Product Client. */
 export class BrowserCredentialVault implements ReadableCredentialVault {
   readonly #storage: BrowserStorage
 
@@ -153,7 +153,7 @@ export class NativeCredentialVault implements ReadableCredentialVault {
   }
 }
 
-export class MemoryCredentialVault implements CredentialVault {
+export class MemoryCredentialVault implements ReadableCredentialVault {
   readonly #secrets = new Map<SecretRef, VaultSecret>()
 
   async store(secret: VaultSecret): Promise<SecretRef> {

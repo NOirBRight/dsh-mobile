@@ -21,7 +21,7 @@ The QR/deep link carries `#offer=<base64url(JSON)>`; URL fragments are not sent 
   "exp": 1735689600,
   "ice": ["stun:stun.example.net:3478"],
   "capabilities": {
-    "browser": true,
+    "browser": false,
     "direct": true,
     "tunnel": true,
     "endpointRefresh": true
@@ -92,7 +92,7 @@ The client connects to the Host Gateway tunnel WebSocket derived from the same P
 
 Connection policy is explicit:
 
-- `automatic`: Direct, then Tunnel Fallback.
+- `automatic`: Tunnel first, with Direct raced in parallel; a Direct win is kept only if it finishes first. No mid-session migration.
 - `direct-only`: Direct and fail visibly.
 - `tunnel-only`: Tunnel without a Direct attempt.
 
@@ -100,7 +100,7 @@ The active route is always exposed to product UI.
 
 ## 5. Liveness and reconnect
 
-Foreground sessions send an encrypted `ping` approximately every 25 seconds. The default pong deadline is approximately 10 seconds; two consecutive misses classify the route stale. Foreground resume and network change trigger an immediate probe. Android background suspension is not treated as guaranteed keepalive.
+Foreground sessions send an encrypted `ping` approximately every 20 seconds. The default pong deadline is approximately 15 seconds; three consecutive misses classify the route stale. Foreground resume and network change trigger an immediate probe. Android background suspension is not treated as guaranteed keepalive.
 
 A stale/closed route is torn down before reconnect. Retry uses bounded exponential backoff with jitter and re-runs the configured route policy.
 
