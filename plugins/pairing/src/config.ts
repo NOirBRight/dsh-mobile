@@ -70,7 +70,7 @@ export const Config: z<Config> = z.object({
   gatewayPort: z.natural().max(65535).default(0),
   cloudflaredPath: z.string().default('cloudflared'),
   quickTunnelCommand: z.string(),
-  quickTunnelArgs: z.array(z.string()),
+  quickTunnelArgs: z.array(z.string()).default(['tunnel', '--url', '{gateway}', '--no-autoupdate']),
   quickTunnelEndpointPattern: z.string(),
   signalingUrl: z.string(),
   stunUrls: z.array(z.string()).default(['stun:stun.cloudflare.com:3478']),

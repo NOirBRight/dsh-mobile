@@ -10,6 +10,7 @@ test('schema fills defaults', () => {
   assert.equal(c.dshHost, '127.0.0.1')
   assert.equal(c.dshPort, 3080)
   assert.equal(c.codeTtlMs, 300_000)
+  assert.deepEqual(c.quickTunnelArgs, ['tunnel', '--url', '{gateway}', '--no-autoupdate'])
   assert.equal(c.advertiseUrl, undefined)
 })
 

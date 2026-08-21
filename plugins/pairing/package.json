@@ -1,6 +1,6 @@
 {
   "name": "@dsh-mobile/pairing",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "dsh-mobile pairing plugin (host half): daemon Curve25519 keypair, loopback /pair routes, LAN auth reverse proxy",
   "main": "lib/index.js",
