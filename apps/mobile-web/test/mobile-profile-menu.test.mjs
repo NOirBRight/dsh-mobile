@@ -22,4 +22,7 @@ test('device panel reserves safe-area space and scrolls only its multi-device li
   assert.ok(source.includes('deviceList.dataset.profileDeviceList'))
   assert.ok(source.includes('[data-profile-multiple] [data-profile-device-list]'))
   assert.ok(source.includes('overflow-y: auto;'))
+  assert.ok(source.includes('后台连接保护（实验）'))
+  assert.ok(source.includes('Android 会显示常驻通知'))
+  assert.ok(source.includes('系统仍可能终止进程'))
 })

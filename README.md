@@ -30,6 +30,8 @@ Host 的插件清单和业务插件 bundle 经已认证会话获取；移动壳�
 
 缓存策略完全归 dsh-mobile：IndexedDB v2 key 使用 Host Identity 隔离；读取前验证 schema；仅单 Host 配置可迁移旧的未分区 v1 localStorage；空的权威结果会覆盖旧快照；历史记录不会因为插件缓存配额而被逐出。上游 seam 只接触同步 seed、权威 commit 与 replayable readiness，不知道移动端存储策略。
 
+“设备连接”还提供默认关闭的 **后台连接保护（实验）**。开启后 Android 会请求通知权限、启动 remote-messaging Foreground Service、持有 CPU wake lock，并用常驻通知明确告知用户。它可显著减少 WebView 连接在后台被暂停，但当前加密 Tunnel 仍由 WebView 拥有；Android 强杀进程、厂商省电策略或 WebView 冻结仍可能中断接收，因此不得把该模式描述为绝对可靠的后台推送。彻底可靠需要后续将加密 transport 所有权迁入 native 层，或增加 Host 到设备的系统 Push 唤醒路径。
+
 架构决策见 docs/adr/0005-vps-endpoint-tunnel-first-app-only.md 与 docs/adr/0006-regional-official-sealed-relay.md；Relay Docker 部署见 relay/deploy/README.md；执行顺序见 PLAN.md。
 
 ## 目录

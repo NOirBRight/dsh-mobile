@@ -4,6 +4,7 @@ import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { parseOffer, TunnelError, type TunnelState } from '@dsh-mobile/e2e-tunnel'
 import { AppLinkInbox } from './app-links.ts'
+import { createBackgroundConnectionControl, readBackgroundConnectionPreference, writeBackgroundConnectionPreference } from './background-connection.ts'
 import { BrowserCredentialVault, NativeCredentialVault, purgeLegacyAndroidWebCredentials, type NativeCredentialVaultBridge, type ReadableCredentialVault } from './credential-vault.ts'
 import { claimShellNativeBridges, concealShellNativeBridges, installSystemBarThemeSync } from './native-bridges.ts'
 import { installCompatibilityNotice, loadSameOriginMobileBootManifest, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, readViewportWidth, selectResponsiveBootManifest, setProtectedCacheScope, setSameOriginHostBridgeCapability, type BootManifest, type ResponsiveBootSelection } from './manifest.ts'
@@ -96,6 +97,7 @@ async function showProfileMenu(
   onActiveHostChanged: () => Promise<void>,
   onProfilesEmpty: () => Promise<void>,
   onEnhancementChange: (preference: import('./manifest.ts').SessionEnhancementPreference) => Promise<void>,
+  onBackgroundConnectionChange: (enabled: boolean) => Promise<void>,
   onPairOffer: (offerUrl: string) => Promise<void>,
   connection: () => DeviceConnectionSummary,
 ): Promise<void> {
@@ -107,7 +109,9 @@ async function showProfileMenu(
     active,
     connection: connection(),
     enhancement: connection().enhancement,
+    backgroundConnection: connection().backgroundConnection,
     onEnhancementChange,
+    onBackgroundConnectionChange,
     onActivate: hostId => activateHostProfile(hostId, {
       setActive: id => repository.setActiveHost(id),
       reconnect: onActiveHostChanged,
@@ -143,6 +147,8 @@ void (async () => {
   if (native) purgeLegacyAndroidWebCredentials(localStorage)
   const bridges = claimShellNativeBridges(native)
   installSystemBarThemeSync(bridges.systemBars)
+  const backgroundConnection = createBackgroundConnectionControl(bridges.backgroundConnection)
+  let backgroundConnectionEnabled = native && readBackgroundConnectionPreference(localStorage)
   const vault = createVault(native, bridges.vault)
   const repository = new ProfileRepository(new BrowserProfileStorage(), vault)
   let sessionEnhancementPreference = readSessionEnhancementPreference(localStorage)
@@ -216,6 +222,13 @@ void (async () => {
     }
   }
 
+  try {
+    await backgroundConnection.setEnabled(prepared !== null && backgroundConnectionEnabled)
+  } catch {
+    backgroundConnectionEnabled = false
+    writeBackgroundConnectionPreference(localStorage, false)
+  }
+
   const slot = new TunnelManagerSlot()
   if (shouldInstallTunnelShims(sameOriginBoot)) installShims(slot)
   let session: HostSession | null = null
@@ -254,6 +267,10 @@ void (async () => {
         writeSessionEnhancementPreference(localStorage, preference)
         sessionEnhancementPreference = preference
         await reconnectActiveHost()
+      }, async enabled => {
+        await backgroundConnection.setEnabled(enabled)
+        backgroundConnectionEnabled = enabled
+        writeBackgroundConnectionPreference(localStorage, enabled)
       }, connectPairingOffer, () => ({
         state,
         route,
@@ -262,6 +279,7 @@ void (async () => {
           preference: sessionEnhancementPreference,
           disclosure: enhancementDisclosure(enhancementState),
         },
+        ...(native ? { backgroundConnection: { enabled: backgroundConnectionEnabled } } : {}),
       }))
     })
     const setTopbarNotice = (
@@ -554,6 +572,7 @@ void (async () => {
         render()
       },
     })
+    backgroundConnection.subscribeWake(() => { void session?.probeNow() })
     runtimeOfferHandler = offerUrl => { void connectPairingOffer(offerUrl).catch(error => {
       lastError = error instanceof Error ? error.message : String(error)
       render()

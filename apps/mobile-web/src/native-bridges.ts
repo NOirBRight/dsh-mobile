@@ -1,11 +1,13 @@
 /** App Shell-only native capabilities. Host UI modules must not receive these. */
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { NativeCredentialVaultBridge } from './credential-vault.ts'
+import type { NativeBackgroundConnectionBridge } from './background-connection.ts'
 
 export const SHELL_NATIVE_PLUGIN_NAMES = [
   'DshSecureVault',
   'DshCameraPermission',
   'DshSystemBars',
+  'DshBackgroundConnection',
   'CapacitorBarcodeScanner',
   'App',
 ] as const
@@ -21,6 +23,7 @@ export interface NativeSystemBarsBridge {
 export interface ShellNativeBridges {
   vault: NativeCredentialVaultBridge | null
   systemBars: NativeSystemBarsBridge | null
+  backgroundConnection: NativeBackgroundConnectionBridge | null
   ensureCamera(): Promise<void>
 }
 
@@ -43,14 +46,15 @@ export function claimedNativeBridges(): ShellNativeBridges {
 /** Take private plugin proxies, then remove them from the public Capacitor table. */
 export function claimShellNativeBridges(native: boolean): ShellNativeBridges {
   if (!native) {
-    claimed = { vault: null, systemBars: null, ensureCamera: unavailable('camera') }
+    claimed = { vault: null, systemBars: null, backgroundConnection: null, ensureCamera: unavailable('camera') }
     concealShellNativeBridges()
     return claimed
   }
   const vault = registerPlugin<NativeCredentialVaultBridge>('DshSecureVault')
   const camera = registerPlugin<NativeCameraPermissionBridge>('DshCameraPermission')
   const systemBars = registerPlugin<NativeSystemBarsBridge>('DshSystemBars')
-  claimed = { vault, systemBars, ensureCamera: () => camera.ensure() }
+  const backgroundConnection = registerPlugin<NativeBackgroundConnectionBridge>('DshBackgroundConnection')
+  claimed = { vault, systemBars, backgroundConnection, ensureCamera: () => camera.ensure() }
   concealShellNativeBridges()
   return claimed
 }

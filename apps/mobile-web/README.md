@@ -9,7 +9,7 @@ Android-first 的 Capacitor 本地应用壳。运行 origin 为 https://localhos
 3. v4 offer 包含 Host-owned HTTPS Public Endpoint、房间、Host 公钥、短期 code、能力位和仅 STUN 的 ICE 列表。TURN 会被拒绝。
 4. 默认 Automatic：先建立 RTCDataChannel，直连传输失败后走同一 Endpoint 上的加密 Tunnel Fallback。NaCl hello/ack 和 DSH 流量只走已认证会话。deviceToken 保存在 App 私有 vault，用于后续自动重连。
 
-用户取消或扫码失败时显示“重新扫码”；运行中的 Deep Link 由 Capacitor App listener 接收并自动重载配对。
+用户取消或扫码失败时显示“重新扫码”；运行中的 Deep Link 由 Capacitor App listener 接收，并在现有 HostSession 内完成切换，不重载 WebView。
 
 ## Personal Recovery Surface 示例
 
@@ -21,6 +21,12 @@ npm run build 会构建 @dsh-mobile/ui-layout-mobile 与 @dsh-mobile/session-hyd
 
 会话缓存使用 Host Identity 分区的 IndexedDB v2；旧 v1 localStorage 只在本机恰有一个 Host Profile 时迁移。官方更新不匹配时增强自动停用，界面解释原因，Core 配对、Tunnel/Relay 与官方 UI 保持可用。
 
+## 后台连接保护
+
+该功能默认关闭。用户在“设备连接”中开启后，App 注册常驻通知并启动 Android remote-messaging Foreground Service；native 层持有 partial wake lock，并周期性提示 Shell 探测当前 Host。关闭选项会停止 Service 并释放 wake lock。Android 13 及以上若不允许通知，启用会失败且偏好不会保存。
+
+此实现是 WebView transport 的后台存活保护，不是 native transport：进程被系统或厂商强制终止后无法继续接收。真正可靠的长期后台接收仍需 native 层拥有加密连接，或由系统 Push 负责重新唤醒。
+
 ## Android 命令
 
 | 命令 | 作用 |
@@ -29,4 +35,4 @@ npm run build 会构建 @dsh-mobile/ui-layout-mobile 与 @dsh-mobile/session-hyd
 | npm run android:sync | 构建、刷新资产并同步 Capacitor 插件 |
 | npm run android:debug | build → sync → Gradle assembleDebug |
 
-默认工具链为 Java 21 JDK、ANDROID_HOME=/home/noirbright/Android/Sdk、Android minSdk 26。权限为 INTERNET 与 CAMERA，并声明摄像头硬件。APK 输出在 android/app/build/outputs/apk/debug/app-debug.apk。
+默认工具链为 Java 21 JDK、ANDROID_HOME=/home/noirbright/Android/Sdk、Android minSdk 26。权限包含 INTERNET、CAMERA、WAKE_LOCK、FOREGROUND_SERVICE_REMOTE_MESSAGING 与 Android 13+ 通知权限，并声明摄像头硬件。APK 输出在 android/app/build/outputs/apk/debug/app-debug.apk。

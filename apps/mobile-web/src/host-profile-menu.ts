@@ -386,6 +386,7 @@ export interface DeviceConnectionSummary {
   route: string
   profile?: HostProfile
   enhancement?: HostProfileMenuOptions['enhancement']
+  backgroundConnection?: HostProfileMenuOptions['backgroundConnection']
 }
 
 export interface HostProfileMenuOptions {
@@ -396,6 +397,8 @@ export interface HostProfileMenuOptions {
   onPolicyChange: (profile: HostProfile, policy: ConnectionPolicy) => Promise<void>
   enhancement?: { preference: SessionEnhancementPreference; disclosure: string }
   onEnhancementChange?: (preference: SessionEnhancementPreference) => Promise<void>
+  backgroundConnection?: { enabled: boolean }
+  onBackgroundConnectionChange?: (enabled: boolean) => Promise<void>
   onRemove: (profile: HostProfile) => Promise<void>
   onScan: (surface: ScanSurface) => Promise<void>
 }
@@ -545,6 +548,41 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     enhancementCard.append(label, disclosure)
   }
 
+  const backgroundCard = document.createElement('div')
+  backgroundCard.dataset.profileCard = ''
+  backgroundCard.dataset.profileBackgroundConnection = ''
+  backgroundCard.hidden = options.backgroundConnection === undefined
+  if (options.backgroundConnection !== undefined) {
+    const label = document.createElement('label')
+    label.dataset.profilePolicy = ''
+    const labelText = document.createElement('span')
+    labelText.textContent = '后台连接保护（实验）'
+    const select = document.createElement('select')
+    select.setAttribute('aria-label', '后台连接保护')
+    for (const [value, text] of [['disabled', '关闭'], ['enabled', '开启']] as const) {
+      const option = document.createElement('option')
+      option.value = value
+      option.textContent = text
+      option.selected = options.backgroundConnection.enabled === (value === 'enabled')
+      select.append(option)
+    }
+    const disclosure = document.createElement('div')
+    disclosure.dataset.profileScanHint = ''
+    disclosure.style.marginTop = '8px'
+    disclosure.textContent = '开启后 Android 会显示常驻通知，并使用前台服务减少后台冻结；连接仍由 WebView 管理，系统仍可能终止进程。'
+    select.addEventListener('change', () => {
+      select.disabled = true
+      const prior = options.backgroundConnection?.enabled ?? false
+      const enabled = select.value === 'enabled'
+      void options.onBackgroundConnectionChange?.(enabled).then(close).catch(error => {
+        select.value = prior ? 'enabled' : 'disabled'
+        setPanelError(error instanceof Error ? error.message : '后台连接设置保存失败')
+      }).finally(() => { select.disabled = false })
+    })
+    label.append(labelText, select)
+    backgroundCard.append(label, disclosure)
+  }
+
   const deviceSectionTitle = document.createElement('div')
   deviceSectionTitle.dataset.profileSectionTitle = ''
   const deviceSectionLabel = document.createElement('span')
@@ -679,7 +717,10 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     deviceList.append(empty)
   }
 
-  panel.append(handle, header, statusCard, scanCard, enhancementCard, deviceSectionTitle, deviceSectionHint, deviceList)
+  panel.append(
+    handle, header, statusCard, scanCard, enhancementCard, backgroundCard,
+    deviceSectionTitle, deviceSectionHint, deviceList,
+  )
   document.body.append(overlay)
   closeButton.focus({ preventScroll: true })
   return { close }
