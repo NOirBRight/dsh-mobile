@@ -557,7 +557,7 @@ export function connectionIndicatorPresentation(
         ? reconnecting ? '重连中…' : '连接中…'
         : '重连中…'
   return {
-    visible: shellMounted && (state !== 'open' || readiness !== 'ready'),
+    visible: shellMounted && (state !== 'open' || (readiness !== 'ready' && readiness !== 'unavailable')),
     text,
     label: route === '' ? title : route + ' · ' + title,
     color,
