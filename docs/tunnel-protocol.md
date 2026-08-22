@@ -44,17 +44,17 @@ A Client Instance owns a stable X25519 keypair stored with its Host credential. 
 clientPub(32) || nonce(24) || box(helloJson, hostPub, clientSec)
 ```
 
-`helloJson` is `{ code, label?, clientType? }` for pairing or `{ deviceToken }` for reconnect. `label` is an optional Host-facing name. `clientType` is `android` or `browser`.
+`helloJson` is `{ code, label?, clientType? }` for pairing or `{ deviceToken, label?, clientType? }` for reconnect. `label` is the Client Device Name shown by the Host and may refresh mutable presentation metadata on reconnect. `clientType` is `android` or `browser`.
 
 The first valid `{ code }` atomically claims the offer for `clientPub` and issues one Host-scoped device token bound to that key. A repeated handshake from the same `clientPub` during the offer window receives the same transient token, allowing recovery when the acknowledgement was lost. A different key receives `bad-code`; it cannot create another authorization. Expired offers receive `expired`. Token reconnect must present the same `clientPub`; a different key receives `bad-token` and does not move the device's room.
 
 Host success is:
 
 ```text
-nonce(24) || box({ ok: true, deviceToken? }, clientPub, hostSec)
+nonce(24) || box({ ok: true, deviceToken?, hostName }, clientPub, hostSec)
 ```
 
-The token appears only on the initial/idempotent code acknowledgement. Token reconnect acknowledgement is `{ ok: true }`. The Host records pairing time, last-seen time, optional label, and client type. Failures are bounded plaintext JSON frames before session establishment: `bad-hello`, `bad-code`, `expired`, `bad-token`, or `limit`.
+The token appears only on the initial/idempotent code acknowledgement. Every success returns the mutable Host Display Name inside the sealed acknowledgement, independently of endpoint and Room. Token reconnect acknowledgement omits only the token. The Host records pairing time, last-seen time, optional Client Device Name, and client type. Failures are bounded plaintext JSON frames before session establishment: `bad-hello`, `bad-code`, `expired`, `bad-token`, or `limit`.
 
 ## 3. Sealed session frames
 

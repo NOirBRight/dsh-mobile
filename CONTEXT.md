@@ -15,6 +15,12 @@ The Product Client's persistent record for one Host. It identifies that Host, ca
 ## Client Instance
 One native app installation paired to a Host. Each Client Instance receives an independent Host-scoped authorization and may be revoked without affecting other Client Instances. Browser Client Instances were retired by ADR 0005.
 
+## Host Display Name
+The human-facing name a Host advertises to Product Clients during Pairing. A Product Client shows this name for its saved Host Profile. It is mutable metadata and is never derived from a Relay Endpoint or Room.
+
+## Client Device Name
+The human-facing name a Client Instance presents to a Host when connecting, such as the phone's device name. The Host shows this name in its paired-device list. It is mutable metadata and is separate from the Client Instance's cryptographic identity and Room.
+
 ## Host Gateway
 The dedicated protocol entry running beside a Host. It provides WebRTC rendezvous and optional Tunnel Fallback without exposing the raw DSH web port or acting as a general-purpose network proxy.
 

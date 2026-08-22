@@ -291,6 +291,21 @@ export class ProfileRepository {
     return copy(replacement)
   }
 
+  async updateDisplayName(hostId: HostId, displayName: string): Promise<HostProfile> {
+    return this.#serialize(async () => {
+      assertHostId(hostId)
+      const normalized = displayName.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 64)
+      if (normalized === '') throw new Error('Host Display Name must not be empty')
+      const document = await this.#load()
+      const current = document.profiles[hostId]
+      if (current === undefined) throw new Error(`unknown Host Identity: ${hostId}`)
+      const renamed = { ...current, displayName: normalized, updatedAt: new Date().toISOString() }
+      document.profiles[hostId] = renamed
+      await this.#storage.save(document)
+      return copy(renamed)
+    })
+  }
+
   async refreshEndpoint(
     hostId: HostId,
     refresh: Pick<HostProfile, 'endpoint' | 'capabilities' | 'updatedAt'>,

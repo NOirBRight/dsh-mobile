@@ -2,12 +2,14 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { NativeCredentialVaultBridge } from './credential-vault.ts'
 import type { NativeBackgroundConnectionBridge } from './background-connection.ts'
+import type { NativeDeviceIdentityBridge } from './client-device-name.ts'
 
 export const SHELL_NATIVE_PLUGIN_NAMES = [
   'DshSecureVault',
   'DshCameraPermission',
   'DshSystemBars',
   'DshBackgroundConnection',
+  'DshDeviceIdentity',
   'CapacitorBarcodeScanner',
   'App',
 ] as const
@@ -24,6 +26,7 @@ export interface ShellNativeBridges {
   vault: NativeCredentialVaultBridge | null
   systemBars: NativeSystemBarsBridge | null
   backgroundConnection: NativeBackgroundConnectionBridge | null
+  deviceIdentity: NativeDeviceIdentityBridge | null
   ensureCamera(): Promise<void>
 }
 
@@ -46,7 +49,7 @@ export function claimedNativeBridges(): ShellNativeBridges {
 /** Take private plugin proxies, then remove them from the public Capacitor table. */
 export function claimShellNativeBridges(native: boolean): ShellNativeBridges {
   if (!native) {
-    claimed = { vault: null, systemBars: null, backgroundConnection: null, ensureCamera: unavailable('camera') }
+    claimed = { vault: null, systemBars: null, backgroundConnection: null, deviceIdentity: null, ensureCamera: unavailable('camera') }
     concealShellNativeBridges()
     return claimed
   }
@@ -54,7 +57,8 @@ export function claimShellNativeBridges(native: boolean): ShellNativeBridges {
   const camera = registerPlugin<NativeCameraPermissionBridge>('DshCameraPermission')
   const systemBars = registerPlugin<NativeSystemBarsBridge>('DshSystemBars')
   const backgroundConnection = registerPlugin<NativeBackgroundConnectionBridge>('DshBackgroundConnection')
-  claimed = { vault, systemBars, backgroundConnection, ensureCamera: () => camera.ensure() }
+  const deviceIdentity = registerPlugin<NativeDeviceIdentityBridge>('DshDeviceIdentity')
+  claimed = { vault, systemBars, backgroundConnection, deviceIdentity, ensureCamera: () => camera.ensure() }
   concealShellNativeBridges()
   return claimed
 }

@@ -65,7 +65,7 @@ export function apply(ctx: Context, config: Config): void {
       : null
   let localGateway: string | null = null
   const relayCampaigns = new Map<string, { relayUrl: string; connector: ReturnType<typeof createRelayConnector> }>()
-  function tunnelOptions(room: string) { return { upstreamHost: resolved.dshHost, upstreamPort: resolved.dshPort, handshake: { keypair, offers, devices: store, room }, logger: (message: string) => ctx.logger.info('dsh-mobile-pairing: ' + message) } }
+  function tunnelOptions(room: string) { return { upstreamHost: resolved.dshHost, upstreamPort: resolved.dshPort, handshake: { keypair, offers, devices: store, room, hostName: resolved.hostName }, logger: (message: string) => ctx.logger.info('dsh-mobile-pairing: ' + message) } }
   function ensureRelayRoom(room: string, code: string): void {
     if (live.mode !== 'relay' || live.relayUrl === undefined) return
     const previous = relayCampaigns.get(room)

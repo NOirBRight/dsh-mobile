@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(CameraPermissionPlugin.class);
         registerPlugin(DshSystemBarsPlugin.class);
         registerPlugin(DshBackgroundConnectionPlugin.class);
+        registerPlugin(DshDeviceIdentityPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

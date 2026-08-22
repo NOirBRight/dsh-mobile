@@ -12,6 +12,7 @@ test('schema fills defaults', () => {
   assert.equal(c.codeTtlMs, 300_000)
   assert.deepEqual(c.quickTunnelArgs, ['tunnel', '--url', '{gateway}', '--no-autoupdate'])
   assert.equal(c.advertiseUrl, undefined)
+  assert.ok(c.hostName.length > 0)
 })
 
 
@@ -31,6 +32,11 @@ test('schema rejects out-of-range values at load', () => {
   assert.throws(() => Config({ port: 70000 }))
   assert.throws(() => Config({ dshPort: -1 }))
   assert.throws(() => Config({ codeTtlMs: '5min' }))
+})
+
+test('Host Display Name is configurable and normalized independently of endpoints', () => {
+  assert.equal(resolveConfig(Config({ hostName: '  Noir Workstation  ' })).hostName, 'Noir Workstation')
+  assert.throws(() => resolveConfig(Config({ hostName: '   ' })), /hostName/)
 })
 
 test('resolveConfig derives store paths from dshHome', () => {

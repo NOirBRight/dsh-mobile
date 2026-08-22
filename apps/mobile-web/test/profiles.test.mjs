@@ -51,6 +51,17 @@ test('same Host Identity upsert refreshes one Host Profile and makes the first H
   assert.equal((await repository.getActive())?.hostId, HOST_A)
 })
 
+test('sealed Host metadata updates presentation name without changing endpoint or Room', async () => {
+  const repository = new ProfileRepository(new MemoryProfileStorage(), new MemoryCredentialVault())
+  await repository.upsert(profile({ displayName: 'relay.example' }))
+
+  const renamed = await repository.updateDisplayName(HOST_A, 'Noir Workstation')
+
+  assert.equal(renamed.displayName, 'Noir Workstation')
+  assert.equal(renamed.endpoint.url, 'https://first.example')
+  assert.equal(renamed.room, '0123456789abcdef0123456789abcdef')
+})
+
 test('Endpoint Refresh preserves authorization and Active Host selection across multiple Profiles', async () => {
   const storage = new MemoryProfileStorage()
   const repository = new ProfileRepository(storage, new MemoryCredentialVault())

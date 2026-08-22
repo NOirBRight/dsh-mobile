@@ -1,11 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TunnelError } from '@dsh-mobile/e2e-tunnel'
-import { connectionIndicatorPresentation, connectionRecoveryNotice, connectionRouteLabel, DeferredWebSocket, supportsLiveDataReadiness, isHostGatewaySocketPath, isPackagedShellPluginPath, isPublicEndpointPluginPath, shouldInstallTunnelShims, TunnelManager } from '../src/tunnel.ts'
+import { connectionIndicatorPresentation, coreLiveDataReadiness, connectionRecoveryNotice, connectionRouteLabel, DeferredWebSocket, supportsLiveDataReadiness, isHostGatewaySocketPath, isPackagedShellPluginPath, isPublicEndpointPluginPath, shouldInstallTunnelShims, TunnelManager } from '../src/tunnel.ts'
 
-test('legacy runtimes without the readiness contract do not leave refresh stuck forever', () => {
+test('Core readiness completes independently after transport and official shell are both live', () => {
   assert.equal(supportsLiveDataReadiness({ dshLiveDataReadiness: 'v1' }), true)
   assert.equal(supportsLiveDataReadiness({}), false)
+  assert.equal(coreLiveDataReadiness(false, false), 'pending')
+  assert.equal(coreLiveDataReadiness(true, false), 'pending')
+  assert.equal(coreLiveDataReadiness(false, true), 'pending')
+  assert.equal(coreLiveDataReadiness(true, true), 'core-ready')
 })
 
 test('tunnel-only connections are not mislabeled as fallbacks', () => {
@@ -93,7 +97,7 @@ test('floating connection indicator follows theme and waits for authoritative li
     visible: false, text: '已更新', label: 'WebRTC Direct · 权威数据已刷新',
     color: 'var(--dsw-alias-state-success-primary, #22c55e)',
   })
-  assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, 'unavailable'), {
+  assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, 'core-ready'), {
     visible: false, text: '核心模式', label: 'WebRTC Direct · 核心兼容模式不提供权威刷新确认',
     color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
   })

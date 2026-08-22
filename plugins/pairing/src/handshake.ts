@@ -9,12 +9,12 @@
  *   unparseable), bad-code (unknown or burned pairing code), expired
  *   (out-of-window code), bad-token (unknown or revoked device token).
  *
- * helloJson is { code, label?, clientType? } | { deviceToken }. A valid code pairs a NEW device:
- * the ack carries { ok, deviceToken } — the token's only showing; the store
+ * helloJson is { code, label?, clientType? } | { deviceToken, label?, clientType? }. A valid code pairs a NEW device:
+ * the ack carries { ok, deviceToken, hostName } — the token's only showing; the store
  * keeps its hash (protocol §5: permanent until revoked). A code is claimed by
  * one Client Instance key; retries from that key receive the same token while
  * every other key is rejected. A valid deviceToken reconnects only that same
- * Client Instance key: ack is { ok }. A stolen token presented by another key
+ * Client Instance key: ack is { ok, hostName }. A stolen token presented by another key
  * is bad-token. Token reconnect does not move the device's room.
  */
 import nacl from 'tweetnacl'
@@ -30,6 +30,8 @@ export interface HandshakeDeps {
   keypair: DaemonKeypair
   offers: PairingOfferManager
   devices: DeviceTokenStore
+  /** Human-facing Host name returned inside every sealed acknowledgement. */
+  hostName: string
   /** Room of the relay campaign this handshake arrived on; bound to newly issued device records. */
   room?: string
 }
@@ -89,11 +91,15 @@ export function hostHandshake(frame: Uint8Array, deps: HandshakeDeps): Handshake
     const claimant = Buffer.from(peerPub).toString('base64url')
     const device = deps.devices.authenticate(hello.deviceToken, claimant, deps.room)
     if (device === null) return fail('bad-token')
+    const label = sanitizeDeviceLabel(hello.label)
+    if (label !== undefined) deps.devices.rename(device.id, label)
   } else {
     return fail('bad-hello')
   }
 
-  const ackJson = deviceToken !== null ? { ok: true, deviceToken } : { ok: true }
+  const ackJson = deviceToken !== null
+    ? { ok: true, deviceToken, hostName: deps.hostName }
+    : { ok: true, hostName: deps.hostName }
   const ackNonce = nacl.randomBytes(nacl.box.nonceLength)
   const ack = nacl.box(encoder.encode(JSON.stringify(ackJson)), ackNonce, peerPub, deps.keypair.secretKeyRaw)
   const ackFrame = new Uint8Array(nacl.box.nonceLength + ack.length)

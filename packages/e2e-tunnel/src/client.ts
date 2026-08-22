@@ -29,6 +29,8 @@ export interface ConnectOptions {
   deviceToken?: string
   /** Called with the device token when one is issued (first pairing only — store it). */
   onDeviceToken?: (token: string) => void | Promise<void>
+  /** Called after every sealed acknowledgement carrying mutable Host presentation metadata. */
+  onHostMetadata?: (metadata: { displayName: string }) => void | Promise<void>
   /** Called on every state transition. */
   onStateChange?: (state: TunnelState) => void
   /** Public Endpoint policy; Automatic is the product default. */
@@ -261,13 +263,13 @@ export async function openSession(transport: FrameTransport, hostPub: Uint8Array
   }
   // Own session copies so callers may wipe transient vault material after connect().
   const keys = { publicKey: sourceKeys.publicKey.slice(), secretKey: sourceKeys.secretKey.slice() }
+  const presentation = {
+    ...(options.deviceLabel === undefined || options.deviceLabel.trim() === '' ? {} : { label: options.deviceLabel.trim().slice(0, 64) }),
+    ...(options.clientType === 'android' || options.clientType === 'browser' ? { clientType: options.clientType } : {}),
+  }
   const hello = options.deviceToken
-    ? { deviceToken: options.deviceToken }
-    : {
-      code: options.code,
-      ...(options.deviceLabel === undefined || options.deviceLabel.trim() === '' ? {} : { label: options.deviceLabel.trim().slice(0, 64) }),
-      ...(options.clientType === 'android' || options.clientType === 'browser' ? { clientType: options.clientType } : {}),
-    }
+    ? { deviceToken: options.deviceToken, ...presentation }
+    : { code: options.code, ...presentation }
   const helloNonce = nacl.randomBytes(nacl.box.nonceLength)
   const helloBox = nacl.box(utf8Encode(JSON.stringify(hello)), helloNonce, hostPub, keys.secretKey)
   transport.send(concat(keys.publicKey, helloNonce, helloBox))
@@ -278,13 +280,17 @@ export async function openSession(transport: FrameTransport, hostPub: Uint8Array
   if (typeof first === 'string') throw new TunnelError('handshake', 'unexpected text frame from host')
   const ackBytes = unseal(first, hostPub, keys.secretKey)
   if (ackBytes === null) throw new TunnelError('handshake', 'could not unseal host ack')
-  const ack = JSON.parse(utf8Decode(ackBytes)) as { ok?: boolean; deviceToken?: string }
+  const ack = JSON.parse(utf8Decode(ackBytes)) as { ok?: boolean; deviceToken?: string; hostName?: unknown }
   // Code path: the ack must carry a freshly issued token; reconnect path: the presented bearer token persists.
   const deviceToken = typeof ack.deviceToken === 'string' ? ack.deviceToken : (options.deviceToken ?? null)
   if (ack.ok !== true || deviceToken === null) {
     throw new TunnelError('handshake', 'malformed ack')
   }
   if (typeof ack.deviceToken === 'string') await options.onDeviceToken?.(ack.deviceToken)
+  if (typeof ack.hostName === 'string') {
+    const displayName = ack.hostName.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 64)
+    if (displayName !== '') await options.onHostMetadata?.({ displayName })
+  }
   return new TunnelSession(transport, hostPub, keys.secretKey, deviceToken, options)
 }
 

@@ -16,13 +16,15 @@ async function hostAndClient(opts = {}) {
   const host = startFakeDcHost(hostDc, { expectedCode: opts.expectedCode, state: opts.state })
   const states = []
   const tokens = []
+  const hostNames = []
   const client = await openSession(new DataChannelTransport(clientDc), host.pubkey, {
     code: opts.expectedCode ?? 'test-code',
     deviceToken: opts.deviceToken,
     onStateChange: (s) => states.push(s),
     onDeviceToken: (t) => tokens.push(t),
+    onHostMetadata: (metadata) => hostNames.push(metadata.displayName),
   })
-  return { host, client, clientDc, hostDc, states, tokens }
+  return { host, client, clientDc, hostDc, states, tokens, hostNames }
 }
 
 const nextEvent = (target, type) => new Promise((resolve) => {
@@ -32,10 +34,11 @@ const nextEvent = (target, type) => new Promise((resolve) => {
 // ── Handshake ───────────────────────────────────────────────────────────────
 
 test('openSession handshakes over a DataChannelTransport and issues a device token', async () => {
-  const { client, states, tokens } = await hostAndClient()
+  const { client, states, tokens, hostNames } = await hostAndClient()
   assert.equal(client.state, 'open')
   assert.equal(client.deviceToken, 'tok-1')
   assert.deepEqual(tokens, ['tok-1'])
+  assert.deepEqual(hostNames, ['Noir Workstation'])
   assert.deepEqual(states, ['open'])
   client.close()
 })

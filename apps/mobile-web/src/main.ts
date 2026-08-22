@@ -4,6 +4,7 @@ import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { parseOffer, TunnelError, type TunnelState } from '@dsh-mobile/e2e-tunnel'
 import { AppLinkInbox } from './app-links.ts'
+import { resolveClientDeviceName } from './client-device-name.ts'
 import { createBackgroundConnectionControl, readBackgroundConnectionPreference, writeBackgroundConnectionPreference } from './background-connection.ts'
 import { BrowserCredentialVault, NativeCredentialVault, purgeLegacyAndroidWebCredentials, type NativeCredentialVaultBridge, type ReadableCredentialVault } from './credential-vault.ts'
 import { claimShellNativeBridges, concealShellNativeBridges, installSystemBarThemeSync } from './native-bridges.ts'
@@ -16,7 +17,7 @@ import { prepareSessionHydration, type PreparedSessionHydration } from './sessio
 import { connectionRecoveryDecision, endpointRefreshRequired } from './reconnect-recovery.ts'
 import { BrowserProfileStorage, ProfileRepository } from './profiles.ts'
 import { prepareDshClientBoot } from './dsh-boot.ts'
-import { connectionRecoveryNotice, connectionRouteLabel, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type TunnelManagerActivity } from './tunnel.ts'
+import { connectionRecoveryNotice, connectionRouteLabel, coreLiveDataReadiness, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type LiveDataReadiness, type TunnelManagerActivity } from './tunnel.ts'
 import { HostSession } from './host-session.ts'
 import { mountFirstRunScreen } from './first-run-screen.ts'
 import { mountHostProfileMenu, type DeviceConnectionSummary } from './host-profile-menu.ts'
@@ -161,6 +162,7 @@ void (async () => {
   const native = Capacitor.isNativePlatform()
   if (native) purgeLegacyAndroidWebCredentials(localStorage)
   const bridges = claimShellNativeBridges(native)
+  const clientDeviceName = await resolveClientDeviceName(bridges.deviceIdentity)
   own(installSystemBarThemeSync(bridges.systemBars))
   const backgroundConnection = createBackgroundConnectionControl(bridges.backgroundConnection)
   let backgroundConnectionEnabled = native && readBackgroundConnectionPreference(localStorage)
@@ -268,7 +270,7 @@ void (async () => {
     let transportReady = false
     // Transport readiness and authoritative session-data freshness are
     // intentionally separate: the cached shell remains usable between them.
-    let liveDataReady: boolean | 'pending' | 'ready' | 'error' | 'unavailable' = false
+    let liveDataReady: LiveDataReadiness = 'pending'
     const updateBadge = installBadge()
     own(() => updateBadge.dispose())
     // Cached shell may paint before TunnelManager emits its first callback.
@@ -447,7 +449,9 @@ void (async () => {
       activity = { phase: 'open', attempt: activity.attempt, route: activity.route }
       // Core Runtime has no authoritative readiness contract; transport-open
       // must not be presented as proof that live session baselines refreshed.
-      if (!supportsLiveDataReadiness(document.documentElement.dataset)) liveDataReady = 'unavailable'
+      if (!supportsLiveDataReadiness(document.documentElement.dataset)) {
+        liveDataReady = coreLiveDataReadiness(transportReady, shellMounted)
+      }
       lastError = ''
       endpointRefreshAvailable = false
       updateBadge(activity, route, shellMounted, liveDataReady)
@@ -460,7 +464,7 @@ void (async () => {
       webEntry = null
       shellMounted = false
       transportReady = false
-      liveDataReady = false
+      liveDataReady = 'pending'
       state = 'closed'
       route = ''
       activity = { phase: 'terminal', attempt: activity.attempt, route: null, error: 'no Active Host Profile' }
@@ -510,10 +514,20 @@ void (async () => {
         return new TunnelManager({
           offerUrl: next.offerUrl,
           connectionPolicy: next.profile.connectionPolicy,
-          deviceLabel: next.profile.displayName,
+          deviceLabel: clientDeviceName,
           clientType: 'android',
           deferHeartbeat: true,
           loadCredentials: next.loadCredentials,
+          async onHostMetadata({ displayName }) {
+            try {
+              const renamed = await repository.updateDisplayName(next.profile.hostId, displayName)
+              next.profile.displayName = renamed.displayName
+              if (activeConnection?.profile.hostId === renamed.hostId) activeConnection.profile.displayName = renamed.displayName
+              render()
+            } catch (error) {
+              console.warn('[mobile-shell] could not persist Host Display Name', error)
+            }
+          },
           onActivity(nextActivity) {
             activity = nextActivity
             route = connectionRouteLabel(nextActivity.route, next.profile.endpoint.kind, next.profile.connectionPolicy)
@@ -523,7 +537,10 @@ void (async () => {
                 ? 'connecting'
                 : 'closed'
             transportReady = nextActivity.phase === 'open'
-            if (nextActivity.phase !== 'open') liveDataReady = false
+            if (nextActivity.phase !== 'open') liveDataReady = 'pending'
+            else if (!supportsLiveDataReadiness(document.documentElement.dataset)) {
+              liveDataReady = coreLiveDataReadiness(transportReady, shellMounted)
+            }
             if (nextActivity.phase === 'open') {
               lastError = ''
               endpointRefreshAvailable = false
@@ -590,6 +607,9 @@ void (async () => {
         }
         await bootDshShell(selection)
         shellMounted = true
+        if (!supportsLiveDataReadiness(document.documentElement.dataset)) {
+          liveDataReady = coreLiveDataReadiness(transportReady, shellMounted)
+        }
         updateBadge(activity, route, shellMounted, liveDataReady)
         // The tunnel can report open before the WebView shell exists. Repaint
         // now so a ready state cannot leave a stale recovery notice behind.

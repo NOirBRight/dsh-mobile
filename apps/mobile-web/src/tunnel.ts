@@ -119,6 +119,7 @@ export interface TunnelManagerOptions {
   onConnectionStatus?: (status: ConnectionStatus) => void
   onActivity?: (activity: TunnelManagerActivity) => void
   onError?: (message: string) => void
+  onHostMetadata?: (metadata: { displayName: string }) => void | Promise<void>
   connect?: (offerUrl: string, options?: ConnectOptions) => Promise<TunnelClient>
   wait?: (delayMs: number) => Promise<void>
   random?: () => number
@@ -215,7 +216,7 @@ export class TunnelManager {
             if (status.route === 'direct' || status.route === 'tunnel') this.lastRoute = status.route
             this.options.onConnectionStatus?.(status)
           },
-          deviceLabel: this.options.deviceLabel, clientType: this.options.clientType,
+          deviceLabel: this.options.deviceLabel, clientType: this.options.clientType, onHostMetadata: this.options.onHostMetadata,
           onStateChange: state => this.setState(state),
         })
         if (this.stopped) {
@@ -448,6 +449,13 @@ export function supportsLiveDataReadiness(dataset: { readonly dshLiveDataReadine
   return dataset.dshLiveDataReadiness === 'v1'
 }
 
+export type LiveDataReadiness = 'pending' | 'ready' | 'error' | 'core-ready'
+
+/** Core completes refresh from official Shell and transport lifecycle without the enhancement contract. */
+export function coreLiveDataReadiness(transportOpen: boolean, shellMounted: boolean): LiveDataReadiness {
+  return transportOpen && shellMounted ? 'core-ready' : 'pending'
+}
+
 /** User-facing route name: only an Automatic tunnel route is a fallback. */
 export function connectionRouteLabel(
   route: 'direct' | 'tunnel' | null,
@@ -494,7 +502,7 @@ export function connectionIndicatorPresentation(
   status: TunnelState | TunnelManagerActivity,
   route = '',
   shellMounted = true,
-  liveDataReady: boolean | 'pending' | 'ready' | 'error' | 'unavailable' = true,
+  liveDataReady: boolean | LiveDataReadiness = true,
 ): ConnectionIndicatorPresentation {
   if (typeof status !== 'string' && status.phase === 'terminal') {
     const title = '连接需要处理'
@@ -528,12 +536,12 @@ export function connectionIndicatorPresentation(
   const readiness = typeof liveDataReady === 'boolean' ? (liveDataReady ? 'ready' : 'pending') : liveDataReady
   const refreshFailed = state === 'open' && readiness === 'error'
   const refreshing = state === 'open' && readiness === 'pending'
-  const readinessUnavailable = state === 'open' && readiness === 'unavailable'
+  const coreReady = state === 'open' && readiness === 'core-ready'
   const title = refreshFailed
     ? '权威数据刷新失败'
     : refreshing
       ? '正在刷新权威数据…'
-      : readinessUnavailable
+      : coreReady
         ? '核心兼容模式不提供权威刷新确认'
     : state === 'open'
       ? '权威数据已刷新'
@@ -549,7 +557,7 @@ export function connectionIndicatorPresentation(
     ? '刷新失败'
     : refreshing
       ? '刷新中…'
-      : readinessUnavailable
+      : coreReady
         ? '核心模式'
     : state === 'open'
       ? '已更新'
@@ -557,7 +565,7 @@ export function connectionIndicatorPresentation(
         ? reconnecting ? '重连中…' : '连接中…'
         : '重连中…'
   return {
-    visible: shellMounted && (state !== 'open' || (readiness !== 'ready' && readiness !== 'unavailable')),
+    visible: shellMounted && (state !== 'open' || (readiness !== 'ready' && readiness !== 'core-ready')),
     text,
     label: route === '' ? title : route + ' · ' + title,
     color,
@@ -570,7 +578,7 @@ export interface ConnectionBadgeUpdater {
     state: TunnelState | TunnelManagerActivity,
     route?: string,
     shellMounted?: boolean,
-    liveDataReady?: boolean | 'pending' | 'ready' | 'error' | 'unavailable',
+    liveDataReady?: boolean | LiveDataReadiness,
   ): void
   /** Remove indicator nodes and stop observing shell mutations. */
   dispose(): void

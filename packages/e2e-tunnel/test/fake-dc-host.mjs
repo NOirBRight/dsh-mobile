@@ -62,9 +62,9 @@ export function startFakeDcHost(dc, opts = {}) {
       if (hello.code === expectedCode) {
         const token = 'tok-' + ++state.tokenCounter
         state.deviceTokens.add(token)
-        ack = { ok: true, deviceToken: token }
+        ack = { ok: true, deviceToken: token, hostName: 'Noir Workstation' }
       } else if (typeof hello.deviceToken === 'string' && state.deviceTokens.has(hello.deviceToken)) {
-        ack = { ok: true }
+        ack = { ok: true, hostName: 'Noir Workstation' }
       } else {
         sendFrame(utf8Encode(JSON.stringify({ error: 'bad-code' })))
         clientPub = null // stay pre-session, like the real host
