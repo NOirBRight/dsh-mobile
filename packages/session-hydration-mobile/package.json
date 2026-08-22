@@ -1,0 +1,20 @@
+{
+  "name": "@dsh-mobile/session-hydration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Optional mobile session hydration provider for a capability-compatible DSH runtime",
+  "main": "lib/index.js",
+  "exports": {
+    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
+    "./client": { "types": "./lib/types/client/index.d.ts", "default": "./lib/client.js" }
+  },
+  "files": ["lib"],
+  "dsh": { "client": { "platform": "web" } },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsdown",
+    "bundle": "tsdown",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": { "tsdown": "^0.22.2", "typescript": "^6.0.3" }
+}

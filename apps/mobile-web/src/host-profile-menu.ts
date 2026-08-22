@@ -1,3 +1,4 @@
+import type { SessionEnhancementPreference } from './manifest.ts'
 import type { ConnectionPolicy, HostProfile } from './profiles.ts'
 import type { ScanSurface } from './scan-surface.ts'
 
@@ -384,6 +385,7 @@ export interface DeviceConnectionSummary {
   state: 'open' | 'connecting' | 'closed'
   route: string
   profile?: HostProfile
+  enhancement?: HostProfileMenuOptions['enhancement']
 }
 
 export interface HostProfileMenuOptions {
@@ -392,6 +394,8 @@ export interface HostProfileMenuOptions {
   connection: DeviceConnectionSummary
   onActivate: (hostId: string) => Promise<void>
   onPolicyChange: (profile: HostProfile, policy: ConnectionPolicy) => Promise<void>
+  enhancement?: { preference: SessionEnhancementPreference; disclosure: string }
+  onEnhancementChange?: (preference: SessionEnhancementPreference) => Promise<void>
   onRemove: (profile: HostProfile) => Promise<void>
   onScan: (surface: ScanSurface) => Promise<void>
 }
@@ -503,6 +507,43 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
   scanStatus.setAttribute('aria-live', 'polite')
   scanStatus.hidden = true
   scanCard.append(scanStatus)
+
+  const enhancementCard = document.createElement('div')
+  enhancementCard.dataset.profileCard = ''
+  enhancementCard.dataset.profileEnhancement = ''
+  enhancementCard.hidden = options.enhancement === undefined
+  if (options.enhancement !== undefined) {
+    const label = document.createElement('label')
+    label.dataset.profilePolicy = ''
+    const labelText = document.createElement('span')
+    labelText.textContent = '会话体验模式'
+    const select = document.createElement('select')
+    select.setAttribute('aria-label', '会话体验模式')
+    for (const [value, text] of [
+      ['compatible', '默认兼容模式'],
+      ['enhanced', '可选会话缓存增强'],
+    ] as const) {
+      const option = document.createElement('option')
+      option.value = value
+      option.textContent = text
+      option.selected = options.enhancement.preference === value
+      select.append(option)
+    }
+    const disclosure = document.createElement('div')
+    disclosure.dataset.profileScanHint = ''
+    disclosure.style.marginTop = '8px'
+    disclosure.textContent = options.enhancement.disclosure
+    select.addEventListener('change', () => {
+      select.disabled = true
+      const prior = options.enhancement?.preference ?? 'compatible'
+      void options.onEnhancementChange?.(select.value as SessionEnhancementPreference).then(close).catch(error => {
+        select.value = prior
+        setPanelError(error instanceof Error ? error.message : '会话体验模式保存失败')
+      }).finally(() => { select.disabled = false })
+    })
+    label.append(labelText, select)
+    enhancementCard.append(label, disclosure)
+  }
 
   const deviceSectionTitle = document.createElement('div')
   deviceSectionTitle.dataset.profileSectionTitle = ''
@@ -638,7 +679,7 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     deviceList.append(empty)
   }
 
-  panel.append(handle, header, statusCard, scanCard, deviceSectionTitle, deviceSectionHint, deviceList)
+  panel.append(handle, header, statusCard, scanCard, enhancementCard, deviceSectionTitle, deviceSectionHint, deviceList)
   document.body.append(overlay)
   closeButton.focus({ preventScroll: true })
   return { close }

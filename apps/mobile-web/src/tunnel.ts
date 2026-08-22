@@ -9,7 +9,7 @@
  */
 import { connect, HeartbeatController, TunnelError } from '@dsh-mobile/e2e-tunnel'
 import type { ClientKeypair, ConnectionPolicy, ConnectionStatus, ConnectOptions, TunnelClient, TunnelState } from '@dsh-mobile/e2e-tunnel'
-import { extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, readCachedBootManifest, selectResponsiveBootManifest, createLocalStoragePluginCache, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
+import { extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, readCachedBootManifest, selectResponsiveBootManifest, selectSessionEnhancement, createLocalStoragePluginCache, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions, type SessionEnhancementPreference } from './manifest.ts'
 
 /**
  * Fetch the boot manifest through the tunnel and install it as
@@ -19,15 +19,19 @@ import { extractBootManifestJson, localizePluginBundles, officialNarrowContractA
  */
 export async function injectBootManifestFromTunnel(
   client: TunnelClient,
-  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean; hostId?: string } = { viewportWidth: window.innerWidth },
+  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean; hostId?: string; sessionEnhancementPreference?: SessionEnhancementPreference } = { viewportWidth: window.innerWidth },
 ): Promise<ResponsiveBootSelection> {
   const res = await client.fetch('/')
   if (!res.ok) throw new Error('boot manifest fetch failed: HTTP ' + res.status)
   const hostManifest = extractBootManifestJson(await res.text(), 'boot manifest not found in tunneled index')
-  const selection = selectResponsiveBootManifest(hostManifest, {
+  const enhancement = selectSessionEnhancement(hostManifest, {
+    preference: responsive.sessionEnhancementPreference ?? 'compatible',
+  })
+  const selection = selectResponsiveBootManifest(enhancement.manifest, {
     ...responsive,
     narrowContractAvailable: responsive.narrowContractAvailable ?? officialNarrowContractAvailable(hostManifest),
   })
+  selection.enhancement = { status: enhancement.status, ...(enhancement.reason === undefined ? {} : { reason: enhancement.reason }), ...(enhancement.officialRuntimeRevision === undefined ? {} : { officialRuntimeRevision: enhancement.officialRuntimeRevision }) }
   if (typeof responsive.hostId === 'string') writeCachedBootManifest(responsive.hostId, hostManifest as Parameters<typeof writeCachedBootManifest>[1])
   if (responsive.localizePlugins === false) {
     ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = selection.manifest
@@ -64,15 +68,19 @@ function pluginBlobUrl(source: string, id: string): string {
  */
 export async function hydrateBootManifestFromCache(
   hostId: string,
-  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean } = { viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth },
+  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean; sessionEnhancementPreference?: SessionEnhancementPreference } = { viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth },
 ): Promise<ResponsiveBootSelection | null> {
   const cached = readCachedBootManifest(hostId) ?? readCachedBootManifest('last')
   if (cached === undefined) return null
   try {
-    const selection = selectResponsiveBootManifest(cached, {
+    const enhancement = selectSessionEnhancement(cached, {
+      preference: responsive.sessionEnhancementPreference ?? 'compatible',
+    })
+    const selection = selectResponsiveBootManifest(enhancement.manifest, {
       ...responsive,
       narrowContractAvailable: responsive.narrowContractAvailable ?? officialNarrowContractAvailable(cached),
     })
+    selection.enhancement = { status: enhancement.status, ...(enhancement.reason === undefined ? {} : { reason: enhancement.reason }), ...(enhancement.officialRuntimeRevision === undefined ? {} : { officialRuntimeRevision: enhancement.officialRuntimeRevision }) }
     if (responsive.localizePlugins === false) {
       ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = selection.manifest
       return selection

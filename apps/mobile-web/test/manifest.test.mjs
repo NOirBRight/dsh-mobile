@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { adaptBootManifestForMobile, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability } from '../src/manifest.ts'
+import { adaptBootManifestForMobile, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, MOBILE_HYDRATION_ID, RUNTIME_ID, selectSessionEnhancement, SUPPORTED_OFFICIAL_RUNTIME_REVISIONS } from '../src/manifest.ts'
 
 test('extracts the boot graph from every historical host embedding form', () => {
   const graph = { rev: 'rev-1', entries: [{ id: 'x', url: '/plugins/x.js', rev: 'a' }] }
@@ -419,4 +419,31 @@ test('legacy plaintext entries are rewritten compressed on read', async (t) => {
   const raw = storage.map.get('dsh-mobile:plugin:host-a:@x/plugin:r1')
   assert.ok(raw.startsWith('gz1:'), 'read-through migration compresses the entry')
   assert.ok(raw.length < 4000)
+})
+
+test('keeps the pristine official runtime untouched in default compatibility mode', () => {
+  const runtime = { id: RUNTIME_ID, url: '/plugins/runtime.js', rev: SUPPORTED_OFFICIAL_RUNTIME_REVISIONS[0], inject: [], immediately: true }
+  const layout = { id: DESKTOP_LAYOUT_ID, url: '/plugins/layout.js', rev: 'layout', inject: [] }
+  const host = { rev: 'host', entries: [runtime, layout] }
+  const selected = selectSessionEnhancement(host, { preference: 'compatible' })
+  assert.equal(selected.status, 'core')
+  assert.equal(selected.manifest.entries[0], runtime)
+  assert.equal(selected.manifest.entries.some(entry => entry.id === MOBILE_HYDRATION_ID), false)
+})
+
+test('enables the local adapter and runtime only for an exact supported official revision', () => {
+  const layout = { id: DESKTOP_LAYOUT_ID, url: '/plugins/layout.js', rev: 'layout', inject: [] }
+  const known = { id: RUNTIME_ID, url: '/plugins/runtime.js', rev: SUPPORTED_OFFICIAL_RUNTIME_REVISIONS[0], inject: ['wire'], immediately: true }
+  const enabled = selectSessionEnhancement({ rev: 'host', entries: [known, layout] }, { preference: 'enhanced' })
+  assert.equal(enabled.status, 'enabled')
+  assert.deepEqual(enabled.manifest.entries.map(entry => entry.id), [MOBILE_HYDRATION_ID, RUNTIME_ID, DESKTOP_LAYOUT_ID])
+  assert.match(enabled.manifest.entries[1].url, /session-hydration\/runtime\.js/)
+  assert.deepEqual(enabled.manifest.entries[1].inject, ['wire'])
+
+  const unknown = { ...known, rev: 'official-update-not-verified' }
+  const disabled = selectSessionEnhancement({ rev: 'updated', entries: [unknown, layout] }, { preference: 'enhanced' })
+  assert.equal(disabled.status, 'incompatible')
+  assert.equal(disabled.reason, 'runtime-revision')
+  assert.equal(disabled.manifest.entries[0], unknown)
+  assert.equal(disabled.manifest.entries.some(entry => entry.id === MOBILE_HYDRATION_ID), false)
 })

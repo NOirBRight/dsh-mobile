@@ -8,6 +8,13 @@
 export const DESKTOP_LAYOUT_ID = '@deepseek-ai/dsh-client-ui-layout'
 export const MOBILE_LAYOUT_ID = '@dsh-mobile/ui-layout-mobile'
 export const CONNECTION_ID = '@deepseek-ai/dsh-client-connection'
+export const RUNTIME_ID = '@deepseek-ai/dsh-client-runtime'
+export const MOBILE_HYDRATION_ID = '@dsh-mobile/session-hydration'
+export const SUPPORTED_OFFICIAL_RUNTIME_REVISIONS = ['5a9e129c42ae'] as const
+const MOBILE_HYDRATION_REV = '0.1.0'
+const MOBILE_RUNTIME_REV = 'c8326d1818fb'
+const MOBILE_HYDRATION_URL = '/plugins/@dsh-mobile/session-hydration/client.js?rev=' + MOBILE_HYDRATION_REV
+const MOBILE_RUNTIME_URL = '/plugins/@dsh-mobile/session-hydration/runtime.js?rev=' + MOBILE_RUNTIME_REV
 export const DSH_HOST_BRIDGE_CAPABILITY = '__DSH_HOST_BRIDGE__'
 const CLIENT_HMR_ID = '@deepseek-ai/dsh-client-hmr'
 const MOBILE_LAYOUT_REV = '0.1.23'
@@ -198,7 +205,8 @@ export async function localizePluginBundles(
   options: PluginLocalizationOptions,
 ): Promise<BootManifest> {
   const entries = await mapPool(manifest.entries, PLUGIN_LOAD_CONCURRENCY, async (entry) => {
-    if (entry.id === MOBILE_LAYOUT_ID) return { ...entry }
+    if (entry.id === MOBILE_LAYOUT_ID || entry.id === MOBILE_HYDRATION_ID) return { ...entry }
+    if (entry.id === RUNTIME_ID && entry.url.startsWith('/plugins/@dsh-mobile/session-hydration/')) return { ...entry }
     if (entry.id === CONNECTION_ID && entry.url.startsWith('/plugins/@dsh-mobile/ui-layout-mobile/connection.js')) return { ...entry }
     if (!entry.url.startsWith('/plugins/')) {
       throw new Error('host plugin URL must stay under /plugins/: ' + entry.id)
@@ -286,6 +294,7 @@ export interface ResponsiveBootSelection {
   layout: ResponsiveRoot
   compatibility: LayoutCompatibility
   officialLayoutRevision: string
+  enhancement?: Omit<SessionEnhancementSelection, 'manifest'>
 }
 
 const BOOT_CACHE_PREFIX = 'dsh-mobile:boot:'
@@ -482,6 +491,56 @@ export function selectResponsiveBootManifest(
     layout: 'narrow',
     compatibility: revisionMismatch ? 'revision-mismatch' : 'compatible',
     officialLayoutRevision: official.rev,
+  }
+}
+
+
+export type SessionEnhancementPreference = 'compatible' | 'enhanced'
+export type SessionEnhancementSelection = {
+  manifest: BootManifest
+  status: 'core' | 'enabled' | 'incompatible'
+  officialRuntimeRevision?: string
+  reason?: 'runtime-missing' | 'runtime-revision'
+}
+
+/**
+ * Keep Core on the untouched official runtime by default. The optional adapter
+ * and downstream-compatible runtime are inserted only for an exact verified
+ * official bundle revision; unknown upgrades fail closed to Core.
+ */
+export function selectSessionEnhancement(
+  value: unknown,
+  options: { preference: SessionEnhancementPreference },
+): SessionEnhancementSelection {
+  const manifest = validateBootManifest(value)
+  const runtime = manifest.entries.find(entry => entry.id === RUNTIME_ID)
+  if (options.preference === 'compatible') {
+    return { manifest, status: 'core', ...(runtime === undefined ? {} : { officialRuntimeRevision: runtime.rev }) }
+  }
+  if (runtime === undefined) return { manifest, status: 'incompatible', reason: 'runtime-missing' }
+  if (!(SUPPORTED_OFFICIAL_RUNTIME_REVISIONS as readonly string[]).includes(runtime.rev)) {
+    return {
+      manifest, status: 'incompatible', reason: 'runtime-revision',
+      officialRuntimeRevision: runtime.rev,
+    }
+  }
+  const provider: BootEntry = {
+    id: MOBILE_HYDRATION_ID,
+    url: MOBILE_HYDRATION_URL,
+    rev: MOBILE_HYDRATION_REV,
+    inject: [],
+    immediately: true,
+  }
+  return {
+    status: 'enabled',
+    officialRuntimeRevision: runtime.rev,
+    manifest: {
+      ...manifest,
+      rev: manifest.rev + '+session-hydration-' + MOBILE_HYDRATION_REV,
+      entries: manifest.entries.flatMap(entry => entry.id === RUNTIME_ID
+        ? [provider, { ...entry, url: MOBILE_RUNTIME_URL, rev: MOBILE_RUNTIME_REV }]
+        : [{ ...entry }]),
+    },
   }
 }
 

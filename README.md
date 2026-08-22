@@ -14,6 +14,22 @@ DeepSeek Harness 的 Android 客户端，独立于上游 deepseek-harness 开发
 
 Host 的插件清单和业务插件 bundle 经已认证会话获取；移动壳在窄屏把桌面布局条目替换为 APK 内置的 @dsh-mobile/ui-layout-mobile。
 
+## 官方兼容与可选增强
+
+软件默认运行在 **兼容模式**，Core pairing 插件可直接安装到原版 DSH，不替换或修改官方 Runtime：
+
+| 能力 | 默认兼容模式 | 可选会话缓存增强 |
+|---|---:|---:|
+| QR 配对、设备管理、Tunnel/Relay | ✅ | ✅ |
+| 官方 DSH UI 与业务插件 | ✅ | ✅ |
+| Host-scoped 冷启动会话列表/历史 | — | ✅ |
+| 上次会话恢复、权威刷新状态 | — | ✅ |
+| 官方更新后的保证 | Core 继续工作 | 仅精确验证版本启用；未知版本自动停用 |
+
+“设备连接”面板会说明当前模式并允许用户选择。增强模式只在官方 Runtime bundle revision 与 `patches/dsh-runtime-session-hydration.json` 中的白名单完全一致时，插入本地 adapter 并使用 APK 内置的 downstream-compatible Runtime。官方升级导致 revision 变化时，不静默打补丁、不允许未知版本强制启用，自动回退到未经修改的官方 Runtime；配对、连接和设备管理不受影响。
+
+缓存策略完全归 dsh-mobile：IndexedDB v2 key 使用 Host Identity 隔离；读取前验证 schema；仅单 Host 配置可迁移旧的未分区 v1 localStorage；空的权威结果会覆盖旧快照；历史记录不会因为插件缓存配额而被逐出。上游 seam 只接触同步 seed、权威 commit 与 replayable readiness，不知道移动端存储策略。
+
 架构决策见 docs/adr/0005-vps-endpoint-tunnel-first-app-only.md 与 docs/adr/0006-regional-official-sealed-relay.md；Relay Docker 部署见 relay/deploy/README.md；执行顺序见 PLAN.md。
 
 ## 目录
@@ -21,6 +37,8 @@ Host 的插件清单和业务插件 bundle 经已认证会话获取；移动壳�
 - apps/mobile-web：Android shell、扫码入口、fetch/WebSocket shim。
 - packages/e2e-tunnel：可发布的 NaCl tunnel、WebRTC 信令、连接策略与不超过 60 KiB 的 DataChannel 分片。
 - packages/ui-layout-mobile：单栏抽屉移动布局。
+- packages/session-hydration-mobile：仅在精确版本门禁通过时注册缓存 adapter/readiness bridge。
+- patches：基于固定官方 commit 的通用 Runtime seam patch 与机器可读兼容元数据。
 - plugins/pairing：可发布的 Cordis Host 插件（Host Gateway、werift answerer、回环 tunnel endpoint）。
 - relay：多用户、独立 Room 的 opaque sealed-frame Relay；Docker/Caddy 配方位于 relay/deploy/。
 

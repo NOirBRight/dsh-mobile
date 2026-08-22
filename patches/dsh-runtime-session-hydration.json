@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
+    "commit": "528c682e061696f5a160f363f236ecbf53cbd006",
+    "runtimePackage": "@deepseek-ai/dsh-client-runtime",
+    "runtimeVersion": "0.1.1-rc.1",
+    "runtimeRevision": "5a9e129c42ae"
+  },
+  "downstream": {
+    "commit": "030167f8d2",
+    "patch": "dsh-runtime-session-hydration.patch",
+    "runtimeRevision": "c8326d1818fb"
+  },
+  "capability": "session-hydration-v1",
+  "policy": {
+    "defaultMode": "compatible",
+    "unknownVersion": "disable-enhancement",
+    "corePluginRemainsEnabled": true
+  }
+}

@@ -1,0 +1,789 @@
+From 030167f8d2b7e37224b9e55d08b20b194b346a3d Mon Sep 17 00:00:00 2001
+From: Paul Qu <paul.qu@ayaneo.com>
+Date: Sat, 22 Aug 2026 18:33:59 +0800
+Subject: [PATCH] feat(client): add session hydration compatibility seam
+
+---
+ .../src/client/contract/session-hydration.ts  | 20 ++++++
+ .../src/client/contract/session-readiness.ts  |  9 +++
+ packages/client/runtime/src/client/index.ts   | 27 +++++++-
+ .../runtime/src/client/sessions/manager.ts    | 68 ++++++++++++++++---
+ .../runtime/src/client/sessions/service.ts    | 18 +++--
+ .../runtime/src/client/sessions/session.ts    | 55 +++++++++++++--
+ .../runtime/tests/client-apply.client.spec.ts | 34 +++++++++-
+ .../runtime/tests/manager.client.spec.ts      | 19 ++++--
+ .../runtime/tests/session.client.spec.ts      | 59 +++++++++++++++-
+ .../tests/sessions-service.client.spec.ts     | 38 ++++++++++-
+ 10 files changed, 319 insertions(+), 28 deletions(-)
+ create mode 100644 packages/client/runtime/src/client/contract/session-hydration.ts
+ create mode 100644 packages/client/runtime/src/client/contract/session-readiness.ts
+
+diff --git a/packages/client/runtime/src/client/contract/session-hydration.ts b/packages/client/runtime/src/client/contract/session-hydration.ts
+new file mode 100644
+index 0000000000..b24ea62a68
+--- /dev/null
++++ b/packages/client/runtime/src/client/contract/session-hydration.ts
+@@ -0,0 +1,20 @@
++import type { HistoryEntry, SessionId } from '@deepseek-ai/dsh-api-remotes/client'
++import type { SessionListEntry } from '../sessions/lineage.ts'
++
++/** Non-authoritative history window supplied before the first live baseline. */
++export interface SessionWindowSeed {
++  entries: readonly HistoryEntry[]
++  hasMore: boolean
++}
++
++/** Authoritative runtime state handed to an optional persistence adapter. */
++export type SessionHydrationCommit =
++  | { kind: 'list'; entries: readonly SessionListEntry[] }
++  | { kind: 'window'; sessionId: SessionId; window: SessionWindowSeed }
++
++/** Product-neutral cold-state seam. Storage format and retention belong to the adapter. */
++export interface SessionHydrationAdapter {
++  readList(): readonly SessionListEntry[] | undefined
++  readWindow(sessionId: SessionId): SessionWindowSeed | undefined
++  committed(change: SessionHydrationCommit): void
++}
+diff --git a/packages/client/runtime/src/client/contract/session-readiness.ts b/packages/client/runtime/src/client/contract/session-readiness.ts
+new file mode 100644
+index 0000000000..9f5cc1a45b
+--- /dev/null
++++ b/packages/client/runtime/src/client/contract/session-readiness.ts
+@@ -0,0 +1,9 @@
++import type { SnapshotStore } from './store.ts'
++
++export type SessionBaselineReadinessState = {
++  generation: number
++  state: 'pending' | 'ready' | 'error'
++}
++
++/** Replayable authority state for the live session list and currently opened history window. */
++export type SessionBaselineReadiness = SnapshotStore<SessionBaselineReadinessState>
+diff --git a/packages/client/runtime/src/client/index.ts b/packages/client/runtime/src/client/index.ts
+index 90a2b2f5f3..21ed3c0463 100644
+--- a/packages/client/runtime/src/client/index.ts
++++ b/packages/client/runtime/src/client/index.ts
+@@ -13,6 +13,8 @@ import type { SessionListState } from './sessions/service.ts'
+ import { WorkspaceRuntime } from './workspaces/service.ts'
+ import type { ConversationSnapshot } from './sessions/conversation.ts'
+ import type { UseProjection } from './sessions/projection-store.ts'
++import { createSnapshotStore } from './contract/store.ts'
++import type { SessionBaselineReadinessState } from './contract/session-readiness.ts'
+ import { ConversationEventRegistry } from './conversation/event-registry.ts'
+ import { ConversationViewRegistry } from './conversation/view-registry.ts'
+ 
+@@ -106,6 +108,8 @@ export type {
+ export type {
+   ProjectionsBaseline, ProjectionValueStore, SessionProjectionMap, UseProjection,
+ } from './sessions/projection-store.ts'
++export type { SessionHydrationAdapter, SessionHydrationCommit, SessionWindowSeed } from './contract/session-hydration.ts'
++export type { SessionBaselineReadiness, SessionBaselineReadinessState } from './contract/session-readiness.ts'
+ export type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
+ 
+ /** Client-side Cordis context after declaration merging. */
+@@ -172,6 +176,10 @@ declare module '@deepseek-ai/cordis' {
+     conversationEvents: import('./conversation/event-registry.ts').ConversationEventRegistry
+     /** Per-target Conversation snapshot builder registry. */
+     conversationViews: import('./conversation/view-registry.ts').ConversationViewRegistry
++    /** Optional product-owned cold-state adapter installed before runtime activation. */
++    sessionHydration?: import('./contract/session-hydration.ts').SessionHydrationAdapter
++    /** Replayable live baseline status; provided by this runtime. */
++    sessionBaselineReadiness: import('./contract/session-readiness.ts').SessionBaselineReadiness
+     /** The outward face only; the concrete service stays inside the runtime. */
+     sessions: import('./contract/sessions.ts').ISessions
+     /** The outward face only; the concrete service stays inside the runtime. */
+@@ -192,7 +200,11 @@ export function apply(ctx: Context): void {
+     views: new ConversationViewRegistry(ctx),
+   }
+   const connection = ctx.get('connection') as ConnectionHandle
+-  const sessions = new SessionRuntime(ctx, connection.api, ctx.remote, conversation)
++  const readiness = createSnapshotStore<SessionBaselineReadinessState>({ generation: 0, state: 'pending' })
++  ctx.provide('sessionBaselineReadiness', readiness)
++  const sessions = new SessionRuntime(
++    ctx, connection.api, ctx.remote, conversation, ctx.get('sessionHydration'),
++  )
+   ctx.typert.contexts.registerClient('agent', {
+     identity: candidate => sessions.scopeOf(candidate),
+   })
+@@ -201,6 +213,8 @@ export function apply(ctx: Context): void {
+     () => workspaces.startInitialSelection(),
+     'runtime: initial Workspace selection',
+   )
++  let baselineGeneration = 0
++  let completionToken = 0
+   const loop = connection.start({
+     onMuxEnvelope: (envelope) => {
+       sessions.handleMuxEnvelope(envelope)
+@@ -216,15 +230,24 @@ export function apply(ctx: Context): void {
+       if (frame.type === 'host/remote-event') ctx.remote.$dispatch(frame.event, frame.args)
+     },
+     onConnected: () => {
+-      sessions.handleConnected()
++      const generation = ++baselineGeneration
++      const token = ++completionToken
++      readiness.set({ generation, state: 'pending' })
++      const baseline = sessions.handleConnected()
+       workspaces.handleConnected()
+       ctx.emit('connection/reset')
++      void baseline.then((ready) => {
++        if (token !== completionToken) return
++        readiness.set({ generation, state: ready ? 'ready' : 'error' })
++      })
+     },
+     onStateChange: (state) => {
+       // Generation death fires before any next-generation frame can arrive
+       // (reconnect replays flow from stream open, ahead of onConnected):
+       // the only safe moment to drop generation-scoped interaction state.
+       if (state === 'reconnecting') {
++        completionToken++
++        readiness.set({ generation: baselineGeneration + 1, state: 'pending' })
+         sessions.handleDisconnected()
+       }
+     },
+diff --git a/packages/client/runtime/src/client/sessions/manager.ts b/packages/client/runtime/src/client/sessions/manager.ts
+index bb8ed7bd6c..2f8091c638 100644
+--- a/packages/client/runtime/src/client/sessions/manager.ts
++++ b/packages/client/runtime/src/client/sessions/manager.ts
+@@ -11,6 +11,7 @@ import type {
+ import { transportError } from '@deepseek-ai/dsh-host-apiproxy/api'
+ import { mergeOrderedBaseline } from '../ordered-baseline.ts'
+ import type { ConversationRuntime } from './conversation-assembler.ts'
++import type { SessionHydrationAdapter } from '../contract/session-hydration.ts'
+ import type { SessionListEntry, TitledSessionSummary } from './lineage.ts'
+ import { flattenLineage } from './lineage.ts'
+ import type { PendingInteractionStatus } from './pending.ts'
+@@ -114,6 +115,8 @@ export class SessionManager {
+    *  sessions never instantiated. Cleared per connection generation — the reopen replay re-adds
+    *  still-pending requests — and on session-removed. */
+   private readonly pendingInteractions = new Map<SessionId, Map<string, PendingInteractionStatus>>()
++  /** Dead-generation keys stay visible until mux replay confirms or onConnected prunes them. */
++  private stalePendingInteractions: Map<SessionId, Set<string>> | null = null
+   /**
+    * Sessions that finished running while not selected — the sidebar's green
+    * "done" reminder (manager-owned, survives connection generations; cleared
+@@ -156,6 +159,8 @@ export class SessionManager {
+    *  must be recovered by value or every SessionListItem memo misses on every refresh. */
+   private entryCache = new Map<SessionId, SessionListEntry>()
+   private itemsCache: readonly SessionListEntry[] = []
++  /** Optional non-authoritative rows shown only until live list state arrives. */
++  private readonly listSeed: readonly SessionListEntry[] | undefined
+   private readonly notifier = new Notifier(() => {
+     this.listSnapshotCache = this.buildListSnapshot()
+   })
+@@ -170,7 +175,10 @@ export class SessionManager {
+     restoredSelection?: SessionId,
+     restoredAddress?: SubagentAddress,
+     private readonly conversation?: ConversationRuntime,
++    private readonly hydration?: SessionHydrationAdapter,
++    listSeed?: readonly SessionListEntry[],
+   ) {
++    this.listSeed = listSeed === undefined ? undefined : [...listSeed]
+     this.selected = restoredSelection
+     if (restoredAddress !== undefined) this.addresses.set(restoredAddress.childSessionId, restoredAddress)
+     this.listSnapshotCache = this.buildListSnapshot()
+@@ -307,6 +315,8 @@ export class SessionManager {
+ 
+   private createSession(sessionId: SessionId): Session {
+     const address = this.addresses.get(sessionId)
++    let windowSeed
++    try { windowSeed = this.hydration?.readWindow(sessionId) } catch { windowSeed = undefined }
+     return new Session(sessionId, this.api, this.remote, {
+       ...(address === undefined ? {} : {
+         address,
+@@ -318,6 +328,12 @@ export class SessionManager {
+         this.recordMutation({ kind: 'engaged', sessionId: engaged.sessionId })
+       },
+       projections: this.projectionStore(sessionId),
++      ...(windowSeed === undefined ? {} : { windowSeed }),
++      ...(this.hydration === undefined ? {} : {
++        onWindowCommit: (window) => {
++          try { this.hydration?.committed({ kind: 'window', sessionId, window }) } catch { /* optional adapter */ }
++        },
++      }),
+       ...this.conversation === undefined ? {} : { conversation: this.conversation },
+     })
+   }
+@@ -662,6 +678,7 @@ export class SessionManager {
+ 
+   /** Add or refresh one stable pending-interaction identity. */
+   private trackPending(sessionId: SessionId, key: string, status: PendingInteractionStatus): void {
++    this.stalePendingInteractions?.get(sessionId)?.delete(key)
+     let interactions = this.pendingInteractions.get(sessionId)
+     if (interactions === undefined) {
+       interactions = new Map()
+@@ -893,10 +910,10 @@ export class SessionManager {
+    * request with its live rpcId.
+   */
+   handleDisconnected(): void {
+-    if (this.pendingInteractions.size > 0) {
+-      this.pendingInteractions.clear()
+-      this.notifier.markDirty()
+-    }
++    for (const session of this.sessions.values()) session.handleDisconnected()
++    this.stalePendingInteractions = new Map(
++      [...this.pendingInteractions].map(([sessionId, interactions]) => [sessionId, new Set(interactions.keys())]),
++    )
+     for (const [sessionId, buffer] of [...this.pendingBuffers]) {
+       const kept = buffer.filter(item =>
+         item.payload.type !== 'approval/requested' && item.payload.type !== 'question/requested')
+@@ -906,14 +923,33 @@ export class SessionManager {
+     }
+   }
+ 
+-  /** After each connection generation: refresh the session baseline and rebuild opened windows. */
+-  handleConnected(): void {
+-    void this.refreshList()
++  /** After each connection generation: refresh the list and the selected history baseline. */
++  async handleConnected(): Promise<boolean> {
++    const stale = this.stalePendingInteractions
++    this.stalePendingInteractions = null
++    if (stale !== null) {
++      let changed = false
++      for (const [sessionId, keys] of stale) {
++        const interactions = this.pendingInteractions.get(sessionId)
++        if (interactions === undefined) continue
++        for (const key of keys) changed = interactions.delete(key) || changed
++        if (interactions.size === 0) this.pendingInteractions.delete(sessionId)
++      }
++      if (changed) this.notifier.markDirty()
++    }
++    await this.refreshList()
++    if (this.listPhase !== 'ready') return false
+     const selectedAddress = this.selected === undefined ? undefined : this.addresses.get(this.selected)
+     if (selectedAddress !== undefined) void this.refreshSubagents(selectedAddress.parentSessionId)
+     if (this.selected !== undefined) void this.refreshSubagents(this.selected)
+     for (const parentSessionId of this.openCatalogs) void this.refreshSubagents(parentSessionId)
+-    for (const session of this.sessions.values()) void session.resync()
++    const current = this.getListSnapshot().current
++    const currentSession = current === undefined ? undefined : this.sessions.get(current)
++    for (const session of this.sessions.values()) {
++      if (session !== currentSession) void session.resync()
++    }
++    if (currentSession !== undefined) await currentSession.resync()
++    return currentSession === undefined || currentSession.getSnapshot().openState === 'open'
+   }
+ 
+   /** Debounce membership refetches while one parent catalog is selected or open. */
+@@ -1026,6 +1062,22 @@ export class SessionManager {
+   }
+ 
+   private buildListSnapshot(): SessionListSnapshot {
++    if (this.listPhase === 'pending' && this.summaries.length === 0 && this.listSeed !== undefined) {
++      const selected = this.selected
++      const current = selected !== undefined && this.listSeed.some(entry => entry.sessionId === selected)
++        ? selected
++        : undefined
++      return {
++        items: this.listSeed,
++        current,
++        state: this.listState,
++        phase: this.listPhase,
++        error: this.listError,
++        subagentsByParent: Object.fromEntries(this.catalogs),
++        jobsBySession: Object.fromEntries(this.jobsBySession),
++        currentAddress: current === undefined ? undefined : this.addresses.get(current),
++      }
++    }
+     const merged: TitledSessionSummary[] = this.summaries.map((summary) => {
+       // List rows read the generic 'title' projection key (host-computed unit
+       // value; there is no dedicated title frame).
+diff --git a/packages/client/runtime/src/client/sessions/service.ts b/packages/client/runtime/src/client/sessions/service.ts
+index 5e23b3a10a..fad6e0d435 100644
+--- a/packages/client/runtime/src/client/sessions/service.ts
++++ b/packages/client/runtime/src/client/sessions/service.ts
+@@ -28,6 +28,7 @@ import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/t
+ import type { SnapshotStore } from '../contract/store.ts'
+ import { createSnapshotStore } from '../contract/store.ts'
+ import type { SessionFace } from '../contract/session.ts'
++import type { SessionHydrationAdapter } from '../contract/session-hydration.ts'
+ import type { AgentContext, ISessions } from '../contract/sessions.ts'
+ import { createScope, scopeOf as scopeTagOf } from '../agents/scope.ts'
+ import type { ConversationRuntime } from './conversation-assembler.ts'
+@@ -280,6 +281,7 @@ export class SessionRuntime implements ISessions {
+     api: IApiClient,
+     remote: SessionRemotes,
+     conversationRuntime?: ConversationRuntime,
++    private readonly hydration?: SessionHydrationAdapter,
+   ) {
+     this.selection = createSnapshotStore<SessionSelection>(
+       {},
+@@ -292,12 +294,16 @@ export class SessionRuntime implements ISessions {
+         ? undefined
+         : { events: conversationEvents, views: conversationViews }
+     )
++    let listSeed
++    try { listSeed = hydration?.readList() } catch { listSeed = undefined }
+     this.manager = new SessionManager(
+       api,
+       remote,
+       restored.sessionId,
+       restored.subagentAddress,
+       conversation,
++      hydration,
++      listSeed,
+     )
+     this.list = createSnapshotStore<SessionListState>({
+       ids: [], byId: {}, current: undefined, phase: 'pending',
+@@ -326,6 +332,7 @@ export class SessionRuntime implements ISessions {
+       resolveCurrent: () => this.maybeProvideInfo(this.list.getSnapshot().current),
+     })
+     this.currentProvideInfo = this.provideChannel.currentProvideInfo
++    if (listSeed !== undefined && listSeed.length > 0) this.projectList()
+     let registryRebuildQueued = false
+     const scheduleRegistryRebuild = (): void => {
+       if (registryRebuildQueued) return
+@@ -462,8 +469,8 @@ export class SessionRuntime implements ISessions {
+   }
+ 
+   /** Rebuild the Session baseline and every opened window after connection. */
+-  handleConnected(): void {
+-    this.manager.handleConnected()
++  handleConnected(): Promise<boolean> {
++    return this.manager.handleConnected()
+   }
+ 
+   /** Drop generation-scoped live interaction state the moment a connection generation dies. */
+@@ -722,9 +729,9 @@ export class SessionRuntime implements ISessions {
+     const persisted = this.selection.getSnapshot().sessionId
+     // No current (cleared, or masked gap) wipes the persisted cell — a reload
+     // stays on empty; the in-memory selection still resurfaces a masked id.
+-    if (current === undefined) {
++    if (phase === 'ready' && current === undefined) {
+       if (persisted !== undefined) this.selection.set({})
+-    } else if (byId[current] !== undefined
++    } else if (current !== undefined && byId[current] !== undefined
+       && (persisted !== current
+         || this.selection.getSnapshot().subagentAddress?.childSessionId !== currentAddress?.childSessionId
+         || this.selection.getSnapshot().subagentAddress?.parentSessionId !== currentAddress?.parentSessionId
+@@ -735,6 +742,9 @@ export class SessionRuntime implements ISessions {
+       })
+     }
+     this.list.set({ ids, byId, current, phase, subagentsByParent, jobsBySession, currentAddress })
++    if (phase === 'ready' && this.hydration !== undefined) {
++      try { this.hydration.committed({ kind: 'list', entries: items }) } catch { /* optional adapter cannot break live state */ }
++    }
+     this.pruneScopes()
+   }
+ 
+diff --git a/packages/client/runtime/src/client/sessions/session.ts b/packages/client/runtime/src/client/sessions/session.ts
+index 02939cf28f..a9a7e1387a 100644
+--- a/packages/client/runtime/src/client/sessions/session.ts
++++ b/packages/client/runtime/src/client/sessions/session.ts
+@@ -11,6 +11,7 @@ import type {
+ // plugin-to-plugin value imports are a bundle purity error.
+ import { transportError } from '@deepseek-ai/dsh-host-apiproxy/api'
+ import type { SessionFace } from '../contract/session.ts'
++import type { SessionWindowSeed } from '../contract/session-hydration.ts'
+ import { ConversationNodeAssembler } from './conversation-assembler.ts'
+ import type { ConversationRuntime } from './conversation-assembler.ts'
+ import type { ConversationEventInput, ConversationPublication } from '../contract/conversation.ts'
+@@ -54,6 +55,10 @@ export interface SessionOptions {
+   projections?: ProjectionValueStore
+   /** Runtime registries used by this Session-owned Conversation assembler. */
+   conversation?: ConversationRuntime
++  /** Optional non-authoritative tail shown until the first live history baseline. */
++  windowSeed?: SessionWindowSeed
++  /** Receives authoritative contiguous windows; persistence policy belongs to the caller. */
++  onWindowCommit?(window: SessionWindowSeed): void
+ }
+ 
+ /**
+@@ -80,6 +85,8 @@ export class Session implements SessionFace {
+   private loadingOlder = false
+   private pending = new Map<string, PendingInteraction>()
+   private pendingRev = 0
++  /** Keys from the dead generation; replay removes live keys before resync prunes the remainder. */
++  private stalePendingKeys: Set<string> | null = null
+   private pendingCache: { rev: number; value: PendingInteraction[] } | null = null
+   /** Authoritative stream-only inbox snapshot; pending work never hits history. */
+   private readonly queueMirror = new SessionQueueMirror()
+@@ -154,6 +161,15 @@ export class Session implements SessionFace {
+         { entries: () => [] },
+       )
+       : new ConversationNodeAssembler(options.conversation.events, options.conversation.views)
++    const seed = options.windowSeed
++    if (seed !== undefined) {
++      this.events = seed.entries.map(entry => entry.event)
++      this.views = seed.entries.map(entry => entry.view)
++      this.baseSeq = this.events[0]?.seq ?? 0
++      this.hasMore = seed.hasMore
++      this.conversation.replaceWindow(seed.entries.map(conversationInput), seed.hasMore)
++      this.conversation.flush()
++    }
+     this.notifier = new Notifier(() => {
+       this.conversation.flush()
+       this.snapshotCache = this.buildSnapshot()
+@@ -389,6 +405,7 @@ export class Session implements SessionFace {
+       if (older.length === 0) {
+         this.hasMore = result.value.hasMore
+         this.conversation.prepend([], this.hasMore)
++        this.commitWindow()
+         return
+       }
+       const tail = older[older.length - 1]
+@@ -397,6 +414,7 @@ export class Session implements SessionFace {
+         console.error(`[web-runtime] history page discontinuous: tail seq ${tail?.event.seq} vs baseSeq ${this.baseSeq}`)
+         this.hasMore = false
+         this.conversation.prepend([], false)
++        this.commitWindow()
+         return
+       }
+       this.events = [...older.map(e => e.event), ...this.events]
+@@ -405,6 +423,7 @@ export class Session implements SessionFace {
+       this.baseSeq = older[0]?.event.seq ?? this.baseSeq
+       this.hasMore = result.value.hasMore
+       this.conversation.prepend(older.map(conversationInput), this.hasMore)
++      this.commitWindow()
+     } catch (error) {
+       console.error('[web-runtime] loadOlder failed:', error)
+     } finally {
+@@ -413,11 +432,27 @@ export class Session implements SessionFace {
+     }
+   }
+ 
++  /** Mark current waits stale without hiding them while the next generation replays authority. */
++  handleDisconnected(): void {
++    this.stalePendingKeys = new Set(this.pending.keys())
++  }
++
+   /** Reconnect rebuild (manager calls this on onConnected for instances that were opened):
+    *  reset the window and rerun open; pending waits for the baseline replay. Invalidates any
+    *  in-flight open first — its history request rode the dead connection and must not settle
+    *  the fresh generation into 'error'. */
+   async resync(): Promise<void> {
++    if (this.stalePendingKeys === null) {
++      if (this.pending.size > 0) {
++        this.pending.clear()
++        this.pendingRev++
++      }
++    } else {
++      let changed = false
++      for (const key of this.stalePendingKeys) changed = this.pending.delete(key) || changed
++      this.stalePendingKeys = null
++      if (changed) this.pendingRev++
++    }
+     // The queue mirror is NOT cleared here: onConnected (which drives resync)
+     // races the mux frames — the fresh generation's baseline may have landed
+     // already, and the host never resends it. The mirror re-baselines on the
+@@ -431,10 +466,6 @@ export class Session implements SessionFace {
+     this.events = []
+     this.views = []
+     this.baseSeq = 0
+-    // Superseded, not settled: the baseline replay re-sends still-pending requested frames verbatim
+-    // (same rpcId), re-minting fresh waits; a stale reference's respond() still reaches the host.
+-    this.pending.clear()
+-    this.pendingRev++
+     this.subscribedLastSeq = null
+     this.liveBuffer = []
+     this.notifier.markDirty()
+@@ -602,6 +633,7 @@ export class Session implements SessionFace {
+ 
+   /** Requested-frame arrival: the wait enters the pending map under its own key. */
+   private mint(wait: PendingInteraction): void {
++    this.stalePendingKeys?.delete(wait.key)
+     this.pending.set(wait.key, wait)
+     this.pendingRev++
+   }
+@@ -665,6 +697,7 @@ export class Session implements SessionFace {
+     const buffered = this.liveBuffer
+     this.liveBuffer = []
+     for (const item of buffered) this.appendLive(item.event, item.view)
++    this.commitWindow()
+     this.notifier.markDirty()
+   }
+ 
+@@ -677,6 +710,7 @@ export class Session implements SessionFace {
+     if (event.type === 'turn/start') this.firstPromptPendingTurn = false
+     const queueChanged = this.queueMirror.acceptDurable(event)
+     const publication = this.conversation.append({ event, view })
++    this.commitWindow()
+     return queueChanged ? 'immediate' : publication
+   }
+ 
+@@ -727,6 +761,19 @@ export class Session implements SessionFace {
+     }
+   }
+ 
++  private commitWindow(): void {
++    if (this.options.onWindowCommit === undefined) return
++    try {
++      this.options.onWindowCommit({
++        entries: this.events.map((event, index) => {
++          const view = this.views[index]
++          return view === undefined ? { event } : { event, view }
++        }),
++        hasMore: this.hasMore,
++      })
++    } catch { /* optional adapter cannot break authoritative history */ }
++  }
++
+   private windowTailSeq(): number | null {
+     const tail = this.events[this.events.length - 1]
+     return tail === undefined ? null : tail.seq
+diff --git a/packages/client/runtime/tests/client-apply.client.spec.ts b/packages/client/runtime/tests/client-apply.client.spec.ts
+index 199181fe2e..3e2d4b17ff 100644
+--- a/packages/client/runtime/tests/client-apply.client.spec.ts
++++ b/packages/client/runtime/tests/client-apply.client.spec.ts
+@@ -12,9 +12,10 @@ import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
+ import * as RuntimeClient from '../src/client/index.ts'
+ import type { ConversationNodeDefinition } from '../src/client/contract/conversation.ts'
+ import { Session } from '../src/client/sessions/session.ts'
++import type { SessionHydrationAdapter } from '../src/client/contract/session-hydration.ts'
+ import type { SessionRuntime } from '../src/client/sessions/service.ts'
+ import type { WorkspaceRuntime } from '../src/client/workspaces/service.ts'
+-import { FakeApiClient, fakeRemote, ok } from './fake-api.client.ts'
++import { FakeApiClient, deferred, fakeRemote, ok } from './fake-api.client.ts'
+ 
+ interface Bench {
+   ctx: Context
+@@ -23,7 +24,7 @@ interface Bench {
+   stopped: number
+ }
+ 
+-async function mount(): Promise<Bench> {
++async function mount(hydration?: SessionHydrationAdapter): Promise<Bench> {
+   const ctx = new Context()
+   await ctx.plugin(TypertRegistry)
+   const api = new FakeApiClient()
+@@ -43,6 +44,7 @@ async function mount(): Promise<Bench> {
+       return { stop: () => { bench.stopped += 1 } }
+     },
+   }
++  if (hydration !== undefined) ctx.provide('sessionHydration', hydration)
+   ctx.reflect.provide('connection', handle)
+   ctx.reflect.provide('remote', {})
+   ctx.reflect.provide('remote.commands', fakeRemote().commands)
+@@ -55,6 +57,34 @@ async function flushMicrotasks(): Promise<void> {
+ }
+ 
+ describe('runtime client apply', () => {
++  it('accepts a product adapter registered before runtime activation', async () => {
++    const bench = await mount({
++      readList: () => [{
++        sessionId: 'cached' as never, updatedAt: 1,
++        running: false, blank: false, completed: false, depth: 0,
++      }],
++      readWindow: () => undefined,
++      committed: () => {},
++    })
++    const sessions = bench.ctx.get('sessions') as SessionRuntime
++    expect(sessions.list.getSnapshot().ids).toEqual(['cached'])
++  })
++
++  it('publishes replayable session baseline readiness after the live list settles', async () => {
++    const bench = await mount()
++    const liveList = deferred<Awaited<ReturnType<FakeApiClient['onList']>>>()
++    bench.api.onList = () => liveList.promise
++    bench.sinks?.onConnected?.({ version: '0', cwd: '/f', attachedSessions: 0, home: '/h', canOpenPath: true })
++
++    const readiness = bench.ctx.get('sessionBaselineReadiness') as {
++      getSnapshot(): { generation: number; state: string }
++    } | undefined
++    expect(readiness?.getSnapshot()).toEqual({ generation: 1, state: 'pending' })
++    liveList.resolve(ok({ items: [] }))
++    await flushMicrotasks()
++    expect(readiness?.getSnapshot()).toEqual({ generation: 1, state: 'ready' })
++  })
++
+   it('mounts slots, Sessions, and Workspaces and fans host frames into both managers', async () => {
+     const bench = await mount()
+     expect(bench.ctx.get('slots') !== undefined).toBe(true)
+diff --git a/packages/client/runtime/tests/manager.client.spec.ts b/packages/client/runtime/tests/manager.client.spec.ts
+index d0594032df..7674fb51e2 100644
+--- a/packages/client/runtime/tests/manager.client.spec.ts
++++ b/packages/client/runtime/tests/manager.client.spec.ts
+@@ -997,21 +997,30 @@ describe('pending-interaction list status', () => {
+     expect(manager.getListSnapshot().items).toHaveLength(0)
+   })
+ 
+-  it('drops stale status at generation death before replay re-adds live interactions', () => {
++  it('keeps status visible through the reconnect gap when replay confirms the interaction', () => {
+     const manager = new SessionManager(new FakeApiClient(), fakeRemote())
+     manager.handleHostEnvelope({ rpcId: 'h1' as never, payload: { type: 'host/session-added', sessionId: S1, blank: false } })
+     manager.handleMuxEnvelope({ rpcId: 'ra' as never, payload: { type: 'approval/requested', sessionId: S1, approvalId: 'ap1' as never, toolName: 'rm' } })
+     expect(manager.getListSnapshot().items[0]?.pendingInteraction).toBe('approval')
+-    // Generation death clears (resolved-while-disconnected questions send no frame)…
++    // Keep the last known interaction visible while the next mux generation replays authority.
+     manager.handleDisconnected()
+-    expect(manager.getListSnapshot().items[0]?.pendingInteraction).toBeUndefined()
+-    // …and a replayed frame arriving before onConnected (stream open precedes
+-    // the readiness handshake) survives the later handleConnected untouched.
++    expect(manager.getListSnapshot().items[0]?.pendingInteraction).toBe('approval')
++    // A replayed frame arrives before onConnected (stream open precedes the readiness handshake).
+     manager.handleMuxEnvelope({ rpcId: 'ra' as never, payload: { type: 'approval/requested', sessionId: S1, approvalId: 'ap1' as never, toolName: 'rm' } })
+     manager.handleConnected()
+     expect(manager.getListSnapshot().items[0]?.pendingInteraction).toBe('approval')
+   })
+ 
++  it('prunes a disconnected interaction when mux replay does not confirm it', () => {
++    const manager = new SessionManager(new FakeApiClient(), fakeRemote())
++    manager.handleHostEnvelope({ rpcId: 'h1' as never, payload: { type: 'host/session-added', sessionId: S1, blank: false } })
++    manager.handleMuxEnvelope({ rpcId: 'q1' as never, payload: { type: 'question/requested', sessionId: S1, questions: [] } })
++    manager.handleDisconnected()
++    expect(manager.getListSnapshot().items[0]?.pendingInteraction).toBe('question')
++    void manager.handleConnected()
++    expect(manager.getListSnapshot().items[0]?.pendingInteraction).toBeUndefined()
++  })
++
+   it('generation death drops buffered answerable frames (a dead generation cannot be answered)', () => {
+     const manager = new SessionManager(new FakeApiClient(), fakeRemote())
+     manager.handleHostEnvelope({ rpcId: 'h1' as never, payload: { type: 'host/session-added', sessionId: S1, blank: false } })
+diff --git a/packages/client/runtime/tests/session.client.spec.ts b/packages/client/runtime/tests/session.client.spec.ts
+index 19e80dfd5b..a55db591d6 100644
+--- a/packages/client/runtime/tests/session.client.spec.ts
++++ b/packages/client/runtime/tests/session.client.spec.ts
+@@ -176,6 +176,39 @@ function histResponse(events: SessionEvent[], hasMore = false) {
+ }
+ 
+ describe('open', () => {
++  it('keeps a non-authoritative window seed visible until live history replaces and commits it', async () => {
++    const api = new FakeApiClient()
++    const pending = deferred<Awaited<ReturnType<FakeApiClient['onHistory']>>>()
++    api.onHistory = () => pending.promise
++    const cached = entries(plainTurn(2, 1, 'cached question', 'cached answer'))
++    const live = entries(plainTurn(12, 2, 'live question', 'live answer'))
++    const commits: unknown[] = []
++    const session = new Session(SID, api, fakeRemote(), {
++      conversation: TEST_CONVERSATION,
++      windowSeed: { entries: cached, hasMore: true },
++      onWindowCommit: (window) => { commits.push(window) },
++    })
++    expect(chatSeqs(session.getSnapshot())).toEqual(cached.map(row => row.event.seq))
++
++    const opening = session.open()
++    expect(session.getSnapshot().openState).toBe('loading')
++    expect(chatSeqs(session.getSnapshot())).toEqual(cached.map(row => row.event.seq))
++    pending.resolve(ok({ events: live as never[], hasMore: false }))
++    await opening
++
++    expect(chatSeqs(session.getSnapshot())).toEqual(live.map(row => row.event.seq))
++    expect(commits.at(-1)).toMatchObject({ entries: live, hasMore: false })
++
++    const tail = live.at(-1)
++    if (tail === undefined) throw new Error('fixture must have a tail')
++    const appended = ev.user(tail.event.seq + 1, 'streamed')
++    session.handleMuxEnvelope('streamed' as never, { type: 'session/event', sessionId: SID, event: appended })
++    expect(commits.at(-1)).toMatchObject({
++      entries: [...live, { event: appended }],
++      hasMore: false,
++    })
++  })
++
+   it('keeps a bare Session blank until an authoritative lifecycle signal arrives', () => {
+     const { session } = makeSession()
+     expect(session.getSnapshot()).toMatchObject({ blank: true, composerPhase: 'blank' })
+@@ -378,7 +411,12 @@ describe('paging', () => {
+   it('prepends an older page and keeps seq continuity', async () => {
+     const older = plainTurn(0, 0, '旧问', '旧答')
+     const newer = plainTurn(6, 1, '新问', '新答')
+-    const { api, session } = makeSession()
++    const api = new FakeApiClient()
++    const commits: unknown[] = []
++    const session = new Session(SID, api, fakeRemote(), {
++      conversation: TEST_CONVERSATION,
++      onWindowCommit: (window) => { commits.push(window) },
++    })
+     api.onHistory = payload => payload.beforeSeq === undefined
+       ? histResponse(newer, true)
+       : histResponse(older, false)
+@@ -388,6 +426,7 @@ describe('paging', () => {
+     expect(api.callsOf('session.history')).toMatchObject([{}, { beforeSeq: 6 }].map(p => ({ sessionId: SID, ...p })))
+     expect(snapshot.hasMore).toBe(false)
+     expect(snapshot.nodes.map(n => n.seq)).toEqual([1, 3, 7, 9])
++    expect(commits.at(-1)).toMatchObject({ entries: [...older, ...newer].map(event => ({ event })), hasMore: false })
+   })
+ 
+   it('installs a page without interpreting business replacement metadata', async () => {
+@@ -917,6 +956,24 @@ describe('remaining branches', () => {
+ })
+ 
+ describe('resync', () => {
++  it('keeps a pending question replayed before onConnected resync', async () => {
++    const { api, session } = makeSession()
++    api.onHistory = () => histResponse(plainTurn(0, 0, 'a', 'b'))
++    await session.open()
++    session.handleMuxEnvelope('rq' as never, {
++      type: 'question/requested', sessionId: SID,
++      questions: [{ id: 'choice', question: 'Continue?' }],
++    })
++    session.handleDisconnected()
++    session.handleMuxEnvelope('rq' as never, {
++      type: 'question/requested', sessionId: SID,
++      questions: [{ id: 'choice', question: 'Continue?' }],
++    })
++    await session.resync()
++    expect(session.getSnapshot().pending).toHaveLength(1)
++    expect(session.getSnapshot().pending[0]?.kind).toBe('question')
++  })
++
+   it('rebuilds the window and clears pending; cold instances no-op', async () => {
+     const { api, session } = makeSession()
+     api.onHistory = () => histResponse(plainTurn(0, 0, 'a', 'b'))
+diff --git a/packages/client/runtime/tests/sessions-service.client.spec.ts b/packages/client/runtime/tests/sessions-service.client.spec.ts
+index b135b56ebe..c950d0619f 100644
+--- a/packages/client/runtime/tests/sessions-service.client.spec.ts
++++ b/packages/client/runtime/tests/sessions-service.client.spec.ts
+@@ -10,6 +10,7 @@ import { Context } from '@deepseek-ai/cordis'
+ import { afterEach, describe, expect, it, vi } from 'vitest'
+ import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
+ import { SessionCreateError, SessionRuntime, scopeOf } from '../src/client/sessions/service.ts'
++import type { SessionHydrationAdapter, SessionHydrationCommit } from '../src/client/contract/session-hydration.ts'
+ import { FakeApiClient, deferred, err, fakeRemote, ok } from './fake-api.client.ts'
+ 
+ const sid = (s: string): SessionId => s as SessionId
+@@ -20,10 +21,10 @@ interface Bench {
+   svc: SessionRuntime
+ }
+ 
+-function bench(): Bench {
++function bench(hydration?: SessionHydrationAdapter): Bench {
+   const ctx = new Context()
+   const api = new FakeApiClient()
+-  const svc = new SessionRuntime(ctx, api, fakeRemote())
++  const svc = new SessionRuntime(ctx, api, fakeRemote(), undefined, hydration)
+   return { ctx, api, svc }
+ }
+ 
+@@ -52,6 +53,39 @@ async function feedList(b: Bench, rows: FeedRow[]): Promise<void> {
+   await Promise.resolve() // manager notifier flush
+ }
+ 
++describe('session hydration adapter', () => {
++  it('passes a seeded history window through the runtime binding', () => {
++    const adapter: SessionHydrationAdapter = {
++      readList: () => [{
++        sessionId: sid('cached'), updatedAt: 10,
++        running: false, blank: false, completed: false, depth: 0,
++      }],
++      readWindow: sessionId => sessionId === sid('cached') ? { entries: [], hasMore: true } : undefined,
++      committed: () => {},
++    }
++    const b = bench(adapter)
++    expect(b.svc.binding(sid('cached'))?.session.getSnapshot().hasMore).toBe(true)
++  })
++
++  it('shows a non-authoritative list seed until the first live list replaces and commits it', async () => {
++    const commits: SessionHydrationCommit[] = []
++    const adapter: SessionHydrationAdapter = {
++      readList: () => [{
++        sessionId: sid('cached'), title: 'Cached', updatedAt: 10,
++        running: false, blank: false, completed: false, depth: 0,
++      }],
++      readWindow: () => undefined,
++      committed: (change) => { commits.push(change) },
++    }
++    const b = bench(adapter)
++    expect(b.svc.list.getSnapshot().ids).toEqual([sid('cached')])
++
++    await feedList(b, [{ id: 'live' }])
++    expect(b.svc.list.getSnapshot().ids).toEqual([sid('live')])
++    expect(commits.at(-1)).toMatchObject({ kind: 'list' })
++  })
++})
++
+ describe('list store projection', () => {
+   it('projects durable titles separately from cwd/id display fallbacks and parent links', async () => {
+     const b = bench()
+-- 
+2.53.0
+

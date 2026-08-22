@@ -10,9 +10,10 @@ import { installCompatibilityNotice, loadSameOriginMobileBootManifest, NARROW_LA
 import { scanPairingQr } from './pairing-scanner.ts'
 import { prepareProfileConnection, type PreparedProfileConnection } from './profile-connection.ts'
 import { activateHostProfile, completeProfileOnboarding, removeHostProfile } from './profile-lifecycle.ts'
+import { enhancementDisclosure, readSessionEnhancementPreference, writeSessionEnhancementPreference } from './enhancement-preference.ts'
+import { prepareSessionHydration, type PreparedSessionHydration } from './session-hydration.ts'
 import { connectionRecoveryDecision, endpointRefreshRequired } from './reconnect-recovery.ts'
 import { BrowserProfileStorage, ProfileRepository } from './profiles.ts'
-import { migrateActiveTemporaryEndpoint } from './default-endpoint.ts'
 import { prepareDshClientBoot } from './dsh-boot.ts'
 import { connectionRecoveryNotice, connectionRouteLabel, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type TunnelManagerActivity } from './tunnel.ts'
 import { HostSession } from './host-session.ts'
@@ -80,17 +81,22 @@ function offerFromCurrentHash(): string | undefined {
   return /#offer=/.test(location.hash) && validOfferUrl(location.href) !== null ? location.href : undefined
 }
 
-/** Persist a newly scanned offer across a real shell bootstrap. Hash-only navigation does not reload a WebView. */
-function reloadForOffer(offerUrl: string): void {
-  const hash = new URL(offerUrl).hash
-  history.replaceState(null, '', location.pathname + location.search + hash)
-  location.reload()
+let queuedRuntimeOffer: string | undefined
+let runtimeOfferHandler: ((offerUrl: string) => void) | undefined
+
+/** Route new offers into the resident HostSession; queue only during bootstrap. */
+function routeRuntimeOffer(offerUrl: string): void {
+  history.replaceState(null, '', location.pathname + location.search)
+  if (runtimeOfferHandler === undefined) queuedRuntimeOffer = offerUrl
+  else runtimeOfferHandler(offerUrl)
 }
 
 async function showProfileMenu(
   repository: ProfileRepository,
   onActiveHostChanged: () => Promise<void>,
   onProfilesEmpty: () => Promise<void>,
+  onEnhancementChange: (preference: import('./manifest.ts').SessionEnhancementPreference) => Promise<void>,
+  onPairOffer: (offerUrl: string) => Promise<void>,
   connection: () => DeviceConnectionSummary,
 ): Promise<void> {
   if (document.querySelector('[data-dsh-profile-menu]') !== null) return
@@ -100,6 +106,8 @@ async function showProfileMenu(
     profiles,
     active,
     connection: connection(),
+    enhancement: connection().enhancement,
+    onEnhancementChange,
     onActivate: hostId => activateHostProfile(hostId, {
       setActive: id => repository.setActiveHost(id),
       reconnect: onActiveHostChanged,
@@ -122,15 +130,13 @@ async function showProfileMenu(
     },
     onScan: async (surface) => {
       const offer = await scanUntilPaired(surface)
-      reloadForOffer(offer)
+      await onPairOffer(offer)
     },
   })
 }
 
 void (async () => {
-  const appLinks = new AppLinkInbox(validOfferUrl, url => {
-    reloadForOffer(url)
-  })
+  const appLinks = new AppLinkInbox(validOfferUrl, routeRuntimeOffer)
   await App.addListener('appUrlOpen', ({ url }) => appLinks.capture(url))
 
   const native = Capacitor.isNativePlatform()
@@ -139,6 +145,9 @@ void (async () => {
   installSystemBarThemeSync(bridges.systemBars)
   const vault = createVault(native, bridges.vault)
   const repository = new ProfileRepository(new BrowserProfileStorage(), vault)
+  let sessionEnhancementPreference = readSessionEnhancementPreference(localStorage)
+  let hydration: PreparedSessionHydration | null = null
+  let enhancementState: NonNullable<ResponsiveBootSelection['enhancement']> = { status: 'core' }
   let scannedOffer = offerFromCurrentHash()
   let sameOriginBoot = false
   setSameOriginHostBridgeCapability(false)
@@ -190,11 +199,6 @@ void (async () => {
     }
     if (prepared === null && scannedOffer === undefined) {
       try {
-        await migrateActiveTemporaryEndpoint(repository)
-      } catch {
-        // Keep the existing Profile if the local migration cannot be persisted.
-      }
-      try {
         prepared = await prepareProfileConnection({ repository, vault })
       } catch (error) {
         if (!native) {
@@ -240,10 +244,18 @@ void (async () => {
       updateBadge(activity, route, shellMounted, liveDataReady)
     })
     installProfileAction(() => {
-      void showProfileMenu(repository, reconnectActiveHost, enterOnboardingAfterRemoval, () => ({
+      void showProfileMenu(repository, reconnectActiveHost, enterOnboardingAfterRemoval, async preference => {
+        writeSessionEnhancementPreference(localStorage, preference)
+        sessionEnhancementPreference = preference
+        await reconnectActiveHost()
+      }, connectPairingOffer, () => ({
         state,
         route,
         profile: activeConnection.profile,
+        enhancement: {
+          preference: sessionEnhancementPreference,
+          disclosure: enhancementDisclosure(enhancementState),
+        },
       }))
     })
     const setTopbarNotice = (
@@ -415,7 +427,15 @@ void (async () => {
           return scanned
         },
       })
-      reloadForOffer(offerUrl)
+      await connectPairingOffer(offerUrl)
+    }
+
+    async function connectPairingOffer(offerUrl: string): Promise<void> {
+      const next = await prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange })
+      activeConnection = next
+      setProtectedCacheScope(next.profile.hostId)
+      await session?.connect(next)
+      markTransportReady()
     }
 
     async function reconnectActiveHost(): Promise<void> {
@@ -483,6 +503,7 @@ void (async () => {
           expectedOfficialLayoutRevision,
           localizePlugins: native,
           hostId: next.profile.hostId,
+          sessionEnhancementPreference,
         })
         if (selection.officialLayoutRevision !== expectedOfficialLayoutRevision) {
           const latest = await repository.getActive() ?? next.profile
@@ -498,10 +519,27 @@ void (async () => {
         return hydrateBootManifestFromCache(next.profile.hostId, {
           viewportWidth: readViewportWidth(),
           localizePlugins: native,
+          sessionEnhancementPreference,
         })
       },
       async mount(selection) {
         responsiveSelection = selection
+        enhancementState = selection.enhancement ?? { status: 'core' }
+        await hydration?.dispose()
+        hydration = null
+        delete (globalThis as typeof globalThis & { __DSH_MOBILE_SESSION_HYDRATION__?: unknown }).__DSH_MOBILE_SESSION_HYDRATION__
+        if (enhancementState.status === 'enabled') {
+          const preparedHydration = await prepareSessionHydration({
+            hostId: activeConnection.profile.hostId,
+            legacyStorage: localStorage,
+            allowLegacyMigration: (await repository.list()).length === 1,
+          })
+          hydration = preparedHydration
+          ;(globalThis as typeof globalThis & { __DSH_MOBILE_SESSION_HYDRATION__?: unknown }).__DSH_MOBILE_SESSION_HYDRATION__ = {
+            adapter: preparedHydration.adapter,
+            dispose: () => preparedHydration.dispose(),
+          }
+        }
         await bootDshShell(selection)
         shellMounted = true
         updateBadge(activity, route, shellMounted, liveDataReady)
@@ -510,6 +548,15 @@ void (async () => {
         render()
       },
     })
+    runtimeOfferHandler = offerUrl => { void connectPairingOffer(offerUrl).catch(error => {
+      lastError = error instanceof Error ? error.message : String(error)
+      render()
+    }) }
+    if (queuedRuntimeOffer !== undefined) {
+      const offerUrl = queuedRuntimeOffer
+      queuedRuntimeOffer = undefined
+      await connectPairingOffer(offerUrl)
+    }
     shellMounted = await session.hydrate(activeConnection)
     render()
     window.addEventListener('online', () => { void session?.probeNow() })
