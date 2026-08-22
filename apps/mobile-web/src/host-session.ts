@@ -18,7 +18,7 @@ export interface HostSessionDeps {
   injectBoot(client: TunnelClient, prepared: PreparedProfileConnection): Promise<ResponsiveBootSelection>
   /** Paint a cached boot roster before the tunnel is open; null means wait for the live inject. */
   hydrateBoot?(prepared: PreparedProfileConnection): Promise<ResponsiveBootSelection | null>
-  mount(selection: ResponsiveBootSelection): void | Promise<void>
+  mount(selection: ResponsiveBootSelection, hostId: string): void | Promise<void>
 }
 
 export interface ShellPaintContext {
@@ -37,6 +37,10 @@ export function shellNeedsPaint(
   return previous.layout !== next.layout
     || previous.manifest.rev !== next.manifest.rev
     || previous.officialLayoutRevision !== next.officialLayoutRevision
+    || previous.enhancement?.status !== next.enhancement?.status
+    || (previous.enhancement?.status === 'incompatible'
+      && next.enhancement?.status === 'incompatible'
+      && previous.enhancement.reason !== next.enhancement.reason)
 }
 
 /** Owns one Active Host tunnel and remounts Host UI in the existing shell. */
@@ -45,6 +49,7 @@ export class HostSession {
   private prepared: PreparedProfileConnection | null = null
   private lastSelection: ResponsiveBootSelection | null = null
   private lastHostId: string | null = null
+  private generation = 0
   private readonly deps: HostSessionDeps
 
   constructor(deps: HostSessionDeps) {
@@ -55,24 +60,27 @@ export class HostSession {
 
   /** Paint the cached shell before starting transport; the live connect reuses this selection. */
   async hydrate(prepared: PreparedProfileConnection): Promise<boolean> {
+    const generation = this.generation
     this.prepared = prepared
     const cached = await this.deps.hydrateBoot?.(prepared) ?? null
-    if (cached === null) return false
+    if (cached === null || generation !== this.generation) return false
     await this.paint(cached, prepared.profile.hostId)
     return true
   }
 
   async connect(prepared: PreparedProfileConnection): Promise<ResponsiveBootSelection> {
     this.stop()
+    const generation = this.generation
     this.prepared = prepared
     const manager = this.deps.createManager(prepared)
     this.manager = manager
     this.deps.slot.attach(manager)
     manager.start()
     const cached = await this.deps.hydrateBoot?.(prepared) ?? null
-    if (cached !== null) await this.paint(cached, prepared.profile.hostId)
+    if (cached !== null && generation === this.generation) await this.paint(cached, prepared.profile.hostId)
     const client = await manager.current()
     const selection = await this.deps.injectBoot(client, prepared)
+    if (generation !== this.generation) return selection
     manager.armHeartbeat()
     await this.paint(selection, prepared.profile.hostId)
     return selection
@@ -100,6 +108,7 @@ export class HostSession {
   }
 
   stop(): void {
+    this.generation += 1
     this.manager?.stop()
     this.manager = null
   }
@@ -111,6 +120,6 @@ export class HostSession {
     }
     this.lastSelection = selection
     this.lastHostId = nextHostId
-    await this.deps.mount(selection)
+    await this.deps.mount(selection, nextHostId)
   }
 }

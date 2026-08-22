@@ -438,7 +438,7 @@ test('enables the local adapter and runtime only for an exact supported official
   assert.equal(enabled.status, 'enabled')
   assert.deepEqual(enabled.manifest.entries.map(entry => entry.id), [MOBILE_HYDRATION_ID, RUNTIME_ID, DESKTOP_LAYOUT_ID])
   assert.match(enabled.manifest.entries[1].url, /session-hydration\/runtime\.js/)
-  assert.deepEqual(enabled.manifest.entries[1].inject, ['wire'])
+  assert.deepEqual(enabled.manifest.entries[1].inject, ['wire', MOBILE_HYDRATION_ID])
 
   const unknown = { ...known, rev: 'official-update-not-verified' }
   const disabled = selectSessionEnhancement({ rev: 'updated', entries: [unknown, layout] }, { preference: 'enhanced' })

@@ -42,6 +42,11 @@ test('shellNeedsPaint is false for the same Host roster and true when host, rev,
   assert.equal(shellNeedsPaint(painted, selection('r2'), { previousHostId: 'host-a', nextHostId: 'host-a' }), true)
   assert.equal(shellNeedsPaint(painted, selection('r1', { layout: 'official' }), { previousHostId: 'host-a', nextHostId: 'host-a' }), true)
   assert.equal(shellNeedsPaint(painted, selection('r1'), { previousHostId: 'host-a', nextHostId: 'host-b' }), true)
+  assert.equal(shellNeedsPaint(
+    { ...painted, enhancement: { status: 'core' } },
+    { ...painted, enhancement: { status: 'incompatible', reason: 'runtime-revision' } },
+    { previousHostId: 'host-a', nextHostId: 'host-a' },
+  ), true)
 })
 
 test('switching Active Host remounts in-shell and never reloads the document', async () => {
@@ -74,6 +79,33 @@ test('switching Active Host remounts in-shell and never reloads the document', a
   } finally {
     globalThis.location = original
   }
+})
+
+test('a late superseded Host connect cannot repaint or arm after the newer Host', async () => {
+  let releaseA
+  const gateA = new Promise(resolve => { releaseA = resolve })
+  const managers = new Map()
+  const mounts = []
+  const slot = { attach(source) { this.source = source }, async current() { return this.source.current() }, source: null }
+  const session = new HostSession({
+    slot,
+    createManager(next) {
+      const manager = fakeManager()
+      if (next.profile.hostId === 'host-a') manager.current = async () => { await gateA; return manager.client }
+      managers.set(next.profile.hostId, manager)
+      return manager
+    },
+    async injectBoot(_client, next) { return selection(next.profile.hostId) },
+    mount(next, hostId) { mounts.push({ rev: next.manifest.rev, hostId }) },
+  })
+  const stale = session.connect(prepared('host-a'))
+  await new Promise(resolve => setTimeout(resolve, 0))
+  await session.connect(prepared('host-b'))
+  releaseA()
+  await stale
+  assert.deepEqual(mounts, [{ rev: 'host-b', hostId: 'host-b' }])
+  assert.equal(managers.get('host-a').stats().armed, 0)
+  assert.equal(managers.get('host-b').stats().armed, 1)
 })
 
 test('viewport remount reuses the live tunnel and does not reconnect or repaint the same roster', async () => {

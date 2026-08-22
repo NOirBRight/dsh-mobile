@@ -10,6 +10,12 @@ class MemoryDatabase {
   }
   async writeList(record) { this.records.set(record.key, structuredClone(record)) }
   async writeWindow(record) { this.records.set(record.key, structuredClone(record)) }
+  async writeMigration(list, windows) {
+    const next = new Map(this.records)
+    next.set(list.key, structuredClone(list))
+    for (const record of windows) next.set(record.key, structuredClone(record))
+    this.records = next
+  }
   close() {}
 }
 
@@ -37,8 +43,7 @@ test('v2 cache is Host-scoped, validated, and neutralizes volatile list state', 
   assert.equal(b.adapter.readWindow('a'), undefined)
   const a2 = await prepareSessionHydration({ hostId: 'host-a', database: db })
   assert.deepEqual(a2.adapter.readList(), [{
-    sessionId: 'a', title: 'a', updatedAt: 10, running: false, blank: false,
-    completed: false, depth: 0,
+    sessionId: 'a', title: 'a', updatedAt: 10, blank: false,
   }])
   assert.deepEqual(a2.adapter.readWindow('a'), { entries: [{ event: event(1) }], hasMore: true })
 })
@@ -77,6 +82,37 @@ test('single-profile migration validates legacy v1 records and removes them afte
   db.records.set('dsh-mobile:bad:sessions-list:v2', { key: 'x', kind: 'list', version: 2, hostId: 'bad', entries: [{ nope: true }] })
   const invalid = await prepareSessionHydration({ hostId: 'bad', database: db })
   assert.equal(invalid.adapter.readList(), undefined)
+})
+
+test('failed migration persists neither list nor history and remains retryable', async () => {
+  class FailOnceDatabase extends MemoryDatabase {
+    fail = true
+    async writeMigration(list, windows) {
+      if (this.fail) {
+        this.fail = false
+        throw new Error('transaction aborted')
+      }
+      await super.writeMigration(list, windows)
+    }
+  }
+  const db = new FailOnceDatabase()
+  const legacy = new MemoryLegacyStorage()
+  legacy.setItem('dsh-mobile:sessions-list:v1', JSON.stringify({ version: 1, entries: [listRow('old')] }))
+  legacy.setItem('dsh-mobile:history:old', JSON.stringify({
+    version: 1, events: [event(4)], views: [null], baseSeq: 4, hasMore: false,
+  }))
+  const failed = await prepareSessionHydration({
+    hostId: 'only-host', database: db, legacyStorage: legacy, allowLegacyMigration: true,
+  })
+  assert.equal(failed.migratedLegacy, false)
+  assert.equal(db.records.has('dsh-mobile:only-host:sessions-list:v2'), false)
+  assert.notEqual(legacy.getItem('dsh-mobile:sessions-list:v1'), null)
+
+  const retried = await prepareSessionHydration({
+    hostId: 'only-host', database: db, legacyStorage: legacy, allowLegacyMigration: true,
+  })
+  assert.equal(retried.migratedLegacy, true)
+  assert.deepEqual(retried.adapter.readWindow('old'), { entries: [{ event: event(4) }], hasMore: false })
 })
 
 test('storage unavailability degrades to an empty non-throwing adapter', async () => {

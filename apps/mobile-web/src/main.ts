@@ -528,7 +528,7 @@ void (async () => {
           sessionEnhancementPreference,
         })
       },
-      async mount(selection) {
+      async mount(selection, hostId) {
         responsiveSelection = selection
         enhancementState = selection.enhancement ?? { status: 'core' }
         await hydration?.dispose()
@@ -536,7 +536,7 @@ void (async () => {
         delete (globalThis as typeof globalThis & { __DSH_MOBILE_SESSION_HYDRATION__?: unknown }).__DSH_MOBILE_SESSION_HYDRATION__
         if (enhancementState.status === 'enabled') {
           const preparedHydration = await prepareSessionHydration({
-            hostId: activeConnection.profile.hostId,
+            hostId,
             legacyStorage: localStorage,
             allowLegacyMigration: (await repository.list()).length === 1,
           })

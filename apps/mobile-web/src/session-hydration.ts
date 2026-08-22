@@ -2,14 +2,11 @@ export interface SessionListCacheEntry {
   sessionId: string
   title?: string
   updatedAt: number
-  running: boolean
   blank: boolean
   parentSessionId?: string
   origin?: 'subagent'
   cwd?: string
   agentPreset?: string
-  completed: boolean
-  depth: number
 }
 
 export interface SessionWindowCacheSeed {
@@ -49,6 +46,7 @@ export interface SessionCacheDatabase {
   readWindows(hostId: string): Promise<readonly unknown[]>
   writeList(record: ListRecord): Promise<void>
   writeWindow(record: WindowRecord): Promise<void>
+  writeMigration(list: ListRecord, windows: readonly WindowRecord[]): Promise<void>
   close(): void
 }
 
@@ -97,20 +95,16 @@ function normalizeListEntry(value: unknown): SessionListCacheEntry | undefined {
   if (typeof value.sessionId !== 'string' || value.sessionId.length === 0) return undefined
   if (typeof value.updatedAt !== 'number' || !Number.isFinite(value.updatedAt)) return undefined
   if (typeof value.blank !== 'boolean') return undefined
-  if (typeof value.depth !== 'number' || !Number.isSafeInteger(value.depth) || value.depth < 0) return undefined
   const origin = value.origin === 'subagent' ? 'subagent' as const : undefined
   return {
     sessionId: value.sessionId,
     ...(optionalString(value.title) === undefined ? {} : { title: optionalString(value.title) }),
     updatedAt: value.updatedAt,
-    running: false,
     blank: value.blank,
     ...(optionalString(value.parentSessionId) === undefined ? {} : { parentSessionId: optionalString(value.parentSessionId) }),
     ...(origin === undefined ? {} : { origin }),
     ...(optionalString(value.cwd) === undefined ? {} : { cwd: optionalString(value.cwd) }),
     ...(optionalString(value.agentPreset) === undefined ? {} : { agentPreset: optionalString(value.agentPreset) }),
-    completed: false,
-    depth: value.depth,
   }
 }
 
@@ -268,6 +262,7 @@ const unavailableDatabase: SessionCacheDatabase = {
   async readWindows() { return [] },
   async writeList() {},
   async writeWindow() {},
+  async writeMigration() {},
   close() {},
 }
 
@@ -302,8 +297,7 @@ export async function prepareSessionHydration(options: PrepareSessionHydrationOp
         })
       }
       try {
-        await database.writeList(listRecord)
-        for (const record of migratedWindows) await database.writeWindow(record)
+        await database.writeMigration(listRecord, migratedWindows)
         list = legacyList
         for (const record of migratedWindows) windows.set(record.sessionId, record.window)
         legacy.removeItem(LEGACY_LIST_KEY)
@@ -378,6 +372,14 @@ export class IndexedDbSessionCacheDatabase implements SessionCacheDatabase {
   async writeWindow(record: WindowRecord): Promise<void> {
     const tx = this.database.transaction('windows', 'readwrite')
     tx.objectStore('windows').put(record)
+    await transactionDone(tx)
+  }
+
+  async writeMigration(list: ListRecord, windows: readonly WindowRecord[]): Promise<void> {
+    const tx = this.database.transaction(['lists', 'windows'], 'readwrite')
+    tx.objectStore('lists').put(list)
+    const store = tx.objectStore('windows')
+    for (const record of windows) store.put(record)
     await transactionDone(tx)
   }
 
