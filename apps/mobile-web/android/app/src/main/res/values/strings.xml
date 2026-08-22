@@ -4,8 +4,8 @@
     <string name="title_activity_main">DSH Mobile</string>
     <string name="package_name">top.noirbright.dshmobile</string>
     <string name="custom_url_scheme">top.noirbright.dshmobile</string>
-    <string name="background_connection_channel">后台连接</string>
-    <string name="background_connection_channel_description">保持 DSH Host 连接并接收最新会话状态</string>
-    <string name="background_connection_title">DSH Mobile 后台连接</string>
-    <string name="background_connection_text">正在保持与当前 Host 的连接</string>
+    <string name="background_connection_channel">后台连接保护（实验）</string>
+    <string name="background_connection_channel_description">尝试减少后台冻结；系统仍可能中断 WebView 连接</string>
+    <string name="background_connection_title">DSH Mobile 正在尝试保护连接</string>
+    <string name="background_connection_text">系统仍可能暂停或终止当前 Host 连接</string>
 </resources>

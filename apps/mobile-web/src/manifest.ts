@@ -12,7 +12,7 @@ export const RUNTIME_ID = '@deepseek-ai/dsh-client-runtime'
 export const MOBILE_HYDRATION_ID = '@dsh-mobile/session-hydration'
 export const SUPPORTED_OFFICIAL_RUNTIME_REVISIONS = ['5a9e129c42ae'] as const
 const MOBILE_HYDRATION_REV = '0.1.0'
-const MOBILE_RUNTIME_REV = '2614968a67c4'
+const MOBILE_RUNTIME_REV = '335f15577a33'
 const MOBILE_HYDRATION_URL = '/plugins/@dsh-mobile/session-hydration/client.js?rev=' + MOBILE_HYDRATION_REV
 const MOBILE_RUNTIME_URL = '/plugins/@dsh-mobile/session-hydration/runtime.js?rev=' + MOBILE_RUNTIME_REV
 export const DSH_HOST_BRIDGE_CAPABILITY = '__DSH_HOST_BRIDGE__'

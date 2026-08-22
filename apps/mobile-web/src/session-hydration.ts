@@ -10,7 +10,7 @@ export interface SessionListCacheEntry {
 }
 
 export interface SessionWindowCacheSeed {
-  entries: readonly { event: Record<string, unknown>; view?: unknown }[]
+  entries: readonly { event: Record<string, unknown> }[]
   hasMore: boolean
 }
 
@@ -119,19 +119,18 @@ function normalizeList(entries: unknown): SessionListCacheEntry[] | undefined {
   return normalized
 }
 
-function normalizeHistoryEntry(value: unknown): { event: Record<string, unknown>; view?: unknown } | undefined {
+function normalizeHistoryEntry(value: unknown): { event: Record<string, unknown> } | undefined {
   if (!isRecord(value) || !isRecord(value.event)) return undefined
   const event = value.event
   if (typeof event.type !== 'string' || !Number.isSafeInteger(event.seq) || (event.seq as number) < 0) return undefined
   if (typeof event.time !== 'number' || !Number.isFinite(event.time)) return undefined
-  return Object.hasOwn(value, 'view') && value.view !== undefined
-    ? { event, view: value.view }
-    : { event }
+  // Host-computed render intent is pagination-time only and must never become durable cache state.
+  return { event }
 }
 
 function normalizeWindow(value: unknown): SessionWindowCacheSeed | undefined {
   if (!isRecord(value) || !Array.isArray(value.entries) || typeof value.hasMore !== 'boolean') return undefined
-  const entries: { event: Record<string, unknown>; view?: unknown }[] = []
+  const entries: { event: Record<string, unknown> }[] = []
   let previous = -1
   for (const raw of value.entries) {
     const entry = normalizeHistoryEntry(raw)

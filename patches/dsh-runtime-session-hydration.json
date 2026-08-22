@@ -8,9 +8,9 @@
     "runtimeRevision": "5a9e129c42ae"
   },
   "downstream": {
-    "commit": "1223c0d5918bc51592cdd5f876bf62ca68ef9af3",
+    "commit": "3f7666e10198097edd51ea7cfae596d7486816fb",
     "patch": "dsh-runtime-session-hydration.patch",
-    "runtimeRevision": "2614968a67c4"
+    "runtimeRevision": "335f15577a33"
   },
   "capability": "session-hydration-v1",
   "policy": {

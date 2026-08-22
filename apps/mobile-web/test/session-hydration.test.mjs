@@ -36,7 +36,10 @@ test('v2 cache is Host-scoped, validated, and neutralizes volatile list state', 
   const db = new MemoryDatabase()
   const a = await prepareSessionHydration({ hostId: 'host-a', database: db })
   a.adapter.committed({ kind: 'list', entries: [listRow('a')] })
-  a.adapter.committed({ kind: 'window', sessionId: 'a', window: { entries: [{ event: event(1) }], hasMore: true } })
+  a.adapter.committed({
+    kind: 'window', sessionId: 'a',
+    window: { entries: [{ event: event(1), view: { transient: true } }], hasMore: true },
+  })
   await a.flush()
   const b = await prepareSessionHydration({ hostId: 'host-b', database: db })
   assert.equal(b.adapter.readList(), undefined)

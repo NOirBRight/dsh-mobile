@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createBackgroundConnectionControl, readBackgroundConnectionPreference, writeBackgroundConnectionPreference } from '../src/background-connection.ts'
 
-test('reliable background mode is opt-in and persists explicitly', () => {
+test('experimental background connection guard is opt-in and persists explicitly', () => {
   const values = new Map()
   const storage = {
     getItem(key) { return values.get(key) ?? null },

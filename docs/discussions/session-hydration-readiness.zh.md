@@ -25,8 +25,10 @@
 当前验证实现中的公共接口如下：
 
 ```ts
+type SessionWindowSeedEntry = Pick<HistoryEntry, 'event'>
+
 interface SessionWindowSeed {
-  entries: readonly HistoryEntry[]
+  entries: readonly SessionWindowSeedEntry[]
   hasMore: boolean
 }
 
@@ -50,7 +52,7 @@ type SessionBaselineReadinessState = {
   state: 'pending' | 'ready' | 'error'
 }
 
-type SessionBaselineReadiness = SnapshotStore<SessionBaselineReadinessState>
+type SessionBaselineReadiness = ObservableSnapshot<SessionBaselineReadinessState>
 ```
 
 Provider 通过 `ctx.provide('sessionHydration', adapter)` 注册；Runtime 通过 `ctx.provide('sessionBaselineReadiness', store)` 提供就绪快照。
@@ -70,7 +72,9 @@ Provider 通过 `ctx.provide('sessionHydration', adapter)` 注册；Runtime 通�
 ### Readiness 按 generation 隔离
 
 - 每次新连接 generation 从 `pending` 开始；
+- 每个 generation 必须执行自己的实时列表 pull，不能复用上一代仍在进行的 promise；
 - 当前 generation 的实时列表 baseline 失败时必须发布 `error`，即使上一代曾经 `ready`；
+- 列表失败不能阻止已打开历史窗口 resync，避免继续显示上一代状态；
 - 有当前 Session 时，还必须等它的实时历史 baseline 成功；
 - 缓存 seed、旧 generation 的成功状态和固定超时都不能产生 `ready`。
 
@@ -107,16 +111,16 @@ Runtime 仅拥有上述 seam、权威生命周期和 fail-soft 规则。以下�
 ## 已完成的验证实现
 
 - 官方基线：`528c682e061696f5a160f363f236ecbf53cbd006`
-- 通用实现提交：`1223c0d5918bc51592cdd5f876bf62ca68ef9af3`
+- 通用实现提交：`3f7666e10198097edd51ea7cfae596d7486816fb`
 - 官方 Runtime bundle revision：`5a9e129c42ae`
-- 验证实现 Runtime bundle revision：`2614968a67c4`
+- 验证实现 Runtime bundle revision：`335f15577a33`
 - 可审阅补丁：`patches/dsh-runtime-session-hydration.patch`
 - 机器可读门禁：`patches/dsh-runtime-session-hydration.json`
 - 架构说明：`.agents/notes/implemented/architecture/2026-08-22-client-session-hydration-readiness.md`
 
 验证结果：
 
-- Runtime 聚焦测试：165/165；
+- Runtime 聚焦测试：168/168；
 - 移动 Shell 完整测试：149/149；
 - `npm run verify:cold-start` 验证 Host-scoped 列表与选中历史在 transport ready 前已可绘制；
 - Runtime TypeScript typecheck：通过；
