@@ -53,6 +53,15 @@ export class HostSession {
 
   selection(): ResponsiveBootSelection | null { return this.lastSelection }
 
+  /** Paint the cached shell before starting transport; the live connect reuses this selection. */
+  async hydrate(prepared: PreparedProfileConnection): Promise<boolean> {
+    this.prepared = prepared
+    const cached = await this.deps.hydrateBoot?.(prepared) ?? null
+    if (cached === null) return false
+    await this.paint(cached, prepared.profile.hostId)
+    return true
+  }
+
   async connect(prepared: PreparedProfileConnection): Promise<ResponsiveBootSelection> {
     this.stop()
     this.prepared = prepared

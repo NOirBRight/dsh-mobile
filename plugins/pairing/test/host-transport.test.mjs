@@ -6,6 +6,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import http from 'node:http'
+import { gunzipSync } from 'node:zlib'
 import { WebSocketServer, WebSocket } from 'ws'
 import nacl from 'tweetnacl'
 import { attachAuthenticatedTransport, attachHandshakeTransport, attachRelaySocket } from '../src/tunnel-server.ts'
@@ -257,7 +258,7 @@ test('a streamed POST body reassembles across http-data frames through the seam'
   assert.equal(echo.body, 'hello tunnel')
 })
 
-test('a large upstream response chunks into http-data frames through the seam', async (t) => {
+test('a large upstream response is gzip-compressed through the seam', async (t) => {
   const upstream = await startUpstream()
   t.after(() => upstream.server.close())
   const { gate, codec, inbox, clientEnd } = attachInMemory(upstream)
@@ -266,15 +267,17 @@ test('a large upstream response chunks into http-data frames through the seam', 
   clientEnd.send(codec.seal({ t: 'http-req', id: 'r3', method: 'GET', path: '/large', headers: {} }))
   const head = await inbox.waitFor((m) => m.t === 'http-res' && m.id === 'r3')
   assert.equal(head.status, 200)
-  assert.equal(head.body, undefined, 'oversized responses start with a bodyless http-res')
-  const parts = []
-  let last = false
+  assert.equal(head.encoding, 'gzip')
+  const parts = head.body === undefined ? [] : [Buffer.from(head.body, 'base64')]
+  let last = head.body !== undefined
   while (!last) {
     const chunk = await inbox.waitFor((m) => m.t === 'http-data' && m.id === 'r3')
     parts.push(Buffer.from(chunk.data, 'base64'))
     last = chunk.last === true
   }
-  const body = Buffer.concat(parts)
+  const compressed = Buffer.concat(parts)
+  assert.ok(compressed.length < LARGE_BYTES / 10)
+  const body = gunzipSync(compressed)
   assert.equal(body.length, LARGE_BYTES)
   assert.ok(body.equals(Buffer.alloc(LARGE_BYTES, 0x61)))
 })

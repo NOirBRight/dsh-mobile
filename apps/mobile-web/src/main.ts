@@ -2,22 +2,28 @@
 import { AppWebEntry } from '@deepseek-ai/dsh-client-web'
 import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
-import { parseOffer, TunnelError, type ConnectionStatus, type TunnelState } from '@dsh-mobile/e2e-tunnel'
+import { parseOffer, TunnelError, type TunnelState } from '@dsh-mobile/e2e-tunnel'
 import { AppLinkInbox } from './app-links.ts'
 import { BrowserCredentialVault, NativeCredentialVault, purgeLegacyAndroidWebCredentials, type NativeCredentialVaultBridge, type ReadableCredentialVault } from './credential-vault.ts'
-import { claimShellNativeBridges, concealShellNativeBridges } from './native-bridges.ts'
-import { installCompatibilityNotice, loadSameOriginMobileBootManifest, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, type BootManifest, type ResponsiveBootSelection } from './manifest.ts'
+import { claimShellNativeBridges, concealShellNativeBridges, installSystemBarThemeSync } from './native-bridges.ts'
+import { installCompatibilityNotice, loadSameOriginMobileBootManifest, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, readViewportWidth, selectResponsiveBootManifest, setProtectedCacheScope, setSameOriginHostBridgeCapability, type BootManifest, type ResponsiveBootSelection } from './manifest.ts'
 import { scanPairingQr } from './pairing-scanner.ts'
 import { prepareProfileConnection, type PreparedProfileConnection } from './profile-connection.ts'
-import { endpointRefreshRequired } from './reconnect-recovery.ts'
+import { activateHostProfile, completeProfileOnboarding, removeHostProfile } from './profile-lifecycle.ts'
+import { connectionRecoveryDecision, endpointRefreshRequired } from './reconnect-recovery.ts'
 import { BrowserProfileStorage, ProfileRepository } from './profiles.ts'
+import { migrateActiveTemporaryEndpoint } from './default-endpoint.ts'
 import { prepareDshClientBoot } from './dsh-boot.ts'
-import { hydrateBootManifestFromCache, installBadge, installShims, injectBootManifestFromTunnel, shouldInstallTunnelShims, TunnelManager, TunnelManagerSlot } from './tunnel.ts'
+import { connectionRecoveryNotice, connectionRouteLabel, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type TunnelManagerActivity } from './tunnel.ts'
 import { HostSession } from './host-session.ts'
+import { mountFirstRunScreen } from './first-run-screen.ts'
+import { mountHostProfileMenu, type DeviceConnectionSummary } from './host-profile-menu.ts'
+import type { ScanSurface } from './scan-surface.ts'
 
 const root = document.getElementById('root')
 if (root === null) throw new Error('mobile-web app: missing #root')
 const el: HTMLElement = root
+document.documentElement.dataset.dshSurface = 'mobile'
 let webEntry: AppWebEntry | null = null
 
 async function bootDshShell(selection: ResponsiveBootSelection | null): Promise<void> {
@@ -41,12 +47,25 @@ async function waitForScanRetry(message: string): Promise<void> {
   await new Promise<void>(resolve => document.getElementById('scan-pairing')?.addEventListener('click', () => resolve(), { once: true }))
 }
 
-async function scanUntilPaired(): Promise<string> {
+const rootScanSurface: ScanSurface = {
+  show(message, retryLabel) {
+    if (retryLabel === undefined) {
+      el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">' + message + '</div>'
+      return
+    }
+    return waitForScanRetry(message)
+  },
+}
+
+async function scanUntilPaired(surface: ScanSurface = rootScanSurface): Promise<string> {
   let automatic = true
   while (true) {
-    el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">正在打开相机扫描配对二维码…</div>'
+    await surface.show('正在打开相机扫描配对二维码…')
     try { return await scanPairingQr() } catch {
-      await waitForScanRetry(automatic ? '没有识别到有效的 DSH 配对二维码' : '扫码失败，请对准 Host 二维码重试')
+      await surface.show(
+        automatic ? '没有识别到有效的 DSH 配对二维码' : '扫码失败，请对准 Host 二维码重试',
+        '重新扫码',
+      )
       automatic = false
     }
   }
@@ -68,33 +87,44 @@ function reloadForOffer(offerUrl: string): void {
   location.reload()
 }
 
-async function showProfileMenu(repository: ProfileRepository, onActiveHostChanged: () => Promise<void>): Promise<void> {
-  if (document.getElementById('dsh-profile-menu') !== null) return
+async function showProfileMenu(
+  repository: ProfileRepository,
+  onActiveHostChanged: () => Promise<void>,
+  onProfilesEmpty: () => Promise<void>,
+  connection: () => DeviceConnectionSummary,
+): Promise<void> {
+  if (document.querySelector('[data-dsh-profile-menu]') !== null) return
   const [profiles, active] = await Promise.all([repository.list(), repository.getActive()])
-  const overlay = document.createElement('div')
-  overlay.id = 'dsh-profile-menu'
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#0008;display:flex;align-items:flex-end;justify-content:center;font:14px system-ui,sans-serif'
-  const panel = document.createElement('section')
-  panel.style.cssText = 'box-sizing:border-box;width:min(100%,560px);max-height:82vh;overflow:auto;background:#171717;color:#fff;border-radius:16px 16px 0 0;padding:18px'
-  const heading = document.createElement('h2'); heading.textContent = 'Host Profiles'; panel.append(heading)
-  for (const profile of profiles) {
-    const row = document.createElement('div')
-    row.style.cssText = 'border-top:1px solid #ffffff24;padding:12px 0;display:grid;gap:8px'
-    const label = document.createElement('strong'); label.textContent = (profile.hostId === active?.hostId ? '● ' : '') + profile.displayName; row.append(label)
-    const endpoint = document.createElement('small'); endpoint.textContent = profile.endpoint.url; endpoint.style.opacity = '.7'; row.append(endpoint)
-    const policy = document.createElement('select')
-    for (const [value, text] of [['automatic', 'Automatic'], ['direct-only', 'Direct Only'], ['tunnel-only', 'Tunnel Only']] as const) { const option = document.createElement('option'); option.value = value; option.textContent = text; option.selected = profile.connectionPolicy === value; policy.append(option) }
-    policy.onchange = async () => { await repository.upsert({ ...profile, connectionPolicy: policy.value as typeof profile.connectionPolicy, updatedAt: new Date().toISOString() }); if (profile.hostId === active?.hostId) { overlay.remove(); await onActiveHostChanged() } }
-    row.append(policy)
-    const actions = document.createElement('div')
-    if (profile.hostId !== active?.hostId) { const activate = document.createElement('button'); activate.textContent = 'Set Active'; activate.onclick = async () => { await repository.setActiveHost(profile.hostId); overlay.remove(); await onActiveHostChanged() }; actions.append(activate) }
-    const remove = document.createElement('button'); remove.textContent = 'Remove locally'; remove.style.marginLeft = '8px'; remove.onclick = async () => { if (!confirm('Remove this Host Profile and its local credential? This does not revoke the device on Host.')) return; const wasActive = profile.hostId === active?.hostId; await repository.remove(profile.hostId); overlay.remove(); if (wasActive) await onActiveHostChanged() }; actions.append(remove)
-    row.append(actions); panel.append(row)
-  }
-  const add = document.createElement('button'); add.textContent = 'Scan Host / Endpoint Refresh'; add.onclick = async () => { const offer = await scanUntilPaired(); reloadForOffer(offer) }; panel.append(add)
-  const close = document.createElement('button'); close.textContent = 'Close'; close.style.marginLeft = '8px'; close.onclick = () => overlay.remove(); panel.append(close)
-  overlay.onclick = event => { if (event.target === overlay) overlay.remove() }
-  overlay.append(panel); document.body.append(overlay)
+  let menu: ReturnType<typeof mountHostProfileMenu> | undefined
+  menu = mountHostProfileMenu({
+    profiles,
+    active,
+    connection: connection(),
+    onActivate: hostId => activateHostProfile(hostId, {
+      setActive: id => repository.setActiveHost(id),
+      reconnect: onActiveHostChanged,
+    }),
+    onPolicyChange: async (profile, policy) => {
+      await repository.upsert({ ...profile, connectionPolicy: policy, updatedAt: new Date().toISOString() })
+      if (profile.hostId === active?.hostId) await onActiveHostChanged()
+    },
+    onRemove: async (profile) => {
+      if (!window.confirm('移除此设备的本地配对信息？这不会撤销 Host 上的设备。')) return
+      await removeHostProfile(profile.hostId, active?.hostId, {
+        remove: async hostId => {
+          await repository.remove(hostId)
+          menu?.close()
+        },
+        count: async () => (await repository.list()).length,
+        reconnect: onActiveHostChanged,
+        onboarding: onProfilesEmpty,
+      })
+    },
+    onScan: async (surface) => {
+      const offer = await scanUntilPaired(surface)
+      reloadForOffer(offer)
+    },
+  })
 }
 
 void (async () => {
@@ -106,6 +136,7 @@ void (async () => {
   const native = Capacitor.isNativePlatform()
   if (native) purgeLegacyAndroidWebCredentials(localStorage)
   const bridges = claimShellNativeBridges(native)
+  installSystemBarThemeSync(bridges.systemBars)
   const vault = createVault(native, bridges.vault)
   const repository = new ProfileRepository(new BrowserProfileStorage(), vault)
   let scannedOffer = offerFromCurrentHash()
@@ -141,6 +172,7 @@ void (async () => {
     '安全警告：此 Endpoint 的 Host Identity 已改变。仅在你确认 Host 已重置时继续；否则取消并检查连接。',
   )
   let prepared: PreparedProfileConnection | null = null
+  let initialOnboardingError: string | undefined
   if (!sameOriginBoot) {
     if (scannedOffer !== undefined) {
       try {
@@ -152,11 +184,16 @@ void (async () => {
           el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">配对失败：' + reason + '</div>'
           return
         }
-        await waitForScanRetry('配对失败：' + reason + '。请刷新 Host 二维码后重试')
+        initialOnboardingError = '配对失败：' + reason + '。请检查二维码后重试'
         scannedOffer = undefined
       }
     }
     if (prepared === null && scannedOffer === undefined) {
+      try {
+        await migrateActiveTemporaryEndpoint(repository)
+      } catch {
+        // Keep the existing Profile if the local migration cannot be persisted.
+      }
       try {
         prepared = await prepareProfileConnection({ repository, vault })
       } catch (error) {
@@ -164,16 +201,13 @@ void (async () => {
           el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">请用 DSH Mobile 应用扫描 Host 配对二维码</div>'
           return
         }
-        while (prepared === null) {
-          const offerUrl = await scanUntilPaired()
-          el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">二维码已识别，正在保存 Host Profile…</div>'
-          try {
-            prepared = await prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange })
-          } catch (error) {
-            const reason = error instanceof Error ? error.message : 'unknown error'
-            await waitForScanRetry('配对失败：' + reason + '。请刷新 Host 二维码后重试')
-          }
-        }
+        const firstRun = mountFirstRunScreen(el)
+        prepared = await completeProfileOnboarding({
+          surface: firstRun,
+          ...initialOnboardingError === undefined ? {} : { initialError: initialOnboardingError },
+          scan: () => scanUntilPaired(firstRun),
+          prepare: offerUrl => prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange }),
+        })
       }
     }
   }
@@ -185,49 +219,117 @@ void (async () => {
 
   if (prepared !== null) {
     let activeConnection = prepared
+    setProtectedCacheScope(activeConnection.profile.hostId)
     let lastError = ''
     let state: TunnelState = 'connecting'
+    let activity: TunnelManagerActivity = { phase: 'connecting', attempt: 1, reconnecting: false, route: null }
     let route = ''
     let endpointRefreshAvailable = false
-    const updateBadge = installBadge(() => { void showProfileMenu(repository, reconnectActiveHost) })
-    const render = (): void => {
-      const needsRecovery = endpointRefreshAvailable || lastError !== ''
-      if (shellMounted && !needsRecovery) return
-      if (shellMounted && needsRecovery) {
-        let banner = document.getElementById('endpoint-refresh-banner')
-        if (banner === null) {
-          banner = document.createElement('div')
-          banner.id = 'endpoint-refresh-banner'
-          banner.style.cssText = 'position:sticky;top:0;z-index:10002;padding:8px 12px;background:#854d0e;color:#fff;font:13px/1.4 system-ui,sans-serif'
-          document.body.prepend(banner)
-        }
-        banner.replaceChildren()
-        const hint = document.createElement('div')
-        hint.textContent = endpointRefreshAvailable
-          ? 'Host 的临时 Public Endpoint 可能已轮换。'
-          : (/credential is missing/i.test(lastError) ? '登录凭证已丢失，请重新扫描 Host 二维码配对。' : lastError)
-        banner.append(hint)
-        const refresh = document.createElement('button')
-        refresh.id = 'endpoint-refresh'
-        refresh.style.cssText = 'margin-top:.6em;padding:.5em 1em'
-        refresh.textContent = '扫描 Endpoint Refresh'
-        refresh.onclick = async () => {
-          refresh.disabled = true
-          session?.stop()
-          shellMounted = false
-          const offerUrl = await scanUntilPaired()
-          try {
-            activeConnection = await prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange })
-            await session?.connect(activeConnection)
-            document.getElementById('endpoint-refresh-banner')?.remove()
-          } catch (error) {
-            lastError = 'Endpoint Refresh: ' + (error instanceof Error ? error.message : 'unknown error')
-            render()
-          }
-        }
-        banner.append(refresh)
+    // A successful HostSession.connect() is stronger than a stale error from
+    // an earlier tunnel generation. Keep this separate so the cached shell can
+    // paint before the first ready callback without pinning a false notice.
+    let transportReady = false
+    // Transport readiness and authoritative session-data freshness are
+    // intentionally separate: the cached shell remains usable between them.
+    let liveDataReady = false
+    const updateBadge = installBadge()
+    // Cached shell may paint before TunnelManager emits its first callback.
+    updateBadge(activity, route, shellMounted, liveDataReady)
+    document.addEventListener('dsh:live-data-ready', () => {
+      liveDataReady = true
+      updateBadge(activity, route, shellMounted, liveDataReady)
+    })
+    installProfileAction(() => {
+      void showProfileMenu(repository, reconnectActiveHost, enterOnboardingAfterRemoval, () => ({
+        state,
+        route,
+        profile: activeConnection.profile,
+      }))
+    })
+    const setTopbarNotice = (
+      message: string | null,
+      detail = '',
+      action?: { label: string; run: () => void },
+    ): void => {
+      const title = document.querySelector<HTMLElement>('[data-mobile-session-title]')
+      const notice = document.querySelector<HTMLElement>('[data-mobile-topbar-notice]')
+      const text = document.querySelector<HTMLElement>('[data-mobile-topbar-notice-text]')
+      const button = document.querySelector<HTMLButtonElement>('[data-mobile-topbar-notice-action]')
+      if (title === null || notice === null || text === null || button === null) return
+      if (message === null) {
+        title.hidden = false
+        notice.hidden = true
+        notice.removeAttribute('title')
+        text.textContent = ''
+        button.hidden = true
+        button.onclick = null
         return
       }
+      // The notice is a floating layer, not part of the topbar flex row.
+      // Keep the session title visible while the connection state is transient.
+      title.hidden = false
+      notice.hidden = false
+      notice.title = detail
+      text.textContent = message
+      if (action === undefined) {
+        button.hidden = true
+        button.onclick = null
+      } else {
+        button.hidden = false
+        button.textContent = action.label
+        button.disabled = false
+        button.onclick = () => action.run()
+      }
+    }
+    const render = (): void => {
+      const recoveryKind = endpointRefreshAvailable
+        ? 'endpoint'
+        : connectionRecoveryDecision(activeConnection.profile.endpoint.kind, activity.phase, lastError)
+      const recoveryNotice = connectionRecoveryNotice(recoveryKind, lastError)
+      const needsRecovery = recoveryNotice !== null
+      // A later successful transport state clears any stale error from an older attempt.
+      // transportReady also covers the case where HostSession.connect() completed
+      // before the tunnel callback reached this render closure.
+      if (shellMounted && (state === 'open' || transportReady)) {
+        lastError = ''
+        endpointRefreshAvailable = false
+        document.getElementById('endpoint-refresh-banner')?.remove()
+        document.getElementById('mobile-reconnecting-banner')?.remove()
+        setTopbarNotice(null)
+        return
+      }
+      document.getElementById('endpoint-refresh-banner')?.remove()
+      document.getElementById('mobile-reconnecting-banner')?.remove()
+      if (shellMounted) {
+        if (recoveryNotice !== null) {
+          setTopbarNotice(recoveryNotice.message, recoveryNotice.detail, {
+            label: recoveryNotice.actionLabel,
+            run: () => {
+              const button = document.querySelector<HTMLButtonElement>('[data-mobile-topbar-notice-action]')
+              if (button !== null) button.disabled = true
+              session?.stop()
+              shellMounted = false
+              void (async () => {
+                const offerUrl = await scanUntilPaired()
+                try {
+                  activeConnection = await prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange })
+                  setProtectedCacheScope(activeConnection.profile.hostId)
+                  await session?.connect(activeConnection)
+                  markTransportReady()
+                } catch (error) {
+                  lastError = 'Endpoint Refresh: ' + (error instanceof Error ? error.message : 'unknown error')
+                  render()
+                }
+              })()
+            },
+          })
+        } else {
+          // Transient failures have one owner: the floating connection status.
+          setTopbarNotice(null)
+        }
+        return
+      }
+      setTopbarNotice(null)
       if (state === 'open' && !needsRecovery) return
       const wrap = document.createElement('div')
       wrap.style.cssText = 'padding:2em;text-align:center;font-family:sans-serif'
@@ -269,32 +371,66 @@ void (async () => {
         el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">正在更新临时 Endpoint…</div>'
         try {
           activeConnection = await prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange })
+          setProtectedCacheScope(activeConnection.profile.hostId)
           await session?.connect(activeConnection)
+          markTransportReady()
         } catch (error) {
           lastError = 'Endpoint Refresh: ' + (error instanceof Error ? error.message : 'unknown error')
           render()
         }
       }, { once: true })
     }
-    const onConnectionStatus = (status: ConnectionStatus): void => {
-      route = status.route === 'direct' ? 'WebRTC Direct' : status.route === 'tunnel' ? 'Tunnel Fallback' : ''
-      updateBadge(state, route)
+    const markTransportReady = (): void => {
+      transportReady = true
+      state = 'open'
+      activity = { phase: 'open', attempt: activity.attempt, route: activity.route }
+      // A cached pre-contract runtime cannot emit dsh:live-data-ready. Preserve
+      // its transport-open behavior instead of pinning “刷新中…” forever; the
+      // next boot, using the refreshed runtime, takes the authoritative path.
+      if (!supportsLiveDataReadiness(document.documentElement.dataset)) liveDataReady = true
+      lastError = ''
+      endpointRefreshAvailable = false
+      updateBadge(activity, route, shellMounted, liveDataReady)
       render()
     }
+
+    async function enterOnboardingAfterRemoval(): Promise<void> {
+      session?.stop()
+      await webEntry?.dispose()
+      webEntry = null
+      shellMounted = false
+      transportReady = false
+      liveDataReady = false
+      state = 'closed'
+      route = ''
+      activity = { phase: 'terminal', attempt: activity.attempt, route: null, error: 'no Active Host Profile' }
+      updateBadge(activity, route, shellMounted, liveDataReady)
+      setTopbarNotice(null)
+      const firstRun = mountFirstRunScreen(el)
+      const offerUrl = await completeProfileOnboarding({
+        surface: firstRun,
+        scan: () => scanUntilPaired(firstRun),
+        prepare: async scanned => {
+          await prepareProfileConnection({ repository, vault, offerUrl: scanned, acknowledgeIdentityChange })
+          return scanned
+        },
+      })
+      reloadForOffer(offerUrl)
+    }
+
     async function reconnectActiveHost(): Promise<void> {
       session?.stop()
-      shellMounted = false
       document.getElementById('endpoint-refresh-banner')?.remove()
       try {
         const next = await prepareProfileConnection({ repository, vault, acknowledgeIdentityChange })
         activeConnection = next
+        setProtectedCacheScope(next.profile.hostId)
         await session?.connect(next)
+        markTransportReady()
       } catch (error) {
         lastError = error instanceof Error ? error.message : String(error)
         if (lastError === 'no Active Host Profile') {
-          await waitForScanRetry('Host Profile 已移除，请重新扫描配对二维码')
-          const offer = await scanUntilPaired()
-          reloadForOffer(offer)
+          await enterOnboardingAfterRemoval()
           return
         }
         render()
@@ -310,11 +446,30 @@ void (async () => {
           clientType: 'android',
           deferHeartbeat: true,
           loadCredentials: next.loadCredentials,
-          onConnectionStatus,
-          onState(nextState) { state = nextState; updateBadge(state, route); render() },
-          onError(message) {
-            lastError = message
-            endpointRefreshAvailable ||= endpointRefreshRequired(next.profile.endpoint.kind, message)
+          onActivity(nextActivity) {
+            activity = nextActivity
+            route = connectionRouteLabel(nextActivity.route, next.profile.endpoint.kind, next.profile.connectionPolicy)
+            state = nextActivity.phase === 'open'
+              ? 'open'
+              : nextActivity.phase === 'connecting'
+                ? 'connecting'
+                : 'closed'
+            transportReady = nextActivity.phase === 'open'
+            if (nextActivity.phase !== 'open') liveDataReady = false
+            if (nextActivity.phase === 'open') {
+              lastError = ''
+              endpointRefreshAvailable = false
+            } else if ('error' in nextActivity && typeof nextActivity.error === 'string') {
+              lastError = nextActivity.error
+              const recovery = connectionRecoveryDecision(next.profile.endpoint.kind, nextActivity.phase, lastError)
+              endpointRefreshAvailable ||= recovery === 'endpoint'
+              if (nextActivity.phase === 'retry-wait' && recovery !== null) {
+                session?.stop()
+                activity = { phase: 'terminal', attempt: nextActivity.attempt, route: nextActivity.route, error: lastError }
+                state = 'closed'
+              }
+            }
+            updateBadge(activity, route, shellMounted, liveDataReady)
             render()
           },
         })
@@ -349,17 +504,22 @@ void (async () => {
         responsiveSelection = selection
         await bootDshShell(selection)
         shellMounted = true
+        updateBadge(activity, route, shellMounted, liveDataReady)
+        // The tunnel can report open before the WebView shell exists. Repaint
+        // now so a ready state cannot leave a stale recovery notice behind.
+        render()
       },
     })
+    shellMounted = await session.hydrate(activeConnection)
     render()
     window.addEventListener('online', () => { void session?.probeNow() })
     await App.addListener('appStateChange', ({ isActive }) => { if (isActive) void session?.probeNow() })
     try {
       await session.connect(activeConnection)
+      markTransportReady()
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error)
       endpointRefreshAvailable ||= endpointRefreshRequired(activeConnection.profile.endpoint.kind, lastError)
-      shellMounted = false
       render()
     }
   }

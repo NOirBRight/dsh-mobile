@@ -1,5 +1,5 @@
-// E2E: two WSS clients through the public relay URL exchange frames.
-// Usage: RELAY_URL=wss://noirbright.top/relay node test/e2e-wss.mjs
+// E2E: two WSS clients through the public sealed Relay exchange opaque frames.
+// Usage: RELAY_URL=wss://relay.example.com node test/e2e-wss.mjs
 import { once } from 'node:events'
 import { randomBytes } from 'node:crypto'
 import assert from 'node:assert/strict'
@@ -16,10 +16,10 @@ assert.equal(health.status, 200, 'healthz')
 const host = await open(url('host'))
 const client = await open(url('client'))
 const hostGot = once(host, 'message')
-client.send('e2e-ping')
+client.send(Buffer.from('e2e-ping'))
 assert.equal(String((await hostGot)[0]), 'e2e-ping')
 const clientGot = once(client, 'message')
-host.send('e2e-pong')
+host.send(Buffer.from('e2e-pong'))
 assert.equal(String((await clientGot)[0]), 'e2e-pong')
 host.close(); client.close()
 console.log('E2E PASS via ' + base + ' (room ' + room.slice(0, 8) + '…)')

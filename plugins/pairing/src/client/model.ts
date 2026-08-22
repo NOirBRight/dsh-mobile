@@ -4,22 +4,24 @@ export type PairingTarget = 'android'
 export const REMOTE_SETTINGS_SECTION = { id: 'remote', order: 5 } as const
 
 export interface PairingStatus {
-  endpoint: null | { url: string; kind: 'temporary' | 'custom' }
-  endpointMode: 'quick' | 'custom'
+  endpoint: null | { url: string; kind: 'temporary' | 'custom' | 'relay' }
+  endpointMode: 'quick' | 'custom' | 'relay'
   customEndpointUrl?: string | null
+  relayUrl?: string | null
   hostIdentity: string
-  configuration: { file: string; entryId: string; customEndpointField: string; legacyRelayConfigured: boolean }
+  configuration: { file: string; entryId: string; customEndpointField: string; relayEndpointField?: string; legacyRelayConfigured: boolean; relayConfigured?: boolean }
 }
 
-export type EndpointSaveStage = 'endpoint' | 'tls' | 'identity' | 'protocol' | 'capabilities' | 'websocket'
+export type EndpointSaveStage = 'endpoint' | 'tls' | 'identity' | 'protocol' | 'capabilities' | 'websocket' | 'relay'
 
 export interface EndpointSaveRequest {
-  endpointMode: 'quick' | 'custom'
+  endpointMode: 'quick' | 'custom' | 'relay'
   customEndpointUrl?: string
+  relayUrl?: string
 }
 
 export type EndpointSaveResult =
-  | { ok: true; endpointMode: 'quick' | 'custom'; endpoint: PairingStatus['endpoint'] }
+  | { ok: true; endpointMode: 'quick' | 'custom' | 'relay'; endpoint: PairingStatus['endpoint'] }
   | { ok: false; stage: EndpointSaveStage; error: string }
 
 export function decodePairingStatus(value: unknown): PairingStatus | null {
@@ -28,7 +30,7 @@ export function decodePairingStatus(value: unknown): PairingStatus | null {
   const endpointMode = record.endpointMode
   const hostIdentity = record.hostIdentity
   const configuration = record.configuration
-  if (endpointMode !== 'quick' && endpointMode !== 'custom') return null
+  if (endpointMode !== 'quick' && endpointMode !== 'custom' && endpointMode !== 'relay') return null
   if (typeof hostIdentity !== 'string' || typeof configuration !== 'object' || configuration === null) return null
   const config = configuration as Record<string, unknown>
   if (typeof config.file !== 'string' || typeof config.entryId !== 'string' || typeof config.customEndpointField !== 'string' || typeof config.legacyRelayConfigured !== 'boolean') return null
@@ -36,7 +38,7 @@ export function decodePairingStatus(value: unknown): PairingStatus | null {
   if (record.endpoint !== null) {
     if (typeof record.endpoint !== 'object') return null
     const raw = record.endpoint as Record<string, unknown>
-    if (typeof raw.url !== 'string' || (raw.kind !== 'temporary' && raw.kind !== 'custom')) return null
+    if (typeof raw.url !== 'string' || (raw.kind !== 'temporary' && raw.kind !== 'custom' && raw.kind !== 'relay')) return null
     endpoint = { url: raw.url, kind: raw.kind }
   }
   const customEndpointUrl = record.customEndpointUrl
@@ -44,12 +46,18 @@ export function decodePairingStatus(value: unknown): PairingStatus | null {
   return {
     endpoint, endpointMode, hostIdentity,
     ...(typeof customEndpointUrl === 'string' ? { customEndpointUrl } : {}),
-    configuration: { file: config.file, entryId: config.entryId, customEndpointField: config.customEndpointField, legacyRelayConfigured: config.legacyRelayConfigured },
+    ...(typeof record.relayUrl === 'string' ? { relayUrl: record.relayUrl } : {}),
+    configuration: { file: config.file, entryId: config.entryId, customEndpointField: config.customEndpointField, ...(typeof config.relayEndpointField === 'string' ? { relayEndpointField: config.relayEndpointField } : {}), legacyRelayConfigured: config.legacyRelayConfigured, ...(typeof config.relayConfigured === 'boolean' ? { relayConfigured: config.relayConfigured } : {}) },
   }
 }
 
-export function buildEndpointSaveRequest(mode: 'quick' | 'custom', customUrl: string): EndpointSaveRequest | { error: string } {
+export function buildEndpointSaveRequest(mode: 'quick' | 'custom' | 'relay', customUrl: string, relayUrl = ''): EndpointSaveRequest | { error: string } {
   if (mode === 'quick') return { endpointMode: 'quick' }
+  if (mode === 'relay') {
+    const trimmedRelay = relayUrl.trim()
+    if (!/^wss:\/\//i.test(trimmedRelay)) return { error: 'relayUrl must be a WSS URL in relay mode' }
+    return { endpointMode: 'relay', relayUrl: trimmedRelay }
+  }
   const trimmed = customUrl.trim()
   if (trimmed === '') return { error: 'customEndpointUrl is required in custom mode' }
   return { endpointMode: 'custom', customEndpointUrl: trimmed }
@@ -57,11 +65,13 @@ export function buildEndpointSaveRequest(mode: 'quick' | 'custom', customUrl: st
 
 /** True when the editor does not match the Host's saved Public Endpoint. */
 export function endpointDraftDirty(
-  mode: 'quick' | 'custom',
+  mode: 'quick' | 'custom' | 'relay',
   customUrl: string,
-  status: Pick<PairingStatus, 'endpointMode' | 'customEndpointUrl'>,
+  status: Pick<PairingStatus, 'endpointMode' | 'customEndpointUrl' | 'relayUrl'>,
+  relayUrl = '',
 ): boolean {
   if (mode !== status.endpointMode) return true
+  if (mode === 'relay') return relayUrl.trim() !== (status.relayUrl ?? '').trim()
   return mode === 'custom' && customUrl.trim() !== (status.customEndpointUrl ?? '').trim()
 }
 
@@ -69,18 +79,18 @@ export function decodeEndpointSaveResult(value: unknown): EndpointSaveResult | n
   if (typeof value !== 'object' || value === null) return null
   const record = value as Record<string, unknown>
   if (record.ok === true) {
-    if (record.endpointMode !== 'quick' && record.endpointMode !== 'custom') return null
+    if (record.endpointMode !== 'quick' && record.endpointMode !== 'custom' && record.endpointMode !== 'relay') return null
     let endpoint: PairingStatus['endpoint'] = null
     if (record.endpoint !== null && record.endpoint !== undefined) {
       if (typeof record.endpoint !== 'object') return null
       const raw = record.endpoint as Record<string, unknown>
-      if (typeof raw.url !== 'string' || (raw.kind !== 'temporary' && raw.kind !== 'custom')) return null
+      if (typeof raw.url !== 'string' || (raw.kind !== 'temporary' && raw.kind !== 'custom' && raw.kind !== 'relay')) return null
       endpoint = { url: raw.url, kind: raw.kind }
     }
     return { ok: true, endpointMode: record.endpointMode, endpoint }
   }
   if (record.ok !== false || typeof record.error !== 'string') return null
-  if (record.stage !== 'endpoint' && record.stage !== 'tls' && record.stage !== 'identity' && record.stage !== 'protocol' && record.stage !== 'capabilities' && record.stage !== 'websocket') return null
+  if (record.stage !== 'endpoint' && record.stage !== 'tls' && record.stage !== 'identity' && record.stage !== 'protocol' && record.stage !== 'capabilities' && record.stage !== 'websocket' && record.stage !== 'relay') return null
   return { ok: false, stage: record.stage, error: record.error }
 }
 

@@ -41,7 +41,7 @@ function FrameHarness({ id, width, laggyCodex = false }: { id: string; width: nu
         <div>
           <div><nav aria-label="会话层级">Old title</nav><div data-header-action>
             <span title="Current preset description" data-mode-label><svg width="14" height="14" />Standard mode</span>
-            <div><button aria-haspopup="tree" aria-expanded="true"><span /><span data-subagent-count>15 个子代理</span><svg /></button><div role="tree" data-subagent-menu /></div>
+            <div><button aria-haspopup="tree" aria-expanded="true"><span className="activitySlot" /><span data-subagent-count>15 个子代理</span><svg /></button><div role="tree" data-subagent-menu /></div>
             <div><button aria-expanded="true"><span data-state /><span data-job-count>1 background job running</span><svg /></button><ul aria-label="Background jobs" data-job-menu /></div>
           </div></div>
           <div data-header-utility><div data-utility-wrapper><button><span>Session log</span><svg /></button></div></div>
@@ -68,6 +68,15 @@ function App() {
       const laggySheet = document.querySelector<HTMLElement>('#laggy section[aria-label="详情面板"]')!
       document.body.dataset.laggySheetVisibility = getComputedStyle(laggySheet).visibility
       document.body.dataset.laggySheetTransform = getComputedStyle(laggySheet).transform
+      const officialNotice = document.querySelector<HTMLElement>('#official [data-mobile-topbar-notice]')!
+      officialNotice.hidden = false
+      officialNotice.querySelector<HTMLElement>('[data-mobile-topbar-notice-text]')!.textContent = '连接暂时中断，正在重连…'
+      const officialFrame = document.querySelector<HTMLElement>('#official [data-mobile-connection-notice-layer]')!.parentElement!
+      const officialNoticeRect = officialNotice.getBoundingClientRect()
+      const officialFrameRect = officialFrame.getBoundingClientRect()
+      document.body.dataset.noticeCenterDelta = String(Math.round((officialNoticeRect.left + officialNoticeRect.width / 2) - (officialFrameRect.left + officialFrameRect.width / 2)))
+      document.body.dataset.noticeInHeader = String(document.querySelector('#official header')?.contains(officialNotice) ?? false)
+      document.body.dataset.noticeTitleVisible = String(!(document.querySelector<HTMLElement>('#official [data-mobile-session-title]')?.hidden ?? true))
       const official = document.querySelector<HTMLElement>('#official nav[aria-label="导航抽屉"]')!
       const constrained = document.querySelector<HTMLElement>('#constrained nav[aria-label="导航抽屉"]')!
       document.querySelector<HTMLElement>('[data-session-row="constrained"]')!.click()
@@ -88,7 +97,18 @@ function App() {
       })
       document.body.dataset.headerTops = centers.join(',')
       document.body.dataset.headerSingleRow = String(Math.max(...centers) - Math.min(...centers) < 6)
-      document.body.dataset.crumbHidden = getComputedStyle(header.querySelector<HTMLElement>('nav')!).display
+      const breadcrumb = header.querySelector<HTMLElement>('nav')!
+      document.body.dataset.crumbHidden = getComputedStyle(breadcrumb).display
+      const childCrumb = document.createElement('button')
+      childCrumb.type = 'button'
+      childCrumb.setAttribute('aria-haspopup', 'tree')
+      childCrumb.setAttribute('aria-label', '切换子代理：Child')
+      childCrumb.textContent = 'Child'
+      breadcrumb.append(document.createTextNode(' / '), childCrumb)
+      const childStyle = getComputedStyle(breadcrumb)
+      document.body.dataset.childCrumbDisplay = childStyle.display
+      document.body.dataset.childCrumbPosition = childStyle.position
+      document.body.dataset.childCrumbTop = String(Math.round(breadcrumb.getBoundingClientRect().top))
       document.body.dataset.fishHidden = getComputedStyle(document.querySelector<HTMLElement>('#official [data-duplicate-fish]')!).display
       document.body.dataset.panelVisible = getComputedStyle(document.querySelector<HTMLElement>('#official [data-panel-icon]')!).display
       const codexFrame = document.querySelector<HTMLElement>('#official [data-drawer-open]')!
@@ -141,8 +161,8 @@ function App() {
       const actionRect = action.getBoundingClientRect()
       const utilityRect = utility.getBoundingClientRect()
       const preset = header.querySelector<HTMLElement>('[data-mode-label]')!
-      const subagentButton = header.querySelector<HTMLElement>('button[aria-haspopup="tree"]')!
-      const jobButton = header.querySelector<HTMLElement>('button[aria-expanded]:not([aria-haspopup])')!
+      const subagentButton = header.querySelector<HTMLElement>('[data-subagent-count]')!.closest('button')!
+      const jobButton = header.querySelector<HTMLElement>('[data-job-count]')!.closest('button')!
       const presetRect = preset.getBoundingClientRect()
       const subagentRect = subagentButton.getBoundingClientRect()
       const jobRect = jobButton.getBoundingClientRect()

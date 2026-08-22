@@ -1,6 +1,20 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { adaptBootManifestForMobile, createMemoryPluginCache, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability } from '../src/manifest.ts'
+import { adaptBootManifestForMobile, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability } from '../src/manifest.ts'
+
+test('extracts the boot graph from every historical host embedding form', () => {
+  const graph = { rev: 'rev-1', entries: [{ id: 'x', url: '/plugins/x.js', rev: 'a' }] }
+  const forms = [
+    '<script>window.__DSH_BOOT__ = ' + JSON.stringify(graph) + '</script>',
+    '<script>globalThis.__DSH_BOOT__ = ' + JSON.stringify(graph) + '</script>',
+    '<script>globalThis["__DSH_BOOT__"] = ' + JSON.stringify(graph) + '</script>',
+    "<script>globalThis['__DSH_BOOT__'] = " + JSON.stringify(graph) + '</script>',
+  ]
+  for (const html of forms) {
+    assert.deepEqual(extractBootManifestJson(html), graph)
+  }
+  assert.throws(() => extractBootManifestJson('<html></html>', 'boot manifest not found in tunneled index'), /boot manifest not found in tunneled index/)
+})
 
 test('replaces desktop layout and drops browser HMR without mutating host manifest', () => {
   const host = {
@@ -288,4 +302,121 @@ test('plugin bundle cache is isolated per Host Identity', async () => {
   await first.write('plugin-a', '1', 'from-a')
   assert.equal(await first.read('plugin-a', '1'), 'from-a')
   assert.equal(await second.read('plugin-a', '1'), undefined)
+})
+
+/** Storage fake with a hard byte budget; setItem throws QuotaExceededError past it. */
+function quotaStorage(limit) {
+  const map = new Map()
+  const used = () => [...map.values()].reduce((sum, v) => sum + v.length, 0)
+  return {
+    map,
+    get length() { return map.size },
+    key(index) { return [...map.keys()][index] ?? null },
+    getItem(key) { return map.get(key) ?? null },
+    removeItem(key) { map.delete(key) },
+    setItem(key, value) {
+      if (used() + value.length > limit) {
+        const error = new Error('quota exceeded')
+        error.name = 'QuotaExceededError'
+        throw error
+      }
+      map.set(key, value)
+    },
+  }
+}
+
+test('boot manifest write sheds cached bundles when quota is exhausted', () => {
+  const storage = quotaStorage(900)
+  storage.setItem('dsh-mobile:plugin:big-blob', 'p'.repeat(800))
+  storage.setItem('dsh-mobile:profile-vault', 'secret')
+  const host = {
+    rev: 'host-rev',
+    entries: [{ id: '@deepseek-ai/dsh-client-ui-layout', url: '/plugins/desktop-layout.js', rev: 'desktop', inject: [] }],
+  }
+  const raw = JSON.stringify(host)
+  assert.ok(raw.length > 100)
+  writeCachedBootManifest('host-a', host, storage)
+  assert.equal(storage.map.get('dsh-mobile:plugin:big-blob'), undefined)
+  assert.equal(storage.map.get('dsh-mobile:profile-vault'), 'secret')
+  assert.deepEqual(readCachedBootManifest('host-a', storage), host)
+  assert.deepEqual(readCachedBootManifest('last', storage), host)
+})
+
+test('plugin bundle write sheds other cached entries when quota is exhausted', async (t) => {
+  if (typeof CompressionStream === 'undefined') { t.skip('no CompressionStream in this runtime'); return }
+  const storage = quotaStorage(700)
+  storage.setItem('dsh-mobile:plugin:old', 'o'.repeat(600))
+  const cache = createLocalStoragePluginCache(storage, 'host-a')
+  // Incompressible payload so compression cannot dodge the eviction path.
+  const source = Array.from({ length: 1200 }, (_, i) => String.fromCharCode(0x21 + ((i * 7919) % 0x5e))).join('')
+  await cache.write('plugin-new', '1', source)
+  assert.equal(await cache.read('plugin-new', '1'), source)
+  assert.equal(storage.map.get('dsh-mobile:plugin:old'), undefined)
+})
+
+test('compressible bundles avoid eviction entirely', async (t) => {
+  if (typeof CompressionStream === 'undefined') { t.skip('no CompressionStream in this runtime'); return }
+  const storage = quotaStorage(700)
+  storage.setItem('dsh-mobile:plugin:old', 'o'.repeat(600))
+  const cache = createLocalStoragePluginCache(storage, 'host-a')
+  await cache.write('plugin-new', '1', 'n'.repeat(1200))
+  assert.equal(await cache.read('plugin-new', '1'), 'n'.repeat(1200))
+  assert.equal(storage.map.get('dsh-mobile:plugin:old'), 'o'.repeat(600), 'compressed write fits without shedding')
+})
+
+test('plugin caches store bundles gzip-compressed and read both forms', async (t) => {
+  if (typeof CompressionStream === 'undefined') { t.skip('no CompressionStream in this runtime'); return }
+  const storage = quotaStorage(5 * 1024 * 1024)
+  const cache = createLocalStoragePluginCache(storage, 'host-a')
+  const source = 'export const bundle = ' + JSON.stringify('js '.repeat(5000))
+  await cache.write('@x/plugin', 'rev1', source)
+  const raw = storage.map.get('dsh-mobile:plugin:host-a:@x/plugin:rev1')
+  assert.ok(raw.startsWith('gz1:'), 'stored value carries the gzip prefix')
+  assert.ok(raw.length < source.length / 2, 'compressed value shrinks the payload')
+  assert.equal(await cache.read('@x/plugin', 'rev1'), source, 'reads decompress transparently')
+  storage.map.set('dsh-mobile:plugin:host-a:@x/plugin:legacy', 'plain source')
+  assert.equal(await cache.read('@x/plugin', 'legacy'), 'plain source', 'legacy plaintext entries still read')
+})
+
+test('plugin bundle write never sheds history caches; shed victims are plugins only', async (t) => {
+  if (typeof CompressionStream === 'undefined') { t.skip('no CompressionStream in this runtime'); return }
+  const storage = quotaStorage(1400)
+  storage.setItem('dsh-mobile:history:session-a', 'h'.repeat(900))
+  const cache = createLocalStoragePluginCache(storage, 'host-a')
+  storage.setItem('dsh-mobile:plugin:host-b:@x/old:1', 'o'.repeat(300))
+  await cache.write('@x/new', '1', 'n'.repeat(240))
+  assert.equal(storage.map.get('dsh-mobile:history:session-a'), 'h'.repeat(900), 'history survives plugin quota pressure')
+  assert.equal(await cache.read('@x/new', '1'), 'n'.repeat(240))
+})
+
+test('hydrate-localize fails loud on any missing bundle (every entry is booted eagerly)', async () => {
+  const memory = createMemoryPluginCache('host-a')
+  const manifest = {
+    rev: 'host-rev',
+    entries: [
+      { id: '@deepseek-ai/dsh-client-runtime', url: '/plugins/@deepseek-ai/dsh-client-runtime/client.js?rev=r1', rev: 'r1' },
+      { id: 'dsh-codex-sidebar', url: '/plugins/dsh-codex-sidebar/client.js?rev=e1', rev: 'e1' },
+    ],
+  }
+  await assert.rejects(
+    localizePluginBundles(manifest, {
+      load: async () => { throw new Error('must not fetch during hydrate') },
+      createUrl: (_source, id) => 'blob:' + id,
+      cache: memory,
+      cacheOnly: true,
+    }),
+    /plugin cache miss: @deepseek-ai\/dsh-client-runtime/,
+  )
+})
+
+test('legacy plaintext entries are rewritten compressed on read', async (t) => {
+  if (typeof CompressionStream === 'undefined') { t.skip('no CompressionStream in this runtime'); return }
+  const storage = quotaStorage(5 * 1024 * 1024)
+  storage.map.set('dsh-mobile:plugin:host-a:@x/plugin:r1', 'plain source '.repeat(2000))
+  const cache = createLocalStoragePluginCache(storage, 'host-a')
+  assert.equal(await cache.read('@x/plugin', 'r1'), 'plain source '.repeat(2000))
+  await new Promise(resolve => setTimeout(resolve, 20))
+  const raw = storage.map.get('dsh-mobile:plugin:host-a:@x/plugin:r1')
+  assert.ok(raw.startsWith('gz1:'), 'read-through migration compresses the entry')
+  assert.ok(raw.length < 4000)
 })

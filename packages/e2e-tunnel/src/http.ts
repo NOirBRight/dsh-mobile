@@ -9,7 +9,7 @@ const BODY_LIMIT = 8 * 1024 * 1024
 
 /** Pending demux entry for one in-flight tunneled request. */
 export interface PendingFetch {
-  onHead(status: number, headers: Record<string, string>, bodyB64: string | undefined): void
+  onHead(status: number, headers: Record<string, string>, bodyB64: string | undefined, encoding: string | undefined): void
   onData(dataB64: string, last: boolean): void
   onAbort(error: TunnelError): void
 }
@@ -37,7 +37,7 @@ export function tunnelFetch(session: TunnelSession, path: string, init?: {
   return new Promise<Response>((resolve, reject) => {
     const id = session.mintId()
     const parts: Uint8Array[] = []
-    let head: { status: number; headers: Record<string, string> } | null = null
+    let head: { status: number; headers: Record<string, string>; encoding: string | undefined } | null = null
     let settled = false
 
     const fail = (error: unknown): void => {
@@ -50,15 +50,17 @@ export function tunnelFetch(session: TunnelSession, path: string, init?: {
       if (settled || head === null) return
       settled = true
       session.dropFetch(id)
-      const body = concat(...parts)
-      // concat() returns a fresh array over a real ArrayBuffer; the cast
-      // satisfies TS 5.7+ generic-Uint8Array BodyInit narrowing.
-      resolve(new Response(body.length > 0 ? (body as Uint8Array<ArrayBuffer>) : null, { status: head.status, headers: head.headers }))
+      const responseHead = head
+      void decodeResponseBody(concat(...parts), responseHead.encoding).then((body) => {
+        // concat()/decodeResponseBody return a fresh array over a real ArrayBuffer;
+        // the cast satisfies TS 5.7+ generic-Uint8Array BodyInit narrowing.
+        resolve(new Response(body.length > 0 ? (body as Uint8Array<ArrayBuffer>) : null, { status: responseHead.status, headers: responseHead.headers }))
+      }, reject)
     }
 
     const pending: PendingFetch = {
-      onHead(status, headers, bodyB64) {
-        head = { status, headers }
+      onHead(status, headers, bodyB64, encoding) {
+        head = { status, headers, encoding }
         if (bodyB64 !== undefined) {
           parts.push(b64decode(bodyB64))
           finish()
@@ -104,6 +106,13 @@ export function tunnelFetch(session: TunnelSession, path: string, init?: {
       }, { once: true })
     }
   })
+}
+
+async function decodeResponseBody(body: Uint8Array, encoding: string | undefined): Promise<Uint8Array> {
+  if (encoding === undefined) return body
+  if (encoding !== 'gzip') throw new TunnelError('handshake', 'unsupported response encoding: ' + encoding)
+  const stream = new Blob([body as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream('gzip'))
+  return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 
 async function bodyToBytes(body: string | ArrayBuffer | Uint8Array | Blob | URLSearchParams | null | undefined): Promise<Uint8Array> {

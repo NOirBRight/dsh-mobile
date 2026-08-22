@@ -83,6 +83,39 @@ export interface PluginBundleCache {
 
 const PLUGIN_CACHE_PREFIX = 'dsh-mobile:plugin:'
 
+/** Stored values: 'gz1:' + base64(gzip(source)), or legacy plaintext. */
+const GZIP_PREFIX = 'gz1:'
+
+/** The WebView localStorage origin is hard-capped at 5 MB; bundles gzip ~3.5x. */
+const gzipCapable = (): boolean => typeof CompressionStream === 'function' && typeof DecompressionStream === 'function'
+
+async function gzipEncode(source: string): Promise<string> {
+  const compressed = await new Response(
+    new Blob([source]).stream().pipeThrough(new CompressionStream('gzip')),
+  ).arrayBuffer()
+  const bytes = new Uint8Array(compressed)
+  let binary = ''
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
+  }
+  return GZIP_PREFIX + btoa(binary)
+}
+
+async function gzipDecode(stored: string): Promise<string> {
+  const binary = atob(stored.slice(GZIP_PREFIX.length))
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
+  return new Response(
+    new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')),
+  ).text()
+}
+
+async function decodeStored(stored: string | null): Promise<string | undefined> {
+  if (stored === null || stored === undefined) return undefined
+  if (stored.startsWith(GZIP_PREFIX)) return gzipDecode(stored)
+  return stored
+}
+
 export function createMemoryPluginCache(hostId = ''): PluginBundleCache {
   const records = new Map<string, string>()
   const scope = hostId + '\0'
@@ -102,13 +135,53 @@ export function createLocalStoragePluginCache(storage?: Pick<Storage, 'getItem' 
   return {
     async read(id, rev) {
       try {
-        return resolved.getItem(scope + id + ':' + rev) ?? undefined
+        const key = resolved.getItem(scope + id + ':' + rev) !== null
+          ? scope + id + ':' + rev
+          : resolved.getItem(PLUGIN_CACHE_PREFIX + 'latest:' + id) !== null
+            ? PLUGIN_CACHE_PREFIX + 'latest:' + id
+            : PLUGIN_CACHE_PREFIX + id + ':' + rev
+        const stored = resolved.getItem(key)
+        const decoded = await decodeStored(stored)
+        // Read-through migration: legacy plaintext entries converge to gzip.
+        if (decoded !== undefined && gzipCapable() && stored !== null && !stored.startsWith(GZIP_PREFIX)) {
+          void gzipEncode(decoded)
+            // eslint-disable-next-line promise/no-catch-in-promise -- migration is best-effort only
+            .then(value => { try { resolved.setItem(key, value) } catch { /* quota pressure: migration can wait */ } })
+            .catch(() => { /* decode races are harmless */ })
+        }
+        return decoded
       } catch {
         return undefined
       }
     },
     async write(id, rev, source) {
-      try { resolved.setItem(scope + id + ':' + rev, source) } catch { /* quota or private mode */ }
+      const target = scope + id + ':' + rev
+      const value = gzipCapable() ? await gzipEncode(source) : source
+      const attempt = (): void => {
+        // Keep exactly one generation per plugin: an older scoped copy of the
+        // same id would otherwise strand the origin at quota permanently.
+        const prefix = scope + id + ':'
+        const victims: string[] = []
+        const store = resolved as unknown as Pick<Storage, 'getItem' | 'setItem'> & EvictableStorage
+        const count = store.length ?? 0
+        for (let index = 0; index < count; index++) {
+          const key = store.key ? store.key(index) : null
+          if (key !== null && key !== undefined && key !== target && key.startsWith(prefix)) victims.push(key)
+        }
+        for (const key of victims) {
+          if (store.removeItem) store.removeItem(key)
+        }
+        resolved.setItem(target, value)
+      }
+      try {
+        attempt()
+      } catch {
+        // Quota pressure: shed superseded / foreign cached bundles and retry once.
+        // Session-history caches never appear on the victim list: history is
+        // the user-facing cold-start value, plugin bundles re-download anyway.
+        evictMobileCaches(resolved as unknown as EvictableStorage, value.length + 4096)
+        try { attempt() } catch { /* private mode or an unevictable origin */ }
+      }
     },
   }
 }
@@ -185,8 +258,11 @@ export async function loadSameOriginMobileBootManifest(
   }
 }
 
+/** Host index embeddings seen in the wild: `window.` (legacy) and `globalThis` (dot + bracket) forms. */
+const BOOT_MANIFEST_SCRIPT = /(?:window|globalThis)(?:\.|\[["'])__DSH_BOOT__(?:["']\]|\.)?\s*=\s*(\{.*?\})<\/script>/s
+
 export function extractBootManifestJson(html: string, missing = 'boot manifest not found'): unknown {
-  const match = /window\.__DSH_BOOT__ = (\{.*?\})<\/script>/s.exec(html)
+  const match = BOOT_MANIFEST_SCRIPT.exec(html)
   if (match === null) throw new Error(missing)
   return JSON.parse(match[1])
 }
@@ -213,6 +289,84 @@ export interface ResponsiveBootSelection {
 }
 
 const BOOT_CACHE_PREFIX = 'dsh-mobile:boot:'
+const LAST_BOOT_CACHE_ID = 'last'
+
+/**
+ * Scope of the Active Host's plugin entries ('<hostId>:'). These are the
+ * copies offline cold-start hydrate depends on, so eviction sheds them last.
+ */
+let PROTECTED_PLUGIN_SCOPE = ''
+
+/** Pin the Active Host scope that cache eviction must never shed early. */
+export function setProtectedCacheScope(hostId: string): void {
+  PROTECTED_PLUGIN_SCOPE = hostId
+}
+
+type EvictableStorage = {
+  getItem(key: string): string | null
+  removeItem?(key: string): void
+  length?: number
+  key?(index: number): string | null
+}
+
+/**
+ * Eviction ranking for cached plugin records (lower sheds first):
+ *  0 — legacy unscoped plugin copies superseded by the 'latest:' pointer
+ *  1 — per-Host 'latest:' duplicates of the global 'latest:' pointer
+ *  2 — other-Host scoped exact bundles
+ *  4 — Active-Host scoped exact bundles (last resort)
+ * Boot rosters are never evictable: they gate the offline cold start.
+ */
+function cacheEvictionRank(key: string): number {
+  const rest = key.slice(PLUGIN_CACHE_PREFIX.length)
+  const parts = rest.split(':')
+  if (parts[1] === 'latest') return 1
+  if (parts.length >= 3) return parts[0] === PROTECTED_PLUGIN_SCOPE ? 4 : 2
+  return 0
+}
+
+/**
+ * Free space by dropping redundant / re-downloadable plugin cache entries.
+ * Only records ranked up to maxRank are candidates. Returns the approximate
+ * number of characters freed.
+ */
+function evictMobileCaches(storage: EvictableStorage, bytesNeeded: number, maxRank = 4): number {
+  if (typeof storage.removeItem !== 'function') return 0
+  const entries: { key: string; size: number; rank: number }[] = []
+  try {
+    const count = storage.length ?? 0
+    for (let index = 0; index < count; index++) {
+      const key = storage.key?.(index)
+      if (key === null || key === undefined) continue
+      if (!key.startsWith(PLUGIN_CACHE_PREFIX)) continue
+      const rank = cacheEvictionRank(key)
+      if (rank > maxRank) continue
+      entries.push({ key, size: storage.getItem(key)?.length ?? 0, rank })
+    }
+  } catch {
+    return 0
+  }
+  entries.sort((left, right) => left.rank - right.rank || right.size - left.size)
+  let freed = 0
+  for (const entry of entries) {
+    if (freed >= bytesNeeded) break
+    try {
+      storage.removeItem(entry.key)
+      freed += entry.size
+    } catch { /* keep evicting the remaining candidates */ }
+  }
+  return freed
+}
+
+/**
+ * Shed superseded duplicate generations (legacy copies and per-Host 'latest'
+ * duplicates) so the origin keeps standing headroom for session history.
+ */
+export function pruneRedundantCaches(storage?: Pick<Storage, 'getItem' | 'setItem'> | null): void {
+  const resolved = resolveStorage(storage as Pick<Storage, 'getItem' | 'setItem'> | null | undefined)
+  if (resolved === undefined) return
+  evictMobileCaches(resolved as unknown as EvictableStorage, Number.MAX_SAFE_INTEGER, 2)
+}
 
 /** Persist the last successful unlocalized Host boot roster for one Host Identity. */
 export function readCachedBootManifest(
@@ -238,7 +392,20 @@ export function writeCachedBootManifest(
   const resolved = resolveStorage(storage as Pick<Storage, 'getItem' | 'setItem'> | null | undefined)
   if (resolved === undefined) return
   if (typeof resolved.setItem !== 'function') return
-  try { resolved.setItem(BOOT_CACHE_PREFIX + hostId, JSON.stringify(manifest)) } catch { /* quota or private mode */ }
+  const raw = JSON.stringify(manifest)
+  try {
+    resolved.setItem(BOOT_CACHE_PREFIX + hostId, raw)
+    resolved.setItem(BOOT_CACHE_PREFIX + LAST_BOOT_CACHE_ID, raw)
+    pruneRedundantCaches(resolved as Pick<Storage, 'getItem' | 'setItem'>)
+  } catch {
+    // Quota pressure: shed re-downloadable cache entries and retry once so the
+    // offline cold-start roster always survives.
+    evictMobileCaches(resolved as unknown as EvictableStorage, raw.length * 2 + 4096)
+    try {
+      resolved.setItem(BOOT_CACHE_PREFIX + hostId, raw)
+      resolved.setItem(BOOT_CACHE_PREFIX + LAST_BOOT_CACHE_ID, raw)
+    } catch { /* private mode or an unevictable origin */ }
+  }
 }
 
 function resolveStorage(storage?: Pick<Storage, 'getItem' | 'setItem'> | Pick<Storage, 'getItem'> | null): (Pick<Storage, 'getItem'> & Partial<Pick<Storage, 'setItem'>>) | undefined {
@@ -342,7 +509,9 @@ export function installCompatibilityNotice(compatibility: LayoutCompatibility): 
   if (message === null || typeof document === 'undefined') return
   const bar = document.createElement('div')
   bar.setAttribute('role', 'status')
-  bar.style.cssText = 'position:sticky;top:0;z-index:10001;padding:8px 12px;background:#854d0e;color:#fff;font:13px/1.4 system-ui,sans-serif;display:flex;justify-content:space-between;align-items:center;gap:12px'
+  // The notice is prepended before the mobile shell; reserve the Android
+  // status-bar inset so system icons never cover its text.
+  bar.style.cssText = 'position:sticky;top:0;z-index:10001;box-sizing:border-box;padding:calc(6px + env(safe-area-inset-top)) 12px 6px;background:var(--dsw-alias-bg-base,Canvas);color:var(--dsw-alias-label-primary,CanvasText);border-bottom:1px solid var(--dsw-alias-border-l1,ButtonBorder);font:13px/1.4 system-ui,sans-serif;display:flex;justify-content:space-between;align-items:center;gap:8px'
   const text = document.createElement('span')
   text.textContent = message
   const close = document.createElement('button')

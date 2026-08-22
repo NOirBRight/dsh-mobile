@@ -1,6 +1,6 @@
 # DSH Mobile transport protocol v1
 
-This protocol carries DSH HTTP and WebSocket semantics over an authenticated, ordered `FrameTransport`. The preferred adapter is WebRTC RTCDataChannel. The fallback adapter is a WebSocket terminating at the user's own Host Gateway through its Quick or Custom Endpoint. There is no project-operated application-data Relay and no TURN.
+This protocol carries DSH HTTP and WebSocket semantics over an authenticated, ordered `FrameTransport`. The preferred adapter is WebRTC RTCDataChannel. Fallback adapters include a WebSocket terminating at the user's Host Gateway through Quick/Custom Endpoint or an explicitly selected official/self-hosted opaque Relay. There is no TURN.
 
 All application/session messages are sealed with NaCl box (X25519 + XSalsa20-Poly1305 via tweetnacl). Provider tunnels can observe connection metadata and encrypted frame sizes, but not DSH payloads or credentials.
 
@@ -30,7 +30,7 @@ The QR/deep link carries `#offer=<base64url(JSON)>`; URL fragments are not sent 
 ```
 
 - `pubkey` is the stable Host Identity trust anchor. Endpoint URL and display name are mutable.
-- `endpointKind` is `temporary` (for example Quick Tunnel) or `custom`.
+- `endpointKind` is `temporary` (for example Quick Tunnel) or `custom`. Official Relay offers use legacy-compatible v2 relay payloads with a WSS address and Room.
 - Public endpoints are HTTPS without embedded credentials. Their signal and tunnel URLs are derived from this origin.
 - `ice` accepts only `stun:`/`stuns:`. `turn:`/`turns:` is rejected.
 - `code` expires after five minutes and authorizes one Client Instance.
@@ -70,7 +70,7 @@ Each direction has an independent consecutive `seq` starting at zero. Gaps, dupl
 |---|---|---|
 | `http-req {t,id,seq,method,path,headers,body?}` | client → Host | Begin a loopback DSH HTTP request |
 | `http-data {t,id,seq,data,last}` | either | Base64 continuation chunk |
-| `http-res {t,id,seq,status,headers,body?}` | Host → client | Begin an HTTP response |
+| `http-res {t,id,seq,status,headers,encoding?,body?}` | Host → client | Begin an HTTP response; `encoding` is `gzip` for compressed bodies |
 | `ws-open {t,id,seq,path}` | client → Host | Open a bounded loopback DSH WebSocket |
 | `ws-ack` / `ws-err` | Host → client | WebSocket open result |
 | `ws-msg {t,id,seq,data}` | either | Base64 WebSocket payload |
@@ -78,7 +78,7 @@ Each direction has an independent consecutive `seq` starting at zero. Gaps, dupl
 | `ping {t,id,seq}` | client → Host | Application-level liveness probe |
 | `pong {t,id,seq}` | Host → client | Correlated liveness response |
 
-The Host Gateway rewrites the upstream Host authority to loopback and only targets the configured local DSH listener. It is not a generic proxy.
+The Host Gateway rewrites the upstream Host authority to loopback and only targets the configured local DSH listener. It is not a generic proxy. Response bodies at least 32 KiB are gzip-compressed when compression reduces their size; the client transparently decodes them before constructing the Fetch `Response`.
 
 ## 4. Route adapters
 
@@ -89,6 +89,10 @@ The client connects to the Host Gateway's rendezvous WebSocket, exchanges bounde
 ### Tunnel Fallback
 
 The client connects to the Host Gateway tunnel WebSocket derived from the same Public Endpoint and runs the same handshake/session protocol over `WsFrameTransport`. Cloudflare Quick/Named Tunnel or another user-selected HTTPS/WebSocket provider is only the pipe to the local Gateway.
+
+### Official Relay
+
+The client and Host both join `wss://relay.example/r/<room>?role=client|host`. The Relay forwards only binary frames; the same NaCl handshake/session protocol runs above `WsFrameTransport`. One Host and one Client occupy each Room, while many Rooms share the regional Relay process.
 
 Connection policy is explicit:
 
@@ -102,7 +106,7 @@ The active route is always exposed to product UI.
 
 Foreground sessions send an encrypted `ping` approximately every 20 seconds. The default pong deadline is approximately 15 seconds; three consecutive misses classify the route stale. Foreground resume and network change trigger an immediate probe. Android background suspension is not treated as guaranteed keepalive.
 
-A stale/closed route is torn down before reconnect. Retry uses bounded exponential backoff with jitter and re-runs the configured route policy.
+A stale/closed route is torn down before reconnect. Retry uses exponential backoff with jitter (1 second through a 60-second ceiling) and re-runs the configured route policy. Network recovery or foreground resume interrupts a passive wait for one immediate attempt. Product UI presents only the first reconnect attempt as active; later attempts continue in the background under one static offline status. Actionable credential, identity, or Endpoint Refresh failures stop automatic retry and transfer ownership to a single recovery notice.
 
 ## 6. Persistent authorization
 
@@ -116,5 +120,5 @@ Profile Removal is local and does not revoke the Host record. Device Revocation 
 - DataChannel wire fragmentation preserves the existing 60 KiB message ceiling and 16 MiB assembled-frame ceiling.
 - Credentials never appear in query parameters, logs, plugin props, or unsealed application frames.
 - Raw DSH port 3080 is never the Public Endpoint.
-- The standalone legacy signaling service must continue rejecting binary/application-data frames.
-- No Discovery, TURN, hidden route, runtime CDN, or maintainer-owned endpoint is part of protocol v1.
+- An Official Relay accepts only bounded binary sealed frames and must never become a generic HTTP/DSH proxy.
+- No Discovery, TURN, hidden route, or runtime CDN is part of protocol v1.

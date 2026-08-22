@@ -6,17 +6,17 @@ This is the primary production Public Endpoint per [ADR 0005](adr/0005-vps-endpo
 
 ```text
 Android APK ── wss://pair.noirbright.top ──> VPS: Docker Caddy :443 (Let's Encrypt)
-                                               │ reverse_proxy 172.18.0.1:31422
-                                             VPS: sshd remote-forward listener 172.18.0.1:31422
+                                               │ reverse_proxy 172.18.0.1:31424
+                                             VPS: sshd remote-forward listener 172.18.0.1:31424
                                                ▲ outbound ssh -R (dsh-gateway-vps-tunnel.service on AM01S)
-                                             AM01S: Host Gateway 127.0.0.1:43169 (pairing plugin on lab, fixed port)
+                                             AM01S: Host Gateway 127.0.0.1:43170 (pairing plugin on daily 3080)
                                                │ loopback only
-                                             AM01S: DSH lab 127.0.0.1:3082 (DSH_HOME=~/.dsh-lab)
-                                             AM01S: DSH code 127.0.0.1:3080 (no pairing, no :43169)
+                                             AM01S: DSH daily 127.0.0.1:3080 (DSH_HOME=~/.dsh)
+                                             AM01S: DSH lab 127.0.0.1:3082 + Gateway 43169 (separate test process)
 ```
 
 - Caddy runs in Docker (`infodigest-caddy`) with the `pair.noirbright.top` site block already present: no basic_auth, capability-gated inside the Gateway, never proxies raw :3080.
-- The return path is the restricted SSH reverse tunnel unit `dsh-gateway-vps-tunnel.service` (`ssh -N -R 172.18.0.1:31422:127.0.0.1:43169 vps-aliyun`), the same pattern as `ai.noirbright.top`.
+- The return path is the restricted SSH reverse tunnel unit `dsh-gateway-vps-tunnel.service` (`ssh -N -R 172.18.0.1:31424:127.0.0.1:43170 vps-aliyun`). The public Pair endpoint intentionally terminates at the daily 3080 Host; this is not a lab/3082 mismatch.
 - DNS A records for `pair`/`dsh`/`dshapp`/`relay.noirbright.top` all point at the VPS.
 - `frps` also runs on the VPS (`:7000`, `/opt/frp/frps.toml`) and can replace the SSH tunnel later; it is not required for this migration.
 - `dsh.noirbright.top` / `dshapp.noirbright.top` / `relay.noirbright.top` are maintainer personal recovery surfaces (`docs/dual-domain-deployment.md`), not product topology.
@@ -31,10 +31,10 @@ Both the phone and the Host only make outbound connections; no NAT traversal or 
 
 ## Migration gaps (why the "stable site" still failed)
 
-1. **The lab Host never switched to the custom endpoint.** `~/.dsh-lab/profiles/web/cordis.patch.yml` still has `endpointMode: quick`, so offers point at rotating `trycloudflare.com` hostnames. Fix: `endpointMode: custom`, `customEndpointUrl: https://pair.noirbright.top` (validated by the staged `/.well-known/dsh-mobile` + `/signal/check` checks). Do not write this overlay under `~/.dsh` or pair through :3080.
-2. **Lab DSH is not always-on.** `dsh-lab.service` was found inactive, so :3082 and the Gateway :43169 had no listener and `pair.noirbright.top` returned 502. The product endpoint is only as available as the lab Host process; keep `dsh-lab.service` enabled with restart-on-failure. `dsh-web.service` on :3080 stays the code plane and must not host pairing.
+1. **The public Pair mapping is intentionally the daily 3080 Host.** `pair.noirbright.top` returns the daily Host Identity and forwards to Gateway 43170. Do not redirect it to the lab 3082 process. The lab 3082 endpoint can be tested separately with its own custom URL/Relay selection.
+2. **The daily DSH is the public Pair owner.** Keep `dsh-web.service`/daily 3080 and Gateway 43170 healthy for `pair.noirbright.top`. The lab 3082/43169 process remains an independent test plane and must not claim the daily Pair DNS.
 3. **Tunnel unit lifecycle.** `dsh-vps-tunnel.service` uses `BindsTo=dsh-web.service` and dies with it; the ad-hoc `dsh-vps-tunnel-dev` unit duplicates it. Consolidate: one gateway tunnel unit with `Restart=always`, `ExitOnForwardFailure=yes`, `ServerAliveInterval=30`, wanted by `default.target` (it is harmless while the Gateway is down and heals the path the moment the Gateway returns).
-4. **Fixed ports are required end to end.** The Gateway must keep `gatewayPort: 43169` (never the default `0`), matching the `-R` forward and the Caddy site block.
+4. **Fixed ports are required end to end.** The daily Pair Gateway must keep `gatewayPort: 43170` (never the default `0`), matching the `-R` forward and the Caddy site block. Lab test Gateway 43169 remains separate.
 
 ## Verification checklist
 

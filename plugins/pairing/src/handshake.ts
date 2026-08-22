@@ -75,7 +75,10 @@ export function hostHandshake(frame: Uint8Array, deps: HandshakeDeps): Handshake
     const label = sanitizeDeviceLabel(hello.label)
     const clientType = parseClientType(hello.clientType)
     try {
-      const claim = deps.offers.claim(hello.code, claimant, () => deps.devices.issue(label, deps.room, claimant, clientType).token, deps.room)
+      const claim = deps.offers.claim(hello.code, claimant, () => {
+        const issue = typeof deps.devices.issueOrUpdate === 'function' ? deps.devices.issueOrUpdate.bind(deps.devices) : deps.devices.issue.bind(deps.devices)
+        return issue(label, deps.room, claimant, clientType).token
+      }, deps.room)
       if (claim.status !== 'ok') return fail(claim.status === 'expired' ? 'expired' : 'bad-code')
       deviceToken = claim.deviceToken
     } catch (error) {

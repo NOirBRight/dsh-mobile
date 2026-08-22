@@ -70,6 +70,7 @@ function App() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const panel = document.querySelector<HTMLElement>('[data-settings-panel]')!
+      const overlay = panel.parentElement!
       const nav = document.querySelector<HTMLElement>('[data-settings-nav]')!
       const list = document.querySelector<HTMLElement>('[data-settings-nav-list]')!
       const content = document.querySelector<HTMLElement>('[data-settings-content]')!
@@ -82,6 +83,12 @@ function App() {
       document.body.dataset.codexHandleVisibility = getComputedStyle(codexHandle).visibility
       document.body.dataset.viewportWidth = String(window.innerWidth)
       document.body.dataset.viewportHeight = String(window.innerHeight)
+      document.body.dataset.overlayPaddingTop = getComputedStyle(overlay).paddingTop
+      document.body.dataset.overlayPaddingBottom = getComputedStyle(overlay).paddingBottom
+      document.body.dataset.overlayClass = String(overlay.className)
+      document.body.dataset.overlayParentClass = String(overlay.parentElement?.className)
+      document.body.dataset.panelTop = String(Math.round(panel.getBoundingClientRect().top))
+      document.body.dataset.panelNavTop = String(Math.round(nav.getBoundingClientRect().top - panel.getBoundingClientRect().top))
       document.body.dataset.panelWidth = String(Math.round(panel.getBoundingClientRect().width))
       document.body.dataset.panelHeight = String(Math.round(panel.getBoundingClientRect().height))
       document.body.dataset.navWidth = String(Math.round(nav.getBoundingClientRect().width))
@@ -113,6 +120,15 @@ function App() {
       document.body.dataset.enterTitleWhiteSpace = getComputedStyle(enterTitle).whiteSpace
       document.body.dataset.closePosition = getComputedStyle(close).position
       document.body.dataset.closeTop = String(Math.round(close.getBoundingClientRect().top - panel.getBoundingClientRect().top))
+      document.body.dataset.closeWidth = String(Math.round(close.getBoundingClientRect().width))
+      document.body.dataset.closeHeight = String(Math.round(close.getBoundingClientRect().height))
+      document.body.dataset.closeBorder = getComputedStyle(close).border
+      document.body.dataset.closeBackground = getComputedStyle(close).backgroundColor
+      const titleRange = document.createRange()
+      titleRange.selectNodeContents(document.querySelector<HTMLElement>('[data-settings-title]')!)
+      const titleRect = titleRange.getBoundingClientRect()
+      const closeRect = close.getBoundingClientRect()
+      document.body.dataset.closeTitleCenterDelta = String(Math.round((closeRect.top + closeRect.height / 2) - (titleRect.top + titleRect.height / 2)))
       document.body.dataset.contentMinWidth = getComputedStyle(content).minWidth
       document.body.dataset.ready = 'true'
     }, 100)

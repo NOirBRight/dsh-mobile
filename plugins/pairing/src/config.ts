@@ -30,9 +30,11 @@ export interface Config {
   /** One-time pairing-code lifetime in milliseconds. */
   codeTtlMs: number
   /** Product Public Endpoint mode. Quick Tunnel is the zero-configuration default. */
-  endpointMode: 'quick' | 'custom'
+  endpointMode: 'quick' | 'custom' | 'relay'
   /** Operator-provisioned URL, required only in custom mode. */
   customEndpointUrl?: string
+  /** Official or self-hosted opaque sealed-frame Relay WSS base. */
+  relayUrl?: string
   /** Standalone Host Gateway is always loopback-bound. */
   gatewayBind: '127.0.0.1' | '::1' | 'localhost'
   /** Standalone Host Gateway listen port; 0 asks the OS. */
@@ -64,8 +66,9 @@ export const Config: z<Config> = z.object({
   keyStorePath: z.string(),
   tokenStorePath: z.string(),
   codeTtlMs: z.natural().default(300_000),
-  endpointMode: z.string().default('quick') as z<'quick' | 'custom'>,
+  endpointMode: z.string().default('quick') as z<'quick' | 'custom' | 'relay'>,
   customEndpointUrl: z.string(),
+  relayUrl: z.string(),
   gatewayBind: z.string().default('127.0.0.1') as z<'127.0.0.1' | '::1' | 'localhost'>,
   gatewayPort: z.natural().max(65535).default(0),
   cloudflaredPath: z.string().default('cloudflared'),
@@ -96,7 +99,7 @@ export function resolveConfig(config: Config): ResolvedConfig {
   if (!/^(https?:\/\/|dsh-mobile:\/\/pair(?:$|[?#]))/.test(config.appUrl)) {
     throw new Error(`dsh-mobile-pairing: appUrl must be an http(s) URL or dsh-mobile://pair, got "${config.appUrl}"`)
   }
-  if (config.endpointMode !== 'quick' && config.endpointMode !== 'custom') throw new Error('dsh-mobile-pairing: endpointMode must be quick or custom')
+  if (config.endpointMode !== 'quick' && config.endpointMode !== 'custom' && config.endpointMode !== 'relay') throw new Error('dsh-mobile-pairing: endpointMode must be quick, custom, or relay')
   if (!['127.0.0.1', '::1', 'localhost'].includes(config.gatewayBind)) throw new Error('dsh-mobile-pairing: gatewayBind must be loopback')
   if (config.endpointMode === 'custom') {
     if (config.customEndpointUrl === undefined) throw new Error('dsh-mobile-pairing: customEndpointUrl is required in custom mode')
@@ -104,6 +107,13 @@ export function resolveConfig(config: Config): ResolvedConfig {
     try { endpoint = new URL(config.customEndpointUrl) } catch { throw new Error('dsh-mobile-pairing: customEndpointUrl must be HTTPS') }
     if (endpoint.protocol !== 'https:') throw new Error('dsh-mobile-pairing: customEndpointUrl must be HTTPS')
     if (endpoint.username !== '' || endpoint.password !== '') throw new Error('dsh-mobile-pairing: customEndpointUrl must not contain credentials')
+  }
+  if (config.endpointMode === 'relay') {
+    if (config.relayUrl === undefined) throw new Error('dsh-mobile-pairing: relayUrl is required in relay mode')
+    let relay: URL
+    try { relay = new URL(config.relayUrl) } catch { throw new Error('dsh-mobile-pairing: relayUrl must be WSS') }
+    if (relay.protocol !== 'wss:') throw new Error('dsh-mobile-pairing: relayUrl must be WSS')
+    if (relay.username !== '' || relay.password !== '' || relay.search !== '' || relay.hash !== '') throw new Error('dsh-mobile-pairing: relayUrl must not contain credentials, query, or fragment data')
   }
   if (config.signalingUrl !== undefined && !/^wss?:\/\//.test(config.signalingUrl)) {
     throw new Error(`dsh-mobile-pairing: signalingUrl must be a ws(s) URL, got "${config.signalingUrl}"`)

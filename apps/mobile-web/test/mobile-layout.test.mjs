@@ -1,12 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { build } from 'vite'
 
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/mobile-layout')
+
+test('mobile layout does not paginate older history during session changes', async () => {
+  const source = await readFile(resolve(import.meta.dirname, '../../../packages/ui-layout-mobile/src/client/index.ts'), 'utf8')
+  assert.doesNotMatch(source, /history-prefetch|loadOlder/, 'session changes must not start background history pagination')
+})
 
 test('mobile drawer closes on navigation and reports its constrained rendered width', async () => {
   const outDir = await mkdtemp(join(tmpdir(), 'dsh-mobile-ui-'))
@@ -26,8 +31,14 @@ test('mobile drawer closes on navigation and reports its constrained rendered wi
     assert.equal(capture('drawer-width'), '240')
     assert.equal(capture('owner-width'), '240')
     assert.equal(capture('topbar-title'), 'Mobile UI Session')
+    assert.equal(capture('notice-center-delta'), '0', 'connection notice should be viewport-centered')
+    assert.equal(capture('notice-in-header'), 'false', 'connection notice should not occupy the topbar')
+    assert.equal(capture('notice-title-visible'), 'true', 'session title should remain visible')
     assert.equal(capture('header-single-row'), 'true', 'header centers: ' + capture('header-tops'))
-    assert.equal(capture('crumb-hidden'), 'none')
+    assert.equal(capture('crumb-hidden'), 'none', 'main sessions should keep the original title row without a breadcrumb')
+    assert.equal(capture('child-crumb-display'), 'flex', 'active child sessions should expose the official breadcrumb')
+    assert.equal(capture('child-crumb-position'), 'fixed', 'active child breadcrumb should use the mobile topbar lane')
+    assert.ok(Number(capture('child-crumb-top')) <= 12, 'active child breadcrumb should sit in the topbar')
     assert.equal(capture('fish-hidden'), 'none')
     assert.notEqual(capture('panel-visible'), 'none')
     assert.equal(capture('codex-closed-left'), '360', 'Codex should leave the viewport through the right edge')

@@ -1,15 +1,11 @@
 {
-  "name": "dsh-signaling",
-  "version": "0.1.0",
+  "name": "dsh-mobile-relay",
+  "version": "0.2.0",
   "type": "module",
   "private": true,
-  "description": "Untrusted signaling-only WebSocket rooms for dsh-mobile WebRTC setup",
-  "engines": {
-    "node": ">=22"
-  },
-  "dependencies": {
-    "ws": "^8.21.3"
-  },
+  "description": "Untrusted multi-room opaque sealed-frame Relay for dsh-mobile",
+  "engines": { "node": ">=22" },
+  "dependencies": { "ws": "^8.21.3" },
   "scripts": {
     "start": "node server.js",
     "test": "node test/relay.test.mjs"

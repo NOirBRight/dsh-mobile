@@ -152,11 +152,17 @@ export function MobileFrame({
         >
           ☰
         </button>
-        <div className={css.sessionTitle} title={sessionTitle}>{sessionTitle}</div>
+        <div className={css.sessionTitle} title={sessionTitle} data-mobile-session-title>{sessionTitle}</div>
       </header>
       <main className={css.center}>
         {renderSlot('conversation', {})}
       </main>
+      <div className={css.noticeLayer} data-mobile-connection-notice-layer>
+        <div className={css.topbarNotice} data-mobile-topbar-notice hidden role="status" aria-live="polite">
+          <span data-mobile-topbar-notice-text />
+          <button type="button" data-mobile-topbar-notice-action hidden />
+        </div>
+      </div>
       <div className={css.scrim} onClick={() => actions.closeDrawer()} />
       <nav
         ref={drawerRef}

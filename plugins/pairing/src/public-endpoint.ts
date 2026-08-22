@@ -21,6 +21,39 @@ export function validateCustomEndpoint(value: string): string {
   return url.toString().replace(/\/$/, '')
 }
 
+/** Validate an opaque Relay WSS base; the Relay never represents a Host identity. */
+export function validateRelayEndpoint(value: string): string {
+  let url: URL
+  try { url = new URL(value) } catch { throw new Error('Relay Endpoint must be a WSS URL') }
+  if (url.protocol !== 'wss:') throw new Error('Relay Endpoint must use WSS')
+  if (url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '') {
+    throw new Error('Relay Endpoint must not contain credentials, query, or fragment data')
+  }
+  return url.toString().replace(/\/$/, '')
+}
+
+export type RelayEndpointCheck =
+  | { ok: true; stage: 'ready' }
+  | { ok: false; stage: 'endpoint' | 'relay'; error: string }
+
+/** Probe a Relay health endpoint without treating it as a Host Gateway. */
+export async function checkRelayEndpoint(value: string, adapters: CustomEndpointAdapters): Promise<RelayEndpointCheck> {
+  let endpoint: string
+  try { endpoint = validateRelayEndpoint(value) } catch (error) { return { ok: false, stage: 'endpoint', error: (error as Error).message } }
+  const health = new URL(endpoint)
+  health.protocol = 'https:'
+  health.pathname = health.pathname.replace(/\/$/, '') + '/healthz'
+  health.search = ''
+  health.hash = ''
+  try {
+    const response = await adapters.fetch(health.toString())
+    if (!response.ok) return { ok: false, stage: 'relay', error: 'Relay health returned HTTP ' + response.status }
+  } catch (error) {
+    return { ok: false, stage: 'relay', error: String((error as Error).message ?? error) }
+  }
+  return { ok: true, stage: 'ready' }
+}
+
 function capabilities(value: unknown): PublicEndpointCapabilities | null {
   if (value === null || typeof value !== 'object') return null
   const candidate = value as Record<string, unknown>

@@ -1,3 +1,5 @@
+> 已废弃：当前 `pair.noirbright.top` 有意连接 daily 3080/43170。本文只保留历史背景，禁止按原步骤把 3082/43169 接到该域名；请为 lab 使用独立 Custom Endpoint 或 Official Relay。
+
 你在 AM01S 上执行 dsh-mobile 的 **PLAN 第 2 波运维切换**。不要重新规划架构。
 
 权威文件（先读完再动手，不要把 ADR/PLAN 抄进回复）：

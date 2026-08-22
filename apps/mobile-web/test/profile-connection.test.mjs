@@ -166,7 +166,19 @@ test('same Host Endpoint Refresh keeps the authorized room while rotating the en
   loaded.dispose()
   assert.equal(refreshed.profile.room, before.room)
   assert.equal(refreshed.profile.endpoint.url, 'https://rotated.example')
+  assert.equal(parseOffer(refreshed.offerUrl, { allowExpired: true }).room, before.room)
   assert.equal((await repository.getActive()).credentialRef, before.credentialRef)
+})
+
+test('Official Relay offers persist a shared WSS endpoint without STUN metadata', async () => {
+  const { vault, repository } = fixture()
+  const relay = 'dsh-mobile://pair#offer=' + b64urlEncode(new TextEncoder().encode(JSON.stringify({
+    v: 2, mode: 'relay', addr: 'wss://relay.example.com', room: 'a'.repeat(32), pubkey: hostId, code: '123456', exp: Math.floor(Date.now() / 1000) + 300,
+  })))
+  const prepared = await prepareProfileConnection({ repository, vault, offerUrl: relay, generateKeypair: () => keypair })
+  assert.deepEqual(prepared.profile.endpoint, { url: 'wss://relay.example.com', kind: 'relay' })
+  assert.deepEqual(prepared.profile.ice, [])
+  assert.equal(parseOffer(prepared.offerUrl).mode, 'relay')
 })
 
 test('same Host and room refreshes endpoint metadata without replacing authorization', async () => {

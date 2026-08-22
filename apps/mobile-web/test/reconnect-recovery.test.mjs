@@ -1,6 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { endpointRefreshRequired } from '../src/reconnect-recovery.ts'
+import { connectionRecoveryDecision, endpointRefreshRequired } from '../src/reconnect-recovery.ts'
+
+test('only actionable failures stop automatic reconnect', () => {
+  assert.equal(connectionRecoveryDecision('custom', 'retry-wait', 'network unavailable'), null)
+  assert.equal(connectionRecoveryDecision('temporary', 'retry-wait', 'handshake: endpoint WebSocket connection failed'), 'endpoint')
+  assert.equal(connectionRecoveryDecision('custom', 'retry-wait', 'credential is missing'), 'credential')
+  assert.equal(connectionRecoveryDecision('custom', 'terminal', 'bad-token'), 'credential')
+})
 
 test('an unreachable temporary endpoint offers Endpoint Refresh recovery', () => {
   assert.equal(endpointRefreshRequired('temporary', 'handshake: endpoint WebSocket connection failed'), true)

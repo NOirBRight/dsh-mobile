@@ -87,6 +87,18 @@ test('token store records client type, last-seen, and a defensive live limit', (
   assert.throws(() => store.issue('overflow'), error => error instanceof DeviceLimitError)
 })
 
+test('token store re-pairing the same Client Instance updates one row and room', () => {
+  const store = new DeviceTokenStore(join(dir, 're-pair-device.json'))
+  const claimant = 'C'.repeat(43)
+  const first = store.issueOrUpdate('phone', 'a'.repeat(32), claimant, 'android')
+  const second = store.issueOrUpdate('phone', 'b'.repeat(32), claimant, 'android')
+  assert.equal(second.id, first.id)
+  assert.equal(store.list().filter(device => device.revokedAt === null).length, 1)
+  assert.equal(store.list()[0].room, 'b'.repeat(32))
+  assert.equal(store.authenticate(second.token, claimant, 'b'.repeat(32))?.id, first.id)
+  assert.equal(store.authenticate(first.token, claimant, 'b'.repeat(32)), null)
+})
+
 test('token store: corrupt store file fails loud', () => {
   const path = join(dir, 'broken-devices.json')
   writeFileSync(path, '{')

@@ -1,6 +1,6 @@
 # 运维规则：冻结 dshweb，只改 dshapp 的官方窄屏布局
 
-> 维护者个人恢复面的工作纪律，不是产品默认拓扑。产品规则仍以 [ADR 0004](adr/0004-responsive-layout-and-design-ownership.md)、[ADR 0005](adr/0005-vps-endpoint-tunnel-first-app-only.md)、[CONTEXT.md](../CONTEXT.md) 为准。历史部署记录见 [dual-domain-deployment.md](dual-domain-deployment.md)。
+> 维护者个人恢复面的工作纪律，不是产品默认拓扑。产品规则仍以 [ADR 0004](adr/0004-responsive-layout-and-design-ownership.md)、[ADR 0005](adr/0005-vps-endpoint-tunnel-first-app-only.md)、[ADR 0006](adr/0006-regional-official-sealed-relay.md)、[CONTEXT.md](../CONTEXT.md) 为准。历史部署记录见 [dual-domain-deployment.md](dual-domain-deployment.md)。
 
 dshweb 和 dshapp 共用一台 Host：`dsh-web.service` → `127.0.0.1:3080` → VPS `172.18.0.1:31421`。`dsh-vps-tunnel.service` 对 `dsh-web.service` 使用 `BindsTo`，重启 Host 会把两条公网入口一起掐断。因此迭代顺序写死为：**先保证 dshweb 正常且不重启，再改 dshapp。**
 
@@ -14,7 +14,8 @@ dshweb 和 dshapp 共用一台 Host：`dsh-web.service` → `127.0.0.1:3080` →
 | `dsh-vps-tunnel.service` | 公网 `31421`；`BindsTo` 随 Host 生死 |
 | `~/.dsh` 以及 3080 上的 web profile / 插件清单 | dshapp 的 `/plugins/@deepseek-ai/*` 和 `/api/*` 都从这里来 |
 | Caddy 站点 `dsh.noirbright.top`、`dshweb.noirbright.top` | 官方 UI 入口；不要为 app 改 Host 改写或 trusted-host |
-| 3080 上的 pairing、`43169` | 文档早已禁止；配对只属于 lab `:3082` |
+| 3080 上的 pairing、`43170` | 当前 daily Pair 的有意配置；public Pair 不得改挂到 lab |
+| lab `:3082` + `43169` | 独立测试面，可选择自己的 Custom Endpoint 或 Official Relay |
 | 官方 UI 模块源码（对话、侧栏、设置、theme tokens） | app 消费 Host 现成模块，不在 3080 上另开一套 |
 
 冻结验收（改 app 前后各记一次，必须相同）：
@@ -38,7 +39,7 @@ MainPID 变了 = 本轮失败，先把 web 拉回，再谈 app。
 
 Caddy 的 dshapp 站点块只有在改路由或上游请求头时才动。必须重载时用 `docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`，禁止 `docker restart caddy`，更不要重启 `dsh-web.service`。dshapp 代理的 `Host`、`X-Forwarded-Host`、`Origin`、`Referer` 必须全部使用 Host 回环值：`127.0.0.1:3080`、`127.0.0.1:3080`、`http://127.0.0.1:3080`、`http://127.0.0.1:3080/`；公共域名头会触发 Host 的 403。当前需保持的扩展 RPC 路由包括 `/api/*`、`/plugins/*`、`/codex/*`、`/codex-sidebar/*`、`/dsh-market/*`、`/external-agents/*`、`/grok/*`、`/llm-assistant/*`、`/ollama-cloud/*`、`/usage-monitor/*`。
 
-需要破坏性试验时走 `dsh-lab.service` `:3082` / `pair.noirbright.top`，或 dshapp 已有的 `/__prototype/*` → `31423`。不要把试验打到 3080。
+需要破坏性试验时走 `dsh-lab.service` `:3082` / 独立 Custom Endpoint 或 Official Relay，或 dshapp 已有的 `/__prototype/*` → `31423`。当前 `pair.noirbright.top` 有意连接 daily 3080，不要把 lab 试验切到该域名。
 
 ## 3. App 修改规则（官方 UI 的 layout 调整）
 

@@ -1,4 +1,4 @@
-import { b64urlEncode, generateClientKeypair, parseOffer, type ClientKeypair, type PublicEndpointOffer } from '@dsh-mobile/e2e-tunnel'
+import { b64urlEncode, generateClientKeypair, parseOffer, type ClientKeypair, type PublicEndpointOffer, type RelayOffer } from '@dsh-mobile/e2e-tunnel'
 import type { ReadableCredentialVault } from './credential-vault.ts'
 import { HOST_PROFILE_SCHEMA_VERSION, HostIdentityMismatchError, type HostProfile, type ProfileRepository } from './profiles.ts'
 import { decodeSessionCredential, encodeSessionCredential } from './session-credentials.ts'
@@ -33,10 +33,13 @@ export async function prepareProfileConnection(options: PrepareProfileConnection
   const now = options.now ?? (() => new Date())
   let profile: HostProfile
   let connectionOffer: string
+  let parsedOffer: PublicEndpointOffer | RelayOffer | undefined
+  let normalizeExistingTokenOffer = false
 
   if (options.offerUrl !== undefined) {
     const parsed = parseOffer(options.offerUrl)
-    if (parsed.mode !== 'public') throw new Error('Host Profiles require a v4 Public Endpoint offer')
+    if (parsed.mode !== 'public' && parsed.mode !== 'relay') throw new Error('Host Profiles require a Public Endpoint or Official Relay offer')
+    parsedOffer = parsed
     const existingListed = (await options.repository.list()).find(item => item.hostId === parsed.pubkey)
     let existing = existingListed
     if (existing !== undefined) {
@@ -52,6 +55,7 @@ export async function prepareProfileConnection(options: PrepareProfileConnection
       const stored = await readCredential(options.vault, existing.credentialRef)
       try {
         if (stored.deviceToken !== undefined) {
+          normalizeExistingTokenOffer = true
           profile = await options.repository.upsert(profileFromOffer(parsed, existing.credentialRef, now(), existing))
         } else {
           const refreshed = encodeSessionCredential({ clientKeypair: stored.clientKeypair, pairingCode: parsed.code })
@@ -88,7 +92,9 @@ export async function prepareProfileConnection(options: PrepareProfileConnection
       }
     }
     await options.repository.setActiveHost(profile.hostId)
-    connectionOffer = options.offerUrl
+    connectionOffer = normalizeExistingTokenOffer && parsedOffer !== undefined
+      ? offerFromProfile(profile, parsedOffer.code, now())
+      : options.offerUrl
   } else {
     const active = await options.repository.getActive()
     if (active === undefined) throw new Error('no Active Host Profile')
@@ -146,17 +152,19 @@ export async function prepareProfileConnection(options: PrepareProfileConnection
   }
 }
 
-function profileFromOffer(offer: PublicEndpointOffer, credentialRef: string, now: Date, existing?: HostProfile): HostProfile {
+function profileFromOffer(offer: PublicEndpointOffer | RelayOffer, credentialRef: string, now: Date, existing?: HostProfile): HostProfile {
   const timestamp = now.toISOString()
+  const relay = offer.mode === 'relay'
+  const endpointUrl = relay ? offer.addr : offer.endpoint
   return {
     schemaVersion: HOST_PROFILE_SCHEMA_VERSION,
     hostId: offer.pubkey,
-    displayName: existing?.displayName ?? new URL(offer.endpoint).hostname,
-    endpoint: { url: offer.endpoint, kind: offer.endpointKind },
-    capabilities: Object.entries(offer.capabilities).filter(([, enabled]) => enabled).map(([name]) => name),
+    displayName: existing?.displayName ?? new URL(endpointUrl).hostname,
+    endpoint: { url: endpointUrl, kind: relay ? 'relay' : offer.endpointKind },
+    capabilities: relay ? ['tunnel'] : Object.entries(offer.capabilities).filter(([, enabled]) => enabled).map(([name]) => name),
     credentialRef,
     room: existing?.room ?? offer.room,
-    ice: [...(offer.ice ?? [])],
+    ice: relay ? [] : [...(offer.ice ?? [])],
     connectionPolicy: existing?.connectionPolicy ?? 'automatic',
     presentation: existing?.presentation ?? {},
     createdAt: existing?.createdAt ?? timestamp,
@@ -165,12 +173,16 @@ function profileFromOffer(offer: PublicEndpointOffer, credentialRef: string, now
 }
 
 function offerFromProfile(profile: HostProfile, code: string, now: Date): string {
+  const exp = Math.floor(now.getTime() / 1000) + 300
+  if (profile.endpoint.kind === 'relay') {
+    const offer: RelayOffer = { v: 2, mode: 'relay', addr: profile.endpoint.url, room: profile.room, pubkey: profile.hostId, code, exp }
+    return 'dsh-mobile://pair#offer=' + b64urlEncode(new TextEncoder().encode(JSON.stringify(offer)))
+  }
   const enabled = new Set(profile.capabilities)
   const offer: PublicEndpointOffer = {
     v: 4, mode: 'public', protocol: 1,
     endpoint: profile.endpoint.url, endpointKind: profile.endpoint.kind,
-    room: profile.room, pubkey: profile.hostId, code,
-    exp: Math.floor(now.getTime() / 1000) + 300,
+    room: profile.room, pubkey: profile.hostId, code, exp,
     ice: [...profile.ice],
     capabilities: {
       browser: enabled.has('browser'), direct: enabled.has('direct'),

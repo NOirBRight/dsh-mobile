@@ -58,6 +58,68 @@
   white-space: nowrap;
 }
 
+/* Recovery notices float over the conversation instead of occupying the
+   topbar. The layer is click-through except for the notice itself, so the
+   transcript keeps its original geometry. */
+.noticeLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.noticeLayer > .topbarNotice {
+  pointer-events: auto;
+}
+
+.topbarNotice {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 56px);
+  left: 50%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--dsw-alias-border-l1, ButtonBorder);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-base, Canvas);
+  color: var(--dsw-alias-label-primary, CanvasText);
+  box-shadow: var(--dsw-alias-shadow-l2, 0 8px 24px rgb(0 0 0 / 18%));
+  font-size: 13px;
+  line-height: 18px;
+  transform: translateX(-50%);
+}
+
+.topbarNotice[hidden] {
+  display: none;
+}
+
+.topbarNotice > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbarNotice > button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--dsw-alias-border-l1, ButtonBorder);
+  border-radius: 999px;
+  background: var(--dsw-alias-interactive-bg-hover, ButtonFace);
+  color: var(--dsw-alias-label-primary, ButtonText);
+  font: inherit;
+  white-space: nowrap;
+}
+
+.topbarNotice > button[hidden] {
+  display: none;
+}
+
 .center {
   flex: 1;
   min-height: 0;
@@ -112,6 +174,13 @@
   transition:
     transform var(--ds-transition-duration-slow) var(--ds-ease-in-out),
     visibility 0s var(--ds-transition-duration-slow);
+}
+
+/* The official sidebar header adds a small internal top offset of its own.
+   Match its brand row to the mobile topbar/sidebar control centerline. */
+.drawer :global([class*="logoRow"]) {
+  position: relative;
+  top: -12px;
 }
 
 .frame[data-drawer-open] .drawer {
@@ -334,8 +403,79 @@
   overflow: hidden;
 }
 
+/* Keep the original compact action row when the main session is active.
+   The upstream lineage slot is only promoted into the topbar for an active
+   child, so a normal session does not gain a second title row. */
 .center :global(header:has(> [role="tablist"]) nav[aria-label]) {
   display: none;
+}
+
+/* A main session keeps its existing title in the mobile topbar; show only the
+   official subagent count beside the existing mode/actions when children exist. */
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-haspopup="tree"]):not(:has(button[aria-label^="切换子代理"]))) {
+  position: static;
+  order: 2;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 0;
+  height: 28px;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-haspopup="tree"]):not(:has(button[aria-label^="切换子代理"])) > span:first-child > button:disabled),
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-haspopup="tree"]):not(:has(button[aria-label^="切换子代理"])) [class*="separator"]) {
+  display: none;
+}
+
+/* A child uses the same topbar lane as the main title. The upstream button
+   remains the parent breadcrumb action, and the switcher remains the child
+   title/action; no replacement navigation state is introduced here. */
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-label^="切换子代理"])) {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 10px);
+  right: 56px;
+  left: 56px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 28px;
+  max-width: none;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.frame:has(.center nav[aria-label] button[aria-label^="切换子代理"]) .sessionTitle {
+  display: none;
+}
+
+/* Give the active child the title budget: the parent is intentionally a
+   short, tertiary breadcrumb and the child keeps the remaining width. */
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-label^="切换子代理"])) {
+  gap: 2px;
+}
+
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-label^="切换子代理"]) > span) {
+  gap: 2px;
+  min-width: 0;
+}
+
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-label^="切换子代理"]) > span:first-child > button:not([aria-haspopup])) {
+  max-width: 88px;
+  padding-right: 4px;
+  padding-left: 4px;
+}
+
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-label^="切换子代理"]) button[aria-label^="切换子代理"]) {
+  min-width: 0;
+  max-width: 160px;
+  overflow: hidden;
+  padding-right: 4px;
+  padding-left: 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .center :global(header:has(> [role="tablist"]) > div:first-child) {
@@ -374,6 +514,21 @@
   flex: none;
 }
 
+/* Flatten the real official action slot so the mobile flex row can keep the
+   intended order: preset, subagent, then optional background commands. The
+   fixture's structural fallback remains grouped for older Hosts. */
+.center :global(header:has(> [role="tablist"]) [class*="headerActions"]) {
+  display: contents !important;
+}
+
+.center :global(header:has(> [role="tablist"]) [class*="headerActions"] [title]) {
+  order: 1;
+}
+
+.center :global(header:has(> [role="tablist"]) [class*="headerActions"] > [data-slot] > [class*="root"]:has(> button[aria-expanded]:not([aria-haspopup]))) {
+  order: 3;
+}
+
 /* Preserve the official dynamic/localized preset name. Long custom names
    elide inside their own seat instead of replacing the value with PTC. */
 .center :global(header:has(> [role="tablist"]) > div:first-child > div:first-child > div:last-child span[title]) {
@@ -401,6 +556,64 @@
 
 .center :global(header:has(> [role="tablist"]) button[aria-haspopup="tree"] > span:nth-of-type(2):lang(en)::after) {
   content: 'Subs';
+}
+
+/* The official lineage trigger exposes an optional activity slot followed by
+   its semantic count. Target the count class rather than a child index: when
+   nothing is running the activity slot is absent and must not leave a gap. */
+.center :global(header:has(> [role="tablist"]) nav[aria-label] button[aria-haspopup="tree"] > span[class*="count"]) {
+  margin: 0 2px;
+  font-size: 0;
+}
+
+.center :global(header:has(> [role="tablist"]) nav[aria-label] button[aria-haspopup="tree"] > span[class*="count"]::after) {
+  font-size: 12px;
+}
+
+.center :global(header:has(> [role="tablist"]) nav[aria-label] button[aria-haspopup="tree"] > span[class*="count"]:lang(zh)::after) {
+  content: '子代';
+}
+
+.center :global(header:has(> [role="tablist"]) nav[aria-label] button[aria-haspopup="tree"] > span[class*="count"]:lang(en)::after) {
+  content: 'Subs';
+}
+
+/* The current upstream bundle can omit the optional CSS-module class from the
+   count span. In that shape the count is the only direct span without a class;
+   keep the idle case compact and let a real activitySlot remain untouched. */
+.center :global(header:has(> [role="tablist"]) nav[aria-label] button[aria-haspopup="tree"] > span:not([class])) {
+  margin: 0 2px;
+  font-size: 0;
+}
+
+.center :global(header:has(> [role="tablist"]) nav[aria-label] button[aria-haspopup="tree"] > span:not([class])::after) {
+  font-size: 12px;
+}
+
+.center :global(header:has(> [role="tablist"]) nav[aria-label] button[aria-haspopup="tree"] > span:not([class]):lang(zh)::after) {
+  content: '子代';
+}
+
+.center :global(header:has(> [role="tablist"]) nav[aria-label] button[aria-haspopup="tree"] > span:not([class]):lang(en)::after) {
+  content: 'Subs';
+}
+
+/* Jobs use the same optional-leading-indicator shape. */
+.center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span[class*="count"]) {
+  margin: 0 2px;
+  font-size: 0;
+}
+
+.center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span[class*="count"]::after) {
+  font-size: 12px;
+}
+
+.center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span[class*="count"]:lang(zh)::after) {
+  content: '命令';
+}
+
+.center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span[class*="count"]:lang(en)::after) {
+  content: 'Jobs';
 }
 
 /* Jobs trigger has aria-expanded but no aria-haspopup. */
@@ -508,12 +721,20 @@
    same sections and controls, but replace its desktop 188px rail + content
    columns with a title row, horizontally scrollable category row, and a full-
    width content column. */
+.frame :global(div:has(> [role="dialog"][aria-modal="true"] > nav)) {
+  --dsh-mobile-dialog-top-clearance: max(40px, calc(env(safe-area-inset-top) + 12px));
+  --dsh-mobile-dialog-bottom-clearance: calc(env(safe-area-inset-bottom) + 12px);
+  box-sizing: border-box;
+  padding: var(--dsh-mobile-dialog-top-clearance) 12px var(--dsh-mobile-dialog-bottom-clearance);
+}
+
 .frame :global([role="dialog"][aria-modal="true"]:has(> nav)) {
   box-sizing: border-box;
   width: min(800px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
-  height: min(800px, calc(100dvh - 24px));
-  max-height: calc(100dvh - 24px);
+  height: min(800px, calc(100dvh - var(--dsh-mobile-dialog-top-clearance) - var(--dsh-mobile-dialog-bottom-clearance)));
+  max-height: calc(100dvh - var(--dsh-mobile-dialog-top-clearance) - var(--dsh-mobile-dialog-bottom-clearance));
+  padding-top: 0;
   flex-direction: column;
 }
 
@@ -594,17 +815,34 @@
    settings state or navigation path. */
 .frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button) {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 18px;
+  right: 18px;
   z-index: 4;
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
   margin: 0;
+  padding: 0;
   border: 0;
-  border-radius: 999px;
-  background: var(--dsw-alias-bg-layer-1);
+  border-radius: 6px;
+  background: transparent;
   color: var(--dsw-alias-label-primary);
+  font-size: 18px;
+  line-height: 24px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:hover),
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:active),
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:focus) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:focus-visible) {
+  outline: none;
 }
 
 /* Theme cards are a three-choice control, not three full-width mobile pages. */

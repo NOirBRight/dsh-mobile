@@ -1,6 +1,6 @@
 # DSH Mobile 完整执行计划
 
-架构决策见 [ADR 0005](docs/adr/0005-vps-endpoint-tunnel-first-app-only.md) 以及未被取代的 ADR 0001–0004、[CONTEXT.md](CONTEXT.md)。本文是**唯一执行总表**：产品范围、现场约束、目标形态、工作包顺序、验收。不要另开一套架构讨论。
+架构决策见 [ADR 0005](docs/adr/0005-vps-endpoint-tunnel-first-app-only.md)、[ADR 0006](docs/adr/0006-regional-official-sealed-relay.md) 以及未被取代的 ADR 0001–0004、[CONTEXT.md](CONTEXT.md)。本文是**唯一执行总表**：产品范围、现场约束、目标形态、工作包顺序、验收。不要另开一套架构讨论。
 
 维护者测试端点切换的操作细节见 [docs/ops-lab-custom-cutover.md](docs/ops-lab-custom-cutover.md)（第 0 包已完成）。
 
@@ -10,13 +10,14 @@
 
 Android Capacitor APK。用户扫 Host 二维码配对后，在手机上使用自己的 DSH：会话、插件、官方窄屏布局。APK 是唯一 Product Client。
 
-不是浏览器壳，不是项目运营的公共中继，不是第二个 DSH。Host 仍是用户自己的机器；手机只连那一台 Active Host。
+不是浏览器壳，不是第二个 DSH。Host 仍是用户自己的机器；手机只连那一台 Active Host。当前 GUI 只提供 Quick 和 Relay 两种连接载体。
 
 发布形态：
 
 - 零配置默认：Host 自己的 Cloudflare Quick Tunnel（各用户各走各的，项目零带宽）。
-- 推荐稳定：Host 自托管 Custom Endpoint（文档里的 Docker 配方）。
-- 维护者自己：`https://pair.noirbright.top` 只服务 `~/.dsh-lab` / 3082，永不写进 APK 默认值。
+- 用户可选：项目提供的 Relay，国内 `relay.noirbright.top`、海外 `relay-overseas.noirbright.top`，均为每设备独立 Room 的 Docker sealed-frame Relay。
+- 旧的 Host-owned Custom Endpoint 仅兼容已有 operator overlay，不作为当前 GUI 选项。
+- 维护者专用 APK：已配对的 3080 Host（Identity `c2ChEHucjWVwG7FnAF3xqfVXuIJnvoyY2kIiJHyiWmI`）从 Quick Tunnel 自动迁移到 `https://pair.noirbright.top`；其他 Host 仍按二维码端点工作。
 
 ---
 
@@ -26,12 +27,12 @@ Android Capacitor APK。用户扫 Host 二维码配对后，在手机上使用�
 |---|---|---|---|
 | DSH 源码开发 / 日常桌面 | `dsh-web.service` → `127.0.0.1:3080` → `dsh.noirbright.top` 与 `dshweb.noirbright.top` | 默认 `~/.dsh` | **冻结面**。改 DSH 源码、官方 UI。禁止 pairing，禁止占用 `43169`，禁止为了 app 重启 |
 | dshapp 窄屏恢复面 | 同一 `3080`，静态壳在 VPS `dsh-mobile-web` 卷 → `dshapp.noirbright.top` | 不另起 DSH | 只改 `@dsh-mobile/ui-layout-mobile` 与 mobile-web 静态壳，见 [ops-dshapp-without-restarting-web.md](docs/ops-dshapp-without-restarting-web.md) |
-| dsh-mobile 全部测试 | `dsh-lab.service` → `127.0.0.1:3082` + Gateway `43169` → `pair.noirbright.top` | `~/.dsh-lab` | APK 配对、连接、回归 |
+| dsh-mobile 全部测试 | `dsh-lab.service` → `127.0.0.1:3082` + Gateway `43169` → 独立 Custom Endpoint / Relay | `~/.dsh-lab` | APK 配对、连接、回归；不占 daily Pair |
 | 海外 VPS | `ssh vps`（直连 `58022`） | RackNerd | 第 6 包自托管第二实例，国内不当主路径 |
 
 `~/.dsh-web` 不是当前 systemd 家目录。`~/.dsh/mobile/public-endpoint.json` 与 3082 无关。改 dshapp 不得重启 `dsh-web.service`。
 
-第 0 包已完成（2026-08-19）：lab YAML + overlay 为 `custom` / `https://pair.noirbright.top`，cloudflared 已停，公网 well-known 与 lab Host Identity 一致。真机 Endpoint Refresh 仍待做。
+第 0 包的历史切换记录已完成；当前 daily Pair 有意服务 3080，lab 不再使用 `pair.noirbright.top`。lab 真机应选择独立 Relay 或 Custom Endpoint。
 
 ---
 
@@ -95,7 +96,7 @@ APK 内置壳、字体、样式、`@dsh-mobile/ui-layout-mobile`。无 Host Prof
 
 ### 包 0 — 维护者端点（已完成，差真机）
 
-lab 切 custom。剩余：真机扫 3082 `/pair/ui` 的 Endpoint Refresh，确认 Tunnel 路径和 token 重连。
+daily 3080 保持 `pair.noirbright.top`；lab 3082 使用独立 Relay/Custom。剩余是真机扫独立端点的 Endpoint Refresh，确认 Tunnel 路径和 token 重连。
 
 ### 包 1 — 连接策略与心跳
 
@@ -130,19 +131,22 @@ lab 切 custom。剩余：真机扫 3082 `/pair/ui` 的 Endpoint Refresh，确�
 
 `QuickTunnelController` 改为「任意能吐出 HTTPS+WSS URL 的命令/配置」。内置 cloudflared。natapp/cpolar/自建 frp 只走配置，不写进默认二进制依赖。
 
-### 包 6 — 自托管端点栈
+### 包 6 — 自托管端点与官方 Relay 栈
 
-Docker Compose：Caddy 自动证书 + frps；Host 侧 frpc 样例和指南。维护者可在 `vps-aliyun` 与海外 `vps` 各起一套给朋友同事（每实例约 50 并发活跃预算）。禁止写进 APK。海外 `ssh vps` 已直连可用。本包可与包 4 并行，但不得改客户端默认端点。
+Custom Endpoint 继续使用 Caddy + frps/frpc；官方 Relay 使用独立的 Node sealed-frame Broker + Caddy Docker Compose，不得连接 DSH、frps、frpc 或 3080。维护者在 `vps-aliyun` 和海外 `vps` 各运行一套官方 Relay，其他人可用同一配方部署。每个 Room 一个 Host + 一个 Client，多个 Room 并行。Relay URL 由 Host Profile 选择，不写死进 APK。
 
 ### 包 7 — 验收矩阵
 
-- 真机 LTE/5G 与家里 Wi-Fi，经 `pair.noirbright.top`。
+- 真机 LTE/5G 与家里 Wi-Fi，经国内/海外 Relay；daily Pair 仅验证 3080 Host。
 - 隧道 / Caddy / lab 重启后 token 重连，不重配对。
 - Tunnel Only / Direct Only。
 - 冷启动：断网先看到壳；联网后只补会话/变更 bundle。
 - 长会话心跳不误杀。
 - APK assemble。
-- 干净机器用 Compose 拉起自托管栈。
+- 干净机器用 Compose 拉起 Custom Endpoint 与 Official Relay 栈。
+- 官方 Relay 多 Room 隔离、跨 Room 不串帧、重启后 Host connector 可恢复。
+- 同一 Client Instance 重扫只保留一个设备记录并更新 Room/Endpoint。
+- 未配置端点时两个设置界面都不请求真实二维码。
 - grep：无浏览器壳、无维护者域名默认值、无「先直连再隧道」的 Automatic。
 
 ---
@@ -155,7 +159,7 @@ Docker Compose：Caddy 自动证书 + frps；Host 侧 frpc 样例和指南。维
 包2 凭证 ────────────┘              ↑
 包3 去浏览器 ───────────────────────┘
 包5 可插拔 Quick ──→ 可与包4 并行，须在包7 前
-包6 Compose/双 VPS ─→ 可与包4 并行，须在包7 前
+包6 Compose/双区域 Relay ─→ 可与包4 并行，须在包7 前
 ```
 
 先做 1+2（小、决定连接和凭证），再 3（删面），再 4（完整 App 体验）。5/6 不挡 1–3。没有 4 不算完整应用。
@@ -164,10 +168,10 @@ Docker Compose：Caddy 自动证书 + frps；Host 侧 frpc 样例和指南。维
 
 ## 7. 明确不做
 
-- 项目运营的多租户公共 relay。
+- 不做国内/海外 Relay 的透明 HA 或跨区域 Room 复制；区域由 Host 明确选择。
 - 多端点 Host Profile（一只 Profile 仍一个 URL）。
-- 把 `pair.noirbright.top` 写进 APK。
-- 在 3080 上做 mobile 验收或给 3080 挂 pairing。
+- 不把 `pair.noirbright.top` 写进通用 APK；维护者专用构建允许对指定 Host Identity 做受限端点迁移。
+- 不把 lab 3082 的 mobile 验收切到 daily `pair.noirbright.top`；该域名有意服务 3080。
 - 隧道传图、传文件、传网页素材。
 - 浏览器 PWA 作为产品。
 
@@ -175,4 +179,4 @@ Docker Compose：Caddy 自动证书 + frps；Host 侧 frpc 样例和指南。维
 
 ## 8. 完成定义
 
-仓库测试与 typecheck 绿；debug APK 可装；真机经 lab Custom Endpoint 完成：配对或 Refresh、隧道会话、杀进程再开不白等直连、二次冷启动不重下未变插件、断线重连不整页刷新。维护者域名只出现在 `~/.dsh-lab` 和运维文档，不出现在客户端默认配置。
+仓库测试与 typecheck 绿；debug APK 可装；真机经 Quick 或 Relay 完成：配对或 Refresh、隧道会话、杀进程再开不白等直连、二次冷启动不重下未变插件、断线重连不整页刷新。维护者域名只进入维护者专用 APK 的受限 Host 迁移，不进入通用客户端默认配置。

@@ -1,7 +1,8 @@
-	# dsh-relay (dsh-mobile PoC) - strip /relay prefix; WS rooms under /r/<id>
-	handle_path /relay* {
-		reverse_proxy dsh-relay:8787 {
-			flush_interval -1
-		}
-	}
-
+# Existing-Caddy integration for an official Relay container.
+# Prefer docker-compose.yml for a fresh host. If Caddy already runs on the
+# same Docker network, attach the Relay container to that network and add one
+# narrow host block; never reuse the Host Gateway/frps reverse proxy block.
+relay.example.com {
+  encode gzip
+  reverse_proxy dsh-mobile-relay:8787
+}

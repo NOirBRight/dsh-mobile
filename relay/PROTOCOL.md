@@ -1,39 +1,41 @@
-# dsh-signaling 房间协议 v1
+# DSH Mobile sealed Relay protocol v1
 
-## 信任边界
+## Trust boundary
 
-服务端不被信任。它可见连接 IP、房间号、时序和 SDP 中的 ICE candidate，但没有 Host 私钥、device token 或 DSH 明文。端点身份由 DataChannel 打开后的 NaCl hello/ack 验证。
+The Relay is an untrusted byte broker. It sees the room identifier, connection
+metadata, timing, sizes, and ciphertext, but it has no Host private key, device
+token, DSH route, or application plaintext. The Host and Client perform the
+existing NaCl hello/ack and sequence checks after joining the room.
 
-恶意信令服务可以拒绝服务或替换 SDP；替换后的 endpoint 无法通过 QR Host 公钥认证。
-
-## 连接
+## Connection
 
 ~~~text
-wss://relay.noirbright.top/r/<roomId>?role=host|client
+wss://relay.example.com/r/<roomId>?role=host|client
 ~~~
 
-roomId 是 16 随机字节的小写 hex。每房间一个 host、一个 client。空房十分钟回收；单方离开时另一方保留。
+roomId is exactly 16 random bytes encoded as 32 lowercase hexadecimal
+characters. Each room has one host seat and one client seat. A Relay can
+serve many rooms concurrently; unrelated rooms never share frames.
 
-## 唯一允许的消息
+The URL is a short-lived capability minted by the Host. The Relay does not
+receive the pairing code. A guessed room can only cause occupancy denial, so
+public deployments additionally enforce connection, room, byte, and backpressure
+limits.
 
-~~~json
-{"type":"signal","phase":"sdp","payload":"<base64url>"}
-~~~
+## Frames
 
-payload 解码后是：
+The only accepted room payload is a WebSocket binary frame. The Relay copies
+its bytes and ordering to the opposite seat without parsing or logging them.
+Frames are dropped when the opposite seat is absent. There is no buffering,
+storage, replay, or migration between rooms.
 
-~~~json
-{"kind":"offer|answer","description":{"type":"offer|answer","sdp":"..."}}
-~~~
+Text frames, unknown roles, malformed room paths, and duplicate seats are
+rejected. The current default frame cap is 256 KiB, with per-connection byte
+budgets and bounded global room/connection counts.
 
-服务端拒绝 hello 和其他 phase；它解码 payload 并校验 client 只能发送 offer、host 只能发送 answer、description.type 匹配且 SDP 以 v=0 开始。
+## Deployment boundary
 
-## 强制限制
-
-- WebSocket binary frame：4400。
-- 不符合 envelope 的 text：4400。
-- payload 非 base64url、消息超过 64 KiB、每分钟超过 64 条：4400。
-- 房间满或 role 冲突：4409。
-- 不缓存、落盘或重放消息。对端未连接时消息不会排队。
-
-SDP 完成后信令连接可以空闲保持，用于占有唯一 role 并与当前 peer 生命周期绑定；它不会承载更多数据。Tunnel/DataChannel 关闭时 client 同时关闭 PeerConnection 与 signaling socket，释放房间席位。Host campaign 保持在线以接受设备重连。所有 NaCl handshake 和 DSH traffic 都只走 RTCDataChannel。
+The Relay image contains only the broker. It must not import the pairing plugin,
+NaCl implementation, DSH client, frps, frpc, or any Host upstream. Caddy
+terminates TLS and reverse-proxies only to the private Relay container. See
+the Docker deployment README in deploy/.

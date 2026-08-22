@@ -157,6 +157,13 @@ export function parseOffer(offerUrl: string, options: ParseOfferOptions = {}): O
   }
 
   if (typeof o.addr !== 'string' || !/^wss?:\/\//.test(o.addr)) throw new TunnelError('bad-offer', 'addr must be a ws(s) URL')
+  try {
+    const address = new URL(o.addr)
+    const localDevelopment = address.protocol === 'ws:' && (address.hostname === 'localhost' || address.hostname === '127.0.0.1' || address.hostname === '[::1]')
+    if (address.username !== '' || address.password !== '' || address.search !== '' || address.hash !== '' || (o.v === 2 && address.protocol !== 'wss:' && !localDevelopment)) throw new Error()
+  } catch {
+    throw new TunnelError('bad-offer', o.v === 2 ? 'official Relay address must be WSS without credentials' : 'addr must be a credential-free WebSocket URL')
+  }
   const base: OfferBase = { addr: o.addr, room: o.room, pubkey: o.pubkey, code: o.code, exp: o.exp }
   if (o.v === 2) {
     if (o.ice !== undefined) throw new TunnelError('bad-offer', 'ice is only valid on direct or public offers')

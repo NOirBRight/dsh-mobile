@@ -45,6 +45,7 @@
  */
 import { request } from 'node:http'
 import type { IncomingMessage } from 'node:http'
+import { gzipSync } from 'node:zlib'
 import WebSocket from 'ws'
 import nacl from 'tweetnacl'
 import { hostHandshake } from './handshake.ts'
@@ -56,6 +57,8 @@ const MAX_PLAINTEXT_BYTES = 200 * 1024
 const MAX_BODY_BYTES = 8 * 1024 * 1024
 /** Raw bytes per inline body / continuation chunk (~128 KiB base64, safely under the 200 KiB frame cap). */
 const BODY_CHUNK_BYTES = 96 * 1024
+/** Compress JSON/transcript-scale responses; tiny bodies cost more CPU and framing than they save. */
+const RESPONSE_COMPRESSION_THRESHOLD_BYTES = 32 * 1024
 
 const CLOSE_BAD_FRAME = 4400
 const CLOSE_BAD_SEQ = 4401
@@ -284,14 +287,19 @@ function startHostSession(
         headers[key] = value
       }
       const raw = Buffer.concat(chunks)
-      if (raw.length <= BODY_CHUNK_BYTES) {
-        sendMsg({ t: 'http-res', id, status: res.statusCode ?? 502, headers, body: raw.toString('base64') })
+      const compressed = raw.length >= RESPONSE_COMPRESSION_THRESHOLD_BYTES ? gzipSync(raw) : undefined
+      const useGzip = compressed !== undefined && compressed.length < raw.length
+      const wireBody = useGzip ? compressed : raw
+      const metadata = useGzip ? { encoding: 'gzip' } : {}
+      if (useGzip) delete headers['content-length']
+      if (wireBody.length <= BODY_CHUNK_BYTES) {
+        sendMsg({ t: 'http-res', id, status: res.statusCode ?? 502, headers, ...metadata, body: wireBody.toString('base64') })
         return
       }
-      sendMsg({ t: 'http-res', id, status: res.statusCode ?? 502, headers })
-      for (let offset = 0; offset < raw.length; offset += BODY_CHUNK_BYTES) {
-        const slice = raw.subarray(offset, offset + BODY_CHUNK_BYTES)
-        sendMsg({ t: 'http-data', id, data: slice.toString('base64'), last: offset + BODY_CHUNK_BYTES >= raw.length })
+      sendMsg({ t: 'http-res', id, status: res.statusCode ?? 502, headers, ...metadata })
+      for (let offset = 0; offset < wireBody.length; offset += BODY_CHUNK_BYTES) {
+        const slice = wireBody.subarray(offset, offset + BODY_CHUNK_BYTES)
+        sendMsg({ t: 'http-data', id, data: slice.toString('base64'), last: offset + BODY_CHUNK_BYTES >= wireBody.length })
       }
     })
     res.on('error', () => {

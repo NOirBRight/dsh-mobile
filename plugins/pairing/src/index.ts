@@ -12,11 +12,12 @@ import { loadOrCreateKeypair } from './keys.ts'
 import { DeviceTokenStore } from './tokens.ts'
 import { PairingOfferManager, buildCompactPublicOfferUrl, buildOfferUrl } from './pairing.ts'
 import { attachHandshakeTransport, attachRelaySocket } from './tunnel-server.ts'
+import { createRelayConnector } from './relay-connector.ts'
 import { attachDirectSignaling } from './direct-signaling.ts'
 import { WeriftDataChannelTransport } from './webrtc-transport.ts'
 import { createHostGateway, type GatewayEndpoint } from './gateway.ts'
 import { QuickTunnelController, type QuickTunnelStatus } from './quick-tunnel.ts'
-import { validateCustomEndpoint, createNodeCustomEndpointAdapters } from './public-endpoint.ts'
+import { validateCustomEndpoint, validateRelayEndpoint, createNodeCustomEndpointAdapters } from './public-endpoint.ts'
 import { applyPublicEndpointSelection, loadPublicEndpointOverlay, parseEndpointSelection, savePublicEndpointOverlay } from './endpoint-settings.ts'
 import { renderPairingSettingsPage } from './settings-page.ts'
 
@@ -37,7 +38,7 @@ export { attachDirectSignaling, encodeSignalDescription } from './direct-signali
 export { WeriftDataChannelTransport } from './webrtc-transport.ts'
 export { createHostGateway } from './gateway.ts'; export type { GatewayAsset, GatewayEndpoint, HostGateway, HostGatewayOptions } from './gateway.ts'
 export { QuickTunnelController, CLOUDFLARED_QUICK_PROVIDER } from './quick-tunnel.ts'; export type { QuickTunnelChild, QuickTunnelOptions, QuickTunnelProvider, QuickTunnelStatus } from './quick-tunnel.ts'
-export { checkCustomEndpoint, createNodeCustomEndpointAdapters, validateCustomEndpoint } from './public-endpoint.ts'; export type { CustomEndpointAdapters, CustomEndpointCheck } from './public-endpoint.ts'
+export { checkCustomEndpoint, checkRelayEndpoint, createNodeCustomEndpointAdapters, validateCustomEndpoint, validateRelayEndpoint } from './public-endpoint.ts'; export type { CustomEndpointAdapters, CustomEndpointCheck, RelayEndpointCheck } from './public-endpoint.ts'
 export { applyPublicEndpointSelection, loadPublicEndpointOverlay, parseEndpointSelection, savePublicEndpointOverlay } from './endpoint-settings.ts'
 export type { PublicEndpointApplyResult, PublicEndpointSelection } from './endpoint-settings.ts'
 export { renderPairingSettingsPage } from './settings-page.ts'; export type { PairingSettingsPageOptions } from './settings-page.ts'
@@ -52,20 +53,53 @@ export function apply(ctx: Context, config: Config): void {
   const live = {
     mode: overlay?.endpointMode ?? resolved.endpointMode,
     customUrl: overlay?.customEndpointUrl ?? resolved.customEndpointUrl,
+    relayUrl: overlay?.relayUrl ?? resolved.relayUrl,
   }
   const keypair = loadOrCreateKeypair(resolved.keyStorePath)
   const store = new DeviceTokenStore(resolved.tokenStorePath)
   const offers = new PairingOfferManager(resolved.codeTtlMs)
-  let endpoint: GatewayEndpoint | null = live.mode === 'custom' ? { url: validateCustomEndpoint(live.customUrl as string), kind: 'custom' } : null
+  let endpoint: GatewayEndpoint | null = live.mode === 'custom'
+    ? { url: validateCustomEndpoint(live.customUrl as string), kind: 'custom' }
+    : live.mode === 'relay' && live.relayUrl !== undefined
+      ? { url: validateRelayEndpoint(live.relayUrl), kind: 'relay' }
+      : null
   let localGateway: string | null = null
+  const relayCampaigns = new Map<string, { relayUrl: string; connector: ReturnType<typeof createRelayConnector> }>()
   function tunnelOptions(room: string) { return { upstreamHost: resolved.dshHost, upstreamPort: resolved.dshPort, handshake: { keypair, offers, devices: store, room }, logger: (message: string) => ctx.logger.info('dsh-mobile-pairing: ' + message) } }
+  function ensureRelayRoom(room: string, code: string): void {
+    if (live.mode !== 'relay' || live.relayUrl === undefined) return
+    const previous = relayCampaigns.get(room)
+    if (previous?.relayUrl === live.relayUrl) return
+    previous?.connector.close()
+    const relayUrl = live.relayUrl
+    const connector = createRelayConnector({
+      relayUrl,
+      room,
+      shouldRetry: () => store.hasLiveForRoom(room) || offers.validate(code) === 'ok',
+      onSocket: socket => { attachRelaySocket(socket, tunnelOptions(room)) },
+      logger: message => ctx.logger.info('dsh-mobile-pairing: ' + message),
+    })
+    relayCampaigns.set(room, { relayUrl, connector })
+  }
+  function closeRelayRooms(): void {
+    for (const campaign of relayCampaigns.values()) campaign.connector.close()
+    relayCampaigns.clear()
+  }
+  function restartRelayRooms(): void {
+    if (live.mode !== 'relay' || live.relayUrl === undefined) return
+    for (const room of store.liveRooms()) ensureRelayRoom(room, '')
+  }
   const gateway = createHostGateway({
     bind: resolved.gatewayBind, port: resolved.gatewayPort, hostIdentity: keypair.publicKeyBase64Url,
     isPersistentRoom: room => store.hasLiveForRoom(room),
     onSignal: (socket, room) => { attachDirectSignaling(socket, { iceServers: resolved.stunUrls.map(url => ({ urls: url })), onChannel: channel => { attachHandshakeTransport(new WeriftDataChannelTransport(channel), tunnelOptions(room)) }, onError: error => ctx.logger.error(error) }) },
     onTunnel: (socket, room) => { attachRelaySocket(socket, tunnelOptions(room)) },
   })
-  for (const room of store.liveRooms()) gateway.authorizeRoom(room)
+  if (live.mode === 'relay') {
+    for (const room of store.liveRooms()) ensureRelayRoom(room, '')
+  } else {
+    for (const room of store.liveRooms()) gateway.authorizeRoom(room)
+  }
   let quick: QuickTunnelController | null = null
   function onQuickStatus(status: QuickTunnelStatus): void {
     if (status.state === 'ready' || status.state === 'rotated') endpoint = { url: status.endpoint, kind: 'temporary' }
@@ -96,6 +130,7 @@ export function apply(ctx: Context, config: Config): void {
       if (live.mode !== 'quick') {
         void retainQuickTunnel()?.stop()
         retainQuickTunnel(null)
+        if (live.mode === 'relay') restartRelayRooms()
         return
       }
       const retained = retainQuickTunnel()
@@ -123,45 +158,66 @@ export function apply(ctx: Context, config: Config): void {
     savePublicEndpointOverlay(overlayPath, selection)
     live.mode = selection.endpointMode
     live.customUrl = selection.customEndpointUrl
+    live.relayUrl = selection.relayUrl
     if (applied.endpointMode === 'custom') {
+      closeRelayRooms()
       await quick?.stop()
       quick = null
       retainQuickTunnel(null)
       endpoint = applied.endpoint
+      for (const room of store.liveRooms()) gateway.authorizeRoom(room)
+    } else if (applied.endpointMode === 'relay') {
+      await quick?.stop()
+      quick = null
+      retainQuickTunnel(null)
+      endpoint = applied.endpoint
+      restartRelayRooms()
     } else if (localGateway !== null) {
+      closeRelayRooms()
+      for (const room of store.liveRooms()) gateway.authorizeRoom(room)
       endpoint = null
       if (quick === null || !quick.alive()) {
         void retainQuickTunnel()?.stop()
         startQuickTunnel(localGateway)
       }
     }
-    json(res, 200, { ok: true, endpoint, endpointMode: live.mode, customEndpointUrl: live.customUrl ?? null, ...(applied.endpointMode === 'custom' ? { check: applied.check } : {}) })
+    json(res, 200, { ok: true, endpoint, endpointMode: live.mode, customEndpointUrl: live.customUrl ?? null, relayUrl: live.relayUrl ?? null, ...(applied.endpointMode === 'custom' ? { check: applied.check } : {}) })
   }
-  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/ui', handler: (req, res) => { if (req.method !== 'GET') return methodNotAllowed(res); res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(renderPairingSettingsPage({ hostIdentity: keypair.publicKeyBase64Url, endpoint, endpointMode: live.mode, customEndpointUrl: live.customUrl })) } }))
-  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/status', handler: (req, res) => { if (req.method !== 'GET') return methodNotAllowed(res); json(res, 200, { endpoint, endpointMode: live.mode, customEndpointUrl: live.customUrl ?? null, hostIdentity: keypair.publicKeyBase64Url, configuration: { file: 'cordis.patch.yml', entryId: 'dsh-mobile-pairing', customEndpointField: 'customEndpointUrl', legacyRelayConfigured: resolved.signalingUrl !== undefined } }) } }))
+  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/ui', handler: (req, res) => { if (req.method !== 'GET') return methodNotAllowed(res); res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(renderPairingSettingsPage({ hostIdentity: keypair.publicKeyBase64Url, endpoint, endpointMode: live.mode, customEndpointUrl: live.customUrl, relayUrl: live.relayUrl })) } }))
+  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/status', handler: (req, res) => { if (req.method !== 'GET') return methodNotAllowed(res); json(res, 200, { endpoint, endpointMode: live.mode, customEndpointUrl: live.customUrl ?? null, relayUrl: live.relayUrl ?? null, hostIdentity: keypair.publicKeyBase64Url, configuration: { file: 'cordis.patch.yml', entryId: 'dsh-mobile-pairing', customEndpointField: 'customEndpointUrl', relayEndpointField: 'relayUrl', legacyRelayConfigured: resolved.signalingUrl !== undefined, relayConfigured: live.relayUrl !== undefined } }) } }))
   ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/endpoint', handler: (req, res) => { void handleEndpointSave(req, res) } }))
-  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair', handler: (req, res) => handleLocalPair(req, res, endpoint, keypair.publicKeyBase64Url, resolved.appUrl, resolved.stunUrls, offers, store, gateway) }))
+  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair', handler: (req, res) => handleLocalPair(req, res, endpoint, keypair.publicKeyBase64Url, resolved.appUrl, resolved.stunUrls, offers, store, gateway, ensureRelayRoom) }))
   ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/devices', handler: (req, res) => { if (req.method !== 'GET') return methodNotAllowed(res); json(res, 200, { devices: store.list() }) } }))
-  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/revoke', handler: async (req, res) => { if (req.method !== 'POST') return methodNotAllowed(res); const body = await readJsonBody(req, res); if (body === null) return; const id = (body as Record<string, unknown>).id; const revoked = typeof id === 'string' && store.revoke(id); json(res, revoked ? 200 : 404, { ok: revoked }) } }))
+  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/revoke', handler: async (req, res) => { if (req.method !== 'POST') return methodNotAllowed(res); const body = await readJsonBody(req, res); if (body === null) return; const id = (body as Record<string, unknown>).id; const room = typeof id === 'string' ? store.list().find(device => device.id === id)?.room : undefined; const revoked = typeof id === 'string' && store.revoke(id); if (revoked && room !== undefined) { relayCampaigns.get(room)?.connector.close(); relayCampaigns.delete(room) } json(res, revoked ? 200 : 404, { ok: revoked }) } }))
   ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/label', handler: async (req, res) => { if (req.method !== 'POST') return methodNotAllowed(res); const body = await readJsonBody(req, res); if (body === null) return; const record = body as Record<string, unknown>; const renamed = typeof record.id === 'string' && typeof record.label === 'string' && store.rename(record.id, record.label); json(res, renamed ? 200 : 404, { ok: renamed }) } }))
 }
-async function handleLocalPair(req: IncomingMessage, res: ServerResponse, endpoint: GatewayEndpoint | null, pubkey: string, appUrl: string, stunUrls: string[], offers: PairingOfferManager, store: Pick<DeviceTokenStore, 'hasLiveForRoom'>, gateway: { authorizeRoom(room: string, expiresAtMs?: number): void }): Promise<void> {
+async function handleLocalPair(req: IncomingMessage, res: ServerResponse, endpoint: GatewayEndpoint | null, pubkey: string, appUrl: string, stunUrls: string[], offers: PairingOfferManager, store: Pick<DeviceTokenStore, 'hasLiveForRoom'>, gateway: { authorizeRoom(room: string, expiresAtMs?: number): void }, ensureRelayRoom: (room: string, code: string) => void): Promise<void> {
   if (req.method !== 'GET') return methodNotAllowed(res)
   if (endpoint === null) { json(res, 503, { error: 'Public Endpoint is not ready' }); return }
   const params = new URL(req.url ?? '/', 'http://loopback').searchParams
   const requestedRoom = params.get('room')
   if (requestedRoom !== null && !store.hasLiveForRoom(requestedRoom)) { json(res, 404, { error: 'unknown authorized device room' }); return }
   const room = requestedRoom ?? randomBytes(16).toString('hex')
+  if (endpoint.kind === 'relay') {
+    const offer = offers.mint('relay', endpoint.url, room, pubkey)
+    ensureRelayRoom(room, offer.code)
+    const nativeOfferUrl = buildOfferUrl(appUrl, offer)
+    if (params.get('format') === 'svg') {
+      const svg = await renderPairingQrSvg(nativeOfferUrl)
+      res.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'no-store' }); res.end(svg); return
+    }
+    json(res, 200, { ...offer, offerUrl: nativeOfferUrl, nativeOfferUrl })
+    return
+  }
   const offer = offers.mintPublic({ endpoint: endpoint.url, endpointKind: endpoint.kind, room, pubkey, ice: stunUrls })
   gateway.authorizeRoom(room, offer.exp * 1000)
   const nativeOfferUrl = buildOfferUrl(appUrl, offer)
-  const offerUrl = nativeOfferUrl
   if (params.get('format') === 'svg') {
     const compactUrl = buildCompactPublicOfferUrl(appUrl, offer)
     const svg = await renderPairingQrSvg(compactUrl)
     res.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'no-store' }); res.end(svg); return
   }
-  json(res, 200, { ...offer, offerUrl, nativeOfferUrl })
+  json(res, 200, { ...offer, offerUrl: nativeOfferUrl, nativeOfferUrl })
 }
 const RETAINED_QUICK = Symbol.for('dsh-mobile.quick-tunnel')
 function retainQuickTunnel(controller?: QuickTunnelController | null): QuickTunnelController | null {

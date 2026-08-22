@@ -6,7 +6,8 @@ const root = new URL('..', import.meta.url).pathname
 const roots = ['apps/mobile-web/src', 'packages/e2e-tunnel/src', 'packages/ui-layout-mobile/src', 'plugins/pairing/src']
 const sourceExts = new Set(['.ts', '.tsx', '.js', '.mjs', '.json'])
 const forbidden = [
-  { name: 'maintainer-owned runtime endpoint', pattern: /noirbright\.top/i },
+  // Official Relay hosts are product infrastructure; personal Host endpoints remain forbidden.
+  { name: 'maintainer-owned runtime endpoint', pattern: /(?<!relay(?:-overseas)?\.)noirbright\.top/i },
   { name: 'runtime CDN', pattern: /(?:unpkg\.com|cdn\.jsdelivr\.net|esm\.sh)/i },
   { name: 'TURN URL', pattern: /["']turns?:/i },
   { name: 'browser shell path', pattern: /browserShellPath/ },

@@ -1,5 +1,6 @@
 // Hand-written host side of tunnel-protocol.md §2/§3, for client tests.
 import nacl from 'tweetnacl'
+import { gzipSync } from 'node:zlib'
 import { b64decode, b64encode, b64urlEncode, concat, utf8Decode, utf8Encode } from '../src/bytes.ts'
 
 const LARGE_SIZE = 300 * 1024
@@ -150,12 +151,13 @@ export async function startFakeHost(relayUrl, room, opts = {}) {
     }
   }
 
-  function respond(id, status, headers, bodyBytes) {
+  function respond(id, status, headers, bodyBytes, encoding) {
+    const metadata = encoding === undefined ? {} : { encoding }
     if (bodyBytes.length <= HOST_CHUNK) {
       // single frame: body present (even empty) = complete
-      sendMsg({ t: 'http-res', id, status, headers, body: b64encode(bodyBytes) })
+      sendMsg({ t: 'http-res', id, status, headers, ...metadata, body: b64encode(bodyBytes) })
     } else {
-      sendMsg({ t: 'http-res', id, status, headers }) // no body: continuation
+      sendMsg({ t: 'http-res', id, status, headers, ...metadata }) // no body: continuation
       for (let offset = 0; offset < bodyBytes.length; offset += HOST_CHUNK) {
         const slice = bodyBytes.subarray(offset, offset + HOST_CHUNK)
         sendMsg({ t: 'http-data', id, data: b64encode(slice), last: offset + HOST_CHUNK >= bodyBytes.length })
@@ -177,7 +179,7 @@ export async function startFakeHost(relayUrl, room, opts = {}) {
       case '/api/large': {
         const big = new Uint8Array(LARGE_SIZE)
         for (let i = 0; i < big.length; i++) big[i] = i % 251
-        return respond(req.id, 200, { 'content-type': 'application/octet-stream' }, big)
+        return respond(req.id, 200, { 'content-type': 'application/octet-stream' }, new Uint8Array(gzipSync(big)), 'gzip')
       }
       case '/api/empty':
         return respond(req.id, 204, {}, new Uint8Array(0))

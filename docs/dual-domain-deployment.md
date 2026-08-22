@@ -9,7 +9,7 @@
 - `https://dsh.noirbright.top`：保留原有 Caddy、Basic Auth、reverse SSH 和原版 DSH UI，作为已知可用的止血/回滚入口；除非人工再次确认，不再提前退役。
 - `https://dshweb.noirbright.top`：Caddy Basic Auth 后反代到 reverse SSH listener `172.18.0.1:31421`，再到本机唯一的 `127.0.0.1:3080` DSH 进程。它持续展示上游原版 `@deepseek-ai/dsh-client-ui-layout`，不复制上游静态资源。
 - `https://dshapp.noirbright.top`：Basic Auth 后由 VPS 静态 Nginx提供 Mobile Shell和 `@dsh-mobile/ui-layout-mobile`；裸 URL通过受保护的 `/__dsh_boot`、`/plugins/*`、`/api/*` 同源桥直接访问同一个 DSH。带新 `#offer` 的链接仍优先走 WebRTC配对路径。
-- `wss://relay.noirbright.top`：继续只传递有界 SDP 信令。应用 HTTP/WebSocket在配对模式下由 NaCl会话封装后走 WebRTC `RTCDataChannel`；没有 TURN、数据中继回退或运行时 CDN。
+- `wss://relay.noirbright.top`：当前作为国内 Official Relay，按独立 Room 转发二进制 NaCl sealed frames；海外 Official Relay 为 `wss://relay-overseas.noirbright.top`。旧的 SDP-only 运行记录仅代表 2026-08-16 之前的状态。
 
 `dshweb` 和 `dshapp` 的 Basic Auth 用户/哈希逐字复用旧站，未把凭据写入仓库。两个新域名的 Host桥均固定上游 `Host`、`X-Forwarded-Host`、`Origin` 和 `Referer` 为旧站身份，以兼容 DSH trusted-host栅栏；公网入口仍保持各自的新域名。
 
@@ -19,14 +19,15 @@
 
 ```yaml
 appUrl: https://dshapp.noirbright.top/
-signalingUrl: wss://relay.noirbright.top
+endpointMode: relay
+relayUrl: wss://relay.noirbright.top
 enableDirect: true
 ```
 
 Host `GET /pair` 或 `GET /pair?format=svg` 生成：
 
 ```text
-https://dshapp.noirbright.top/#offer=<base64url-v3-offer>
+dsh-mobile://pair#offer=<base64url-relay-offer>
 ```
 
 `offer` fragment不会发送给静态服务器。公共静态 Shell首次使用仍需要这个配对链接；本次维护者个人部署另外提供 Basic Auth保护的同源 Host桥，因此 `dshapp`裸域名也能直接启动。Android APK仍使用本地 bundle，不依赖该静态站。
@@ -56,7 +57,7 @@ VPS 静态卷：`/var/lib/docker/volumes/dsh-mobile-web/_data`。原有 `app.noi
 - `dshweb`：未认证 401；临时、随后删除的测试账号认证后 200；boot manifest 包含 desktop layout 且不含 mobile layout；`/api/events.mux` WebSocket upgrade 返回 101。旧 Basic Auth 哈希与最终新站配置比对一致。
 - `dshapp`：未认证 HTML、`/__dsh_boot`和 `/api/*`均为 401；认证后 HTML、Host boot manifest、本地 mobile layout plugin和 `/api/host.listDirectory`均为 200。
 - 干净 headless Chrome通过 Basic Auth从裸域名启动同源直连模式，boot manifest包含 `@dsh-mobile/ui-layout-mobile`且不含 desktop layout，页面渲染官方会话/工作区内容。
-- `#offer`模式仍可完成 relay SDP → STUN-only WebRTC → `dsh-tunnel` DataChannel → NaCl handshake → tunneled manifest/plugin/WebSocket；offer fragment不会泄露到服务器。
+- 历史 `#offer` 模式完成过 relay SDP → STUN-only WebRTC → DataChannel；当前 Official Relay 直接完成 WSS binary frame → NaCl handshake → tunneled manifest/plugin/WebSocket，offer fragment不会泄露到 Relay。
 - `dsh-web.service` 主 PID 在 pairing 配置热重载前后保持不变；没有启动第二个 DSH，也没有停止或重启 FlClash。
 
 ## 备份

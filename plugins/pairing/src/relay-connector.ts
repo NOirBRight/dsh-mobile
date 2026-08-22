@@ -85,7 +85,9 @@ export function createRelayConnector(options: RelayConnectorOptions): RelayConne
     close() {
       closed = true
       if (timer !== null) clearTimeout(timer)
-      if (current !== null && !handedOff) current.close()
+      // The session layer owns the socket after handoff, but the campaign
+      // manager still needs a hard close for revoke and endpoint migration.
+      if (current !== null) current.close()
       current = null
     },
   }

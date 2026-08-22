@@ -1,18 +1,17 @@
-# dsh-signaling
+# dsh-mobile Official Relay
 
-不可信的 WebRTC 信令房间服务。它只在一个 Host 和一个 Android client 之间转发有界 SDP envelope；不会转发 NaCl tunnel frame、HTTP、WebSocket 或其他应用流量。
+This service is an untrusted, multi-user sealed-frame Relay. It forwards only
+opaque binary frames between one Host and one Client in each independent random
+room. It never opens NaCl frames, stores application data, serves DSH assets, or
+proxies HTTP/WebSocket traffic to a Host.
 
-- HTTP：GET /healthz
-- WebSocket：/r/<128-bit hex room>?role=host|client
-- 第三个 peer 或重复 role：4409
-- binary、任意其他 text、超限或超速信令：4400
-- 单帧上限 64 KiB；每连接每分钟 64 个 signal
+- HTTP: GET /healthz
+- WebSocket: /r/<32 lowercase-hex room>?role=host|client
+- one Host and one Client seat per room; many rooms per Relay
+- duplicate role: close 4409
+- text frames: close 4400
+- frame cap: 256 KiB by default
+- idle empty rooms are garbage-collected; no queue or replay
 
-本地验证：
-
-~~~sh
-npm install
-npm test
-~~~
-
-不要在该 VPS 部署 TURN，也不要恢复 binary 透明转发。
+Use the parameterized Docker/Caddy stack in deploy/. The same image is used for
+the domestic and overseas official instances, and any operator can deploy it.

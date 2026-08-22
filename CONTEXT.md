@@ -43,7 +43,7 @@ A stable Public Endpoint configured by the Host operator under a domain they con
 The capability of a Public Endpoint that exchanges WebRTC signaling metadata so a Product Client and Host can attempt a direct connection. This capability does not carry DSH application frames after direct connection succeeds.
 
 ## Tunnel Fallback
-An optional data path through a Host's Public Endpoint when direct WebRTC connectivity is unavailable. It uses the operator's Quick or custom tunnel rather than a project-operated public Relay Endpoint.
+An optional data path when direct WebRTC connectivity is unavailable. It may use the Host operator's Quick or Custom Endpoint, or an explicitly selected official/self-hosted Relay Endpoint. In all cases the carrier sees only sealed frames.
 
 ## Discovery Service
 An optional stable address book that maps a Host lookup capability to that Host's current Rendezvous Endpoint. It helps a Product Client find a rotated temporary endpoint but does not perform rendezvous itself and does not carry DSH application frames.

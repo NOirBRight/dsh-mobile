@@ -1,4 +1,6 @@
-# 外部执行：把 3082 测试环境切到 `pair.noirbright.top`
+# 历史执行单：把 3082 测试环境切到 `pair.noirbright.top`
+
+> 已废弃：当前 `pair.noirbright.top` 有意连接 daily 3080/43170。不要执行本文把 3082/43169 接到该域名的步骤；3082 应使用独立 Custom Endpoint 或 Official Relay。
 
 架构决策见 [ADR 0005](adr/0005-vps-endpoint-tunnel-first-app-only.md)，波次总表见 [PLAN.md](../PLAN.md)。本文只写 **PLAN 第 2 波在本机上的运维切换**，给不熟悉现场的执行者。不要在 3080 上做 mobile 验收。
 

@@ -1,6 +1,6 @@
 # Host-owned Public Endpoint deployment
 
-DSH Mobile has no project-operated Relay, Discovery Service, TURN server, runtime CDN, or maintainer-domain dependency. One Host process owns a loopback-only Gateway; the chosen HTTPS/WebSocket Public Endpoint forwards only to that Gateway. The Gateway exposes bounded protocol routes and forwards authenticated DSH traffic only to the configured loopback DSH web port. Product UI assets ship in the Android APK; the Gateway does not serve a browser shell.
+DSH Mobile has no Discovery Service, TURN server, runtime CDN, or maintainer-domain dependency. It supports Host-owned Public Endpoints and explicitly selected regional Official Relays. A Relay forwards only opaque binary sealed frames and never reaches a Host or port 3080. One Host process still owns a loopback-only Gateway for Quick/Custom Endpoint mode. Product UI assets ship in the Android APK; neither Gateway nor Relay serves a browser shell.
 
 ## Build and install local artifacts
 
@@ -31,7 +31,7 @@ Quick Tunnel is the product default:
     cloudflaredPath: cloudflared
 ```
 
-For an operator-provisioned endpoint, use `endpointMode: custom` and `customEndpointUrl: https://operator.example`. The endpoint must preserve HTTPS and WebSocket upgrades for the Gateway and pass the staged identity, protocol, capability, and `/signal/check` checks. Provisioning DNS, certificates, accounts, and reverse proxies is deliberately manual.
+For an operator-provisioned endpoint, use `endpointMode: custom` and `customEndpointUrl: https://operator.example`. For an Official or self-hosted Relay, use `endpointMode: relay` and `relayUrl: wss://relay.example`. Relay health is checked separately and does not pretend to own a Host Identity. Custom Endpoint provisioning must preserve HTTPS and WebSocket upgrades for the Gateway and pass the staged identity, protocol, capability, and `/signal/check` checks. Provisioning DNS, certificates, accounts, and reverse proxies is deliberately manual. The maintainer-specific APK in this checkout additionally migrates the configured Host Identity `c2ChEHucjWVwG7FnAF3xqfVXuIJnvoyY2kIiJHyiWmI` from a saved Quick Tunnel to `https://pair.noirbright.top`; general builds still follow the QR offer endpoint.
 
 The Host settings page is `/pair/ui` on whichever profile owns the plugin (`http://127.0.0.1:3080/pair/ui` for the daily profile or `http://127.0.0.1:3082/pair/ui` for lab). It shows the current endpoint and Host Identity, produces an Android QR offer, lists authorized devices, creates room-preserving Endpoint Refresh offers, and performs Host-side revocation. The Public Endpoint itself does **not** expose `/pair`, token exchange, credential minting, generic proxy targets, or raw DSH ports. If both profiles install the plugin, keep their Host identities, Gateway ports, and Public Endpoint hostnames separate.
 

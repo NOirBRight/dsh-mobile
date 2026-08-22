@@ -186,12 +186,15 @@ async function attemptPublicDirect(offer: PublicEndpointOffer, hostPub: Uint8Arr
 }
 
 async function attemptConnect(offer: RelayOffer, hostPub: Uint8Array, options: ConnectOptions): Promise<TunnelClient> {
+  options.onConnectionStatus?.({ phase: 'tunnel-connecting', route: 'tunnel' })
   const ws = new WebSocket(offer.addr + '/r/' + offer.room + '?role=client')
   ws.binaryType = 'arraybuffer'
   const transport = new WsFrameTransport(ws)
   try {
     await onceOpen(ws)
-    return await openSession(transport, hostPub, { ...options, code: offer.code })
+    const client = await openSession(transport, hostPub, { ...options, code: offer.code })
+    options.onConnectionStatus?.({ phase: 'tunnel-open', route: 'tunnel' })
+    return client
   } catch (error) {
     // A rejected/failed attempt must release the room seat (one client per
     // room); the host stays seated and never closes on a bad hello.
@@ -421,7 +424,7 @@ export class TunnelSession implements TunnelClient {
     switch (message.t) {
       case 'http-res': {
         const pending = id === undefined ? undefined : this.fetches.get(id)
-        pending?.onHead(message.status as number, message.headers as Record<string, string>, message.body as string | undefined)
+        pending?.onHead(message.status as number, message.headers as Record<string, string>, message.body as string | undefined, message.encoding as string | undefined)
         return
       }
       case 'http-data': {

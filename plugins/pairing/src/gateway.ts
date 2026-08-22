@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net'
 import { WebSocketServer, type WebSocket } from 'ws'
 import type { PublicEndpointCapabilities } from './pairing.ts'
 
-export interface GatewayEndpoint { url: string; kind: 'temporary' | 'custom' }
+export interface GatewayEndpoint { url: string; kind: 'temporary' | 'custom' | 'relay' }
 export interface GatewayAsset { body: Uint8Array; contentType: string; cacheControl?: string }
 export interface HostGatewayOptions {
   bind: '127.0.0.1' | '::1' | 'localhost'

@@ -1,0 +1,55 @@
+# Official DSH Mobile sealed-frame Relay.
+# The Relay is a blind multi-room broker. It is not a Host Gateway and never
+# connects to DSH, frps, frpc, :3080, or any Host administration route.
+services:
+  relay:
+    build:
+      context: ..
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
+    image: ${RELAY_IMAGE:-dsh-mobile-relay:0.2.0}
+    restart: unless-stopped
+    environment:
+      PORT: 8787
+      MAX_PAYLOAD_BYTES: ${MAX_PAYLOAD_BYTES:-262144}
+      MAX_CONNECTIONS: ${MAX_CONNECTIONS:-2048}
+      MAX_ROOMS: ${MAX_ROOMS:-4096}
+      MAX_BYTES_PER_MIN: ${MAX_BYTES_PER_MIN:-16777216}
+      MAX_UPGRADES_PER_IP_PER_MIN: ${MAX_UPGRADES_PER_IP_PER_MIN:-120}
+    expose:
+      - "8787"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    networks:
+      - relay
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      RELAY_HOST: ${RELAY_HOST:?set RELAY_HOST in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - relay
+    networks:
+      - relay
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  relay:
+    driver: bridge
+
+volumes:
+  caddy-data:
+  caddy-config:

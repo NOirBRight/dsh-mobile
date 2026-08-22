@@ -5,6 +5,7 @@ import type { NativeCredentialVaultBridge } from './credential-vault.ts'
 export const SHELL_NATIVE_PLUGIN_NAMES = [
   'DshSecureVault',
   'DshCameraPermission',
+  'DshSystemBars',
   'CapacitorBarcodeScanner',
   'App',
 ] as const
@@ -13,8 +14,13 @@ interface NativeCameraPermissionBridge {
   ensure(): Promise<void>
 }
 
+export interface NativeSystemBarsBridge {
+  setAppearance(options: { dark: boolean }): Promise<void>
+}
+
 export interface ShellNativeBridges {
   vault: NativeCredentialVaultBridge | null
+  systemBars: NativeSystemBarsBridge | null
   ensureCamera(): Promise<void>
 }
 
@@ -37,15 +43,36 @@ export function claimedNativeBridges(): ShellNativeBridges {
 /** Take private plugin proxies, then remove them from the public Capacitor table. */
 export function claimShellNativeBridges(native: boolean): ShellNativeBridges {
   if (!native) {
-    claimed = { vault: null, ensureCamera: unavailable('camera') }
+    claimed = { vault: null, systemBars: null, ensureCamera: unavailable('camera') }
     concealShellNativeBridges()
     return claimed
   }
   const vault = registerPlugin<NativeCredentialVaultBridge>('DshSecureVault')
   const camera = registerPlugin<NativeCameraPermissionBridge>('DshCameraPermission')
-  claimed = { vault, ensureCamera: () => camera.ensure() }
+  const systemBars = registerPlugin<NativeSystemBarsBridge>('DshSystemBars')
+  claimed = { vault, systemBars, ensureCamera: () => camera.ensure() }
   concealShellNativeBridges()
   return claimed
+}
+
+/** Keep Android system-bar icon contrast aligned with the theme presenter. */
+export function installSystemBarThemeSync(bridge: NativeSystemBarsBridge | null): () => void {
+  if (bridge === null || typeof document === 'undefined' || document.body === null || typeof MutationObserver === 'undefined') return () => {}
+  let lastDark: boolean | undefined
+  const sync = (): void => {
+    const dark = document.body.hasAttribute('data-ds-dark-theme')
+    if (lastDark === dark) return
+    lastDark = dark
+    void Promise.resolve()
+      .then(() => bridge.setAppearance({ dark }))
+      .catch(() => {
+        // System-bar appearance is best effort; the Web theme remains authoritative.
+      })
+  }
+  const observer = new MutationObserver(sync)
+  observer.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] })
+  sync()
+  return () => observer.disconnect()
 }
 
 /** Drop shell-private names from Capacitor.Plugins and refuse public re-registration. */

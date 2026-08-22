@@ -38,18 +38,14 @@ const zh = {
   closeRefresh: '关闭', access: '访问方式',
   scanTitle: '扫码连接', scanHint: '用 App 或手机相机扫码。',
   currentAddress: '当前地址', copyHint: '点击复制',
-  qrPendingSave: '保存后，下面的码会换成新地址。',
-  customStep1: '1. 新开一个 HTTPS 子域名，不要用已经有登录页的那个。',
-  customStep2: '2. 让它访问这台电脑的 127.0.0.1:43169，不要转到 3080。',
-  customStep3: '3. 不要加账号密码，并打开 WebSocket。',
-  customStep4: '4. 把 https://子域名 填到上面，点保存。',
+  qrPendingSave: '保存 Relay 后，下面的码会更新。',
   temporarySetup: '这个地址会变。重启后已配对设备点「更新地址」即可。',
   temporary: '临时地址', temporaryHint: '自动分配，不用保存',
-  permanent: '固定域名', permanentHint: '用你自己的 HTTPS',
-  notReady: '地址还没准备好', copied: '已复制',
-  customUrl: '域名', save: '保存', saving: '检查中…', saved: '已保存',
+  relay: 'Relay', relayHint: '使用已配置的加密中继', relayUrl: 'Relay 区域', relayDomestic: '国内 Relay', relayOverseas: '海外 Relay', relayHelp: '自托管 Docker 部署说明见 GitHub',
+  notReady: '端点未设置，暂不生成二维码', qrNotReady: '设置并保存端点后生成二维码', copied: '已复制',
+  save: '保存', saving: '检查中…', saved: '已保存',
   stageEndpoint: '地址格式不对', stageTls: '打不开这个地址', stageIdentity: '不是这台电脑',
-  stageProtocol: '协议不匹配', stageCapabilities: '能力不匹配', stageWebsocket: '无法建立连接',
+  stageProtocol: '协议不匹配', stageCapabilities: '能力不匹配', stageWebsocket: '无法建立连接', stageRelay: 'Relay 不可用',
 }
 const en = {
   nav: 'Remote', title: 'Remote', intro: 'Scan with the app or the phone camera to connect this computer.',
@@ -62,18 +58,14 @@ const en = {
   closeRefresh: 'Close', access: 'Access mode',
   scanTitle: 'Scan to connect', scanHint: 'Scan with the app or the phone camera.',
   currentAddress: 'Current address', copyHint: 'Click to copy',
-  qrPendingSave: 'Save to update the code below.',
-  customStep1: '1. Use a new HTTPS subdomain, not one that already has a login page.',
-  customStep2: '2. Point it at 127.0.0.1:43169 on this computer, not port 3080.',
-  customStep3: '3. Do not add a password, and allow WebSocket.',
-  customStep4: '4. Paste https://your-domain above and save.',
+  qrPendingSave: 'Save the Relay to update the code below.',
   temporarySetup: 'This address can change. After a restart, paired devices only need Update address.',
   temporary: 'Temporary', temporaryHint: 'Assigned automatically, no save needed',
-  permanent: 'Custom domain', permanentHint: 'Your own HTTPS address',
-  notReady: 'Address is not ready', copied: 'Copied',
-  customUrl: 'Domain', save: 'Save', saving: 'Checking…', saved: 'Saved',
+  relay: 'Relay', relayHint: 'Use a configured encrypted relay', relayUrl: 'Relay region', relayDomestic: 'Domestic Relay', relayOverseas: 'Overseas Relay', relayHelp: 'Self-hosting Docker instructions are on GitHub',
+  notReady: 'Endpoint is not configured; QR is unavailable', qrNotReady: 'Set and save an endpoint to generate a QR code', copied: 'Copied',
+  save: 'Save', saving: 'Checking…', saved: 'Saved',
   stageEndpoint: 'Invalid address', stageTls: 'Address unreachable', stageIdentity: 'Wrong computer',
-  stageProtocol: 'Protocol mismatch', stageCapabilities: 'Capabilities mismatch', stageWebsocket: 'Could not connect',
+  stageProtocol: 'Protocol mismatch', stageCapabilities: 'Capabilities mismatch', stageWebsocket: 'Could not connect', stageRelay: 'Relay unavailable',
 }
 
 const page: CSSProperties = { display: 'grid', gap: 28, minWidth: 0, color: 'var(--dsw-alias-label-primary)' }
@@ -89,6 +81,10 @@ const action: CSSProperties = {
   font: 'inherit', fontSize: 13, cursor: 'pointer',
 }
 const danger: CSSProperties = { ...action, color: '#dc2626' }
+const RELAY_PRESETS = [
+  { url: 'wss://relay.noirbright.top', label: 'relayDomestic' },
+  { url: 'wss://relay-overseas.noirbright.top', label: 'relayOverseas' },
+] as const
 const input: CSSProperties = {
   ...action, cursor: 'text', width: '100%', boxSizing: 'border-box',
   background: 'var(--dsw-alias-bg-module-platform)', boxShadow: 'inset 0 0 0 1px var(--dsw-alias-border-l2)',
@@ -113,8 +109,8 @@ function DshMobileCard({ t }: { t: Translate }) {
   const [devices, setDevices] = useState<PairedDevice[]>([])
   const [revision, setRevision] = useState(0)
   const [failed, setFailed] = useState(false)
-  const [mode, setMode] = useState<'quick' | 'custom'>('quick')
-  const [customUrl, setCustomUrl] = useState('')
+  const [mode, setMode] = useState<'quick' | 'relay'>('quick')
+  const [relayUrl, setRelayUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -138,8 +134,8 @@ function DshMobileCard({ t }: { t: Translate }) {
       if (liveEndpoint.current !== null && nextUrl !== null && nextUrl !== liveEndpoint.current) setRevision(current => current + 1)
       liveEndpoint.current = nextUrl
       if (!hydrated.current) {
-        setMode(decoded.endpointMode)
-        setCustomUrl(decoded.customEndpointUrl ?? '')
+        setMode(decoded.endpointMode === 'relay' ? 'relay' : 'quick')
+        setRelayUrl(decoded.relayUrl ?? RELAY_PRESETS[0].url)
         hydrated.current = true
       }
       const decodedDevices = devicesResponse.ok ? decodePairedDevices(await devicesResponse.json()) : []
@@ -147,16 +143,16 @@ function DshMobileCard({ t }: { t: Translate }) {
     } catch { setStatus(null); setFailed(true) }
   }
 
-  async function saveEndpoint(nextMode: 'quick' | 'custom', nextUrl = customUrl) {
-    const request = buildEndpointSaveRequest(nextMode, nextUrl)
-    if ('error' in request) { setSaveMessage(null); setSaveError(t('customUrl')); return }
+  async function saveEndpoint(nextMode: 'quick' | 'relay') {
+    const request = buildEndpointSaveRequest(nextMode, '', relayUrl)
+    if ('error' in request) { setSaveMessage(null); setSaveError(t('relayUrl')); return }
     setSaving(true); setSaveMessage(null); setSaveError(null)
     try {
       const response = await fetch('/pair/endpoint', { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'content-type': 'application/json' }, body: JSON.stringify(request) })
       const decoded = decodeEndpointSaveResult(await response.json())
       if (decoded === null) throw new Error('invalid save response')
       if (!decoded.ok) {
-        setSaveError(t(({ endpoint: 'stageEndpoint', tls: 'stageTls', identity: 'stageIdentity', protocol: 'stageProtocol', capabilities: 'stageCapabilities', websocket: 'stageWebsocket' } as const)[decoded.stage]))
+        setSaveError(t(({ endpoint: 'stageEndpoint', tls: 'stageTls', identity: 'stageIdentity', protocol: 'stageProtocol', capabilities: 'stageCapabilities', websocket: 'stageWebsocket', relay: 'stageRelay' } as const)[decoded.stage]))
         return
       }
       setMode(nextMode)
@@ -166,7 +162,7 @@ function DshMobileCard({ t }: { t: Translate }) {
     } catch { setSaveError(t('loadFailed')) } finally { setSaving(false) }
   }
 
-  async function selectMode(next: 'quick' | 'custom') {
+  async function selectMode(next: 'quick' | 'relay') {
     setMode(next)
     setSaveMessage(null)
     setSaveError(null)
@@ -198,11 +194,12 @@ function DshMobileCard({ t }: { t: Translate }) {
 
   const live = livePairedDevices(devices)
   const endpointUrl = status?.endpoint?.url
-  const dirty = status ? endpointDraftDirty(mode, customUrl, status) : false
+  const dirty = status ? endpointDraftDirty(mode, '', status, relayUrl) : false
+  const endpointReady = status?.endpoint !== null && ((mode === 'quick' && status?.endpoint?.kind === 'temporary') || (mode === 'relay' && status?.endpoint?.kind === 'relay')) && !dirty
 
   return <section style={page}>
     <style>{`
-      .dsh-mobile-remote-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .dsh-mobile-remote-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     `}</style>
     <header>
       <h2 style={heading}>{t('title')}</h2>
@@ -219,7 +216,7 @@ function DshMobileCard({ t }: { t: Translate }) {
           <div className="dsh-mobile-remote-modes" role="radiogroup" aria-label={t('access')} style={{ marginTop: 10 }}>
             {([
               ['quick', 'temporary', 'temporaryHint'],
-              ['custom', 'permanent', 'permanentHint'],
+              ['relay', 'relay', 'relayHint'],
             ] as const).map(([value, title, hint]) => <button key={value} type="button" role="radio" aria-checked={mode === value} onClick={() => void selectMode(value)} style={{
               minHeight: 56, textAlign: 'left', border: 'none', borderRadius: 12, padding: '10px 12px', cursor: 'pointer',
               background: mode === value ? 'var(--dsw-alias-bg-module-platform)' : 'transparent',
@@ -230,18 +227,16 @@ function DshMobileCard({ t }: { t: Translate }) {
               <span style={{ display: 'block', marginTop: 2, color: 'var(--dsw-alias-label-tertiary)', fontSize: 12 }}>{t(hint)}</span>
             </button>)}
           </div>
-          {mode === 'custom' ? <form style={{ display: 'grid', gap: 8, marginTop: 12 }} onSubmit={event => { event.preventDefault(); void saveEndpoint('custom') }}>
-            <label style={{ ...muted, margin: 0 }} htmlFor="dsh-mobile-custom-url">{t('customUrl')}</label>
+          {mode === 'relay' ? <form style={{ display: 'grid', gap: 8, marginTop: 12 }} onSubmit={event => { event.preventDefault(); void saveEndpoint('relay') }}>
+            <label style={{ ...muted, margin: 0 }} htmlFor="dsh-mobile-relay-url">{t('relayUrl')}</label>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, alignItems: 'center' }}>
-              <input id="dsh-mobile-custom-url" value={customUrl} onChange={event => setCustomUrl(event.target.value)} placeholder="https://host.example" autoComplete="off" style={input} />
+              <select id="dsh-mobile-relay-url" value={relayUrl} onChange={event => setRelayUrl(event.target.value)} style={input}>
+                {RELAY_PRESETS.map(preset => <option key={preset.url} value={preset.url}>{t(preset.label)}</option>)}
+                {!RELAY_PRESETS.some(preset => preset.url === relayUrl) && relayUrl ? <option value={relayUrl}>{relayUrl}</option> : null}
+              </select>
               <button type="submit" style={action} disabled={saving || !dirty}>{saving ? t('saving') : t('save')}</button>
             </div>
-            <ol style={{ ...muted, margin: 0, paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 4 }}>
-              <li>{t('customStep1')}</li>
-              <li>{t('customStep2')}</li>
-              <li>{t('customStep3')}</li>
-              <li>{t('customStep4')}</li>
-            </ol>
+            <p style={{ ...muted, margin: 0 }}><a href="https://github.com/NOirBRight/dsh-mobile/tree/master/relay/deploy">{t('relayHelp')}</a></p>
             {dirty ? <p style={{ ...muted, margin: 0 }}>{t('qrPendingSave')}</p> : null}
           </form> : <p style={{ ...muted, margin: '10px 0 0' }}>{t('temporarySetup')}</p>}
           {saveMessage ? <p role="status" style={{ ...muted, margin: '8px 0 0' }}>{saveMessage}</p> : null}
@@ -251,7 +246,7 @@ function DshMobileCard({ t }: { t: Translate }) {
         <div style={{ display: 'grid', justifyItems: 'center', gap: 10, padding: 16, borderRadius: 12, background: 'var(--dsw-alias-bg-module-platform)' }}>
           <h3 style={{ ...heading, justifySelf: 'stretch' }}>{t('scanTitle')}</h3>
           <p style={{ ...muted, margin: 0, justifySelf: 'stretch' }}>{t('scanHint')}</p>
-          {endpointUrl ? <>
+          {endpointReady && endpointUrl ? <>
             <img key={revision} src={pairingQrUrl('android', revision)} alt={t('qrAlt')} style={{ boxSizing: 'border-box', width: 180, maxWidth: '100%', padding: 8, borderRadius: 12, background: '#fff' }} />
             <button type="button" onClick={() => void copyUrl(endpointUrl)} style={{
               ...action, display: 'grid', gap: 4, width: '100%', textAlign: 'left', padding: '10px 12px',
@@ -262,7 +257,7 @@ function DshMobileCard({ t }: { t: Translate }) {
               <span style={{ color: 'var(--dsw-alias-label-tertiary)', fontSize: 12 }}>{copied ? t('copied') : t('copyHint')}</span>
             </button>
             <button type="button" style={action} onClick={() => setRevision(current => current + 1)}>{t('refreshQr')}</button>
-          </> : <p style={{ ...muted, margin: 0, textAlign: 'center' }}>{t('notReady')}</p>}
+          </> : <div style={{ width: 180, height: 180, boxSizing: 'border-box', display: 'grid', placeContent: 'center', gap: 8, border: '1px dashed var(--dsw-alias-border-l2)', borderRadius: 12, color: 'var(--dsw-alias-label-tertiary)', textAlign: 'center' }}><strong style={{ fontSize: 34, letterSpacing: '.12em' }}>QR</strong><span style={{ fontSize: 12, padding: '0 16px' }}>{t('qrNotReady')}</span></div>}
         </div>
       </div>
 

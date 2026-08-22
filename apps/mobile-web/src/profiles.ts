@@ -2,7 +2,7 @@ export const HOST_PROFILE_SCHEMA_VERSION = 1 as const
 export const PROFILE_STORE_SCHEMA_VERSION = 1 as const
 
 export type HostId = string
-export type EndpointKind = 'temporary' | 'custom'
+export type EndpointKind = 'temporary' | 'custom' | 'relay'
 export type ConnectionPolicy = 'automatic' | 'direct-only' | 'tunnel-only'
 
 /** Lets pairing UI require explicit acknowledgement instead of silently replacing a Host. */
@@ -36,9 +36,9 @@ export interface HostProfile {
   capabilities: string[]
   /** Opaque reference into a credential vault, never credential material. */
   credentialRef: string
-  /** Authorized v4 room bound to this Host device record (128-bit lowercase hex). */
+  /** Authorized Room bound to this Host device record (128-bit lowercase hex). */
   room: string
-  /** STUN discovery only; TURN credentials and relay URLs are intentionally excluded. */
+  /** STUN discovery only; official Relay offers leave this empty. */
   ice: string[]
   connectionPolicy: ConnectionPolicy
   /** Host-local shell presentation state, restored independently per Profile. */
@@ -105,12 +105,10 @@ function isProfileStoreDocument(value: unknown): value is ProfileStoreDocument {
   if (record.schemaVersion !== PROFILE_STORE_SCHEMA_VERSION) return false
   if (record.activeHostId !== null && typeof record.activeHostId !== 'string') return false
   if (typeof record.profiles !== 'object' || record.profiles === null) return false
-  const endpoints = new Set<string>()
   const credentialRefs = new Set<string>()
   for (const [hostId, candidate] of Object.entries(record.profiles)) {
     if (!isHostProfile(candidate) || candidate.hostId !== hostId) return false
-    if (endpoints.has(candidate.endpoint.url) || credentialRefs.has(candidate.credentialRef)) return false
-    endpoints.add(candidate.endpoint.url)
+    if (credentialRefs.has(candidate.credentialRef)) return false
     credentialRefs.add(candidate.credentialRef)
   }
   return record.activeHostId === null || Object.hasOwn(record.profiles, record.activeHostId)
@@ -132,7 +130,7 @@ function isHostProfile(value: unknown): value is HostProfile {
     && typeof profile.displayName === 'string'
     && typeof endpoint === 'object' && endpoint !== null
     && typeof endpoint.url === 'string'
-    && (endpoint.kind === 'temporary' || endpoint.kind === 'custom')
+    && (endpoint.kind === 'temporary' || endpoint.kind === 'custom' || (endpoint.kind === 'relay' && isRelayUrl(endpoint.url)))
     && Array.isArray(profile.capabilities) && profile.capabilities.every(value => typeof value === 'string')
     && typeof profile.credentialRef === 'string'
     && typeof profile.room === 'string' && V4_ROOM_PATTERN.test(profile.room)
@@ -141,6 +139,16 @@ function isHostProfile(value: unknown): value is HostProfile {
     && isPresentationState(profile.presentation)
     && typeof profile.createdAt === 'string'
     && typeof profile.updatedAt === 'string'
+}
+
+function isRelayUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  try {
+    const url = new URL(value)
+    return url.protocol === 'wss:' && url.username === '' && url.password === '' && url.search === '' && url.hash === ''
+  } catch {
+    return false
+  }
 }
 
 function isStunUrl(value: unknown): value is string {
@@ -214,7 +222,10 @@ export class ProfileRepository {
     if (!isHostProfile(profile)) throw new Error('invalid HostProfile')
     const document = await this.#load()
     const endpointOwner = Object.values(document.profiles).find(
-      saved => saved.endpoint.url === profile.endpoint.url && saved.hostId !== profile.hostId,
+      saved => saved.endpoint.url === profile.endpoint.url
+        && saved.hostId !== profile.hostId
+        && saved.endpoint.kind !== 'relay'
+        && profile.endpoint.kind !== 'relay',
     )
     if (endpointOwner !== undefined) {
       throw new HostIdentityMismatchError(endpointOwner.hostId, profile.hostId, profile.endpoint.url)
@@ -303,7 +314,10 @@ export class ProfileRepository {
     }
     if (!isHostProfile(refreshed)) throw new Error('invalid Endpoint Refresh')
     const endpointOwner = Object.values(document.profiles).find(
-      saved => saved.endpoint.url === refreshed.endpoint.url && saved.hostId !== hostId,
+      saved => saved.endpoint.url === refreshed.endpoint.url
+        && saved.hostId !== hostId
+        && saved.endpoint.kind !== 'relay'
+        && refreshed.endpoint.kind !== 'relay',
     )
     if (endpointOwner !== undefined) {
       throw new HostIdentityMismatchError(endpointOwner.hostId, hostId, refreshed.endpoint.url)

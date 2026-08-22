@@ -55,6 +55,7 @@ export class DeviceTokenStore {
     try {
       const parsed = JSON.parse(readFileSync(path, 'utf8')) as StoreFile
       this.devices = Array.isArray(parsed.devices) ? parsed.devices : []
+      if (this.mergeLiveClaimants()) this.save()
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         this.devices = []
@@ -92,6 +93,27 @@ export class DeviceTokenStore {
     this.devices.push(record)
     this.save()
     return { id: record.id, token }
+  }
+
+  /**
+   * Re-pair an existing Client Instance without creating a second device row.
+   * A deliberate scan with a new code rotates the bearer token on the same
+   * record and moves that record to the newly advertised room.
+   */
+  issueOrUpdate(label?: string, room?: string, claimantPublicKey?: string, clientType?: DeviceClientType): { id: string; token: string } {
+    if (claimantPublicKey === undefined) return this.issue(label, room, undefined, clientType)
+    if (!CLAIMANT.test(claimantPublicKey)) throw new Error('dsh-mobile-pairing: claimant public key must be 32-byte base64url')
+    const existing = this.devices.find(device => device.revokedAt === null && device.claimantPublicKey === claimantPublicKey)
+    if (existing === undefined) return this.issue(label, room, claimantPublicKey, clientType)
+    const now = Date.now()
+    const token = randomBytes(32).toString('base64url')
+    existing.tokenHash = hash(token)
+    if (label !== undefined) existing.label = label
+    if (room !== undefined) existing.room = room
+    if (clientType !== undefined) existing.clientType = clientType
+    existing.lastSeenAt = now
+    this.save()
+    return { id: existing.id, token }
   }
 
   /** @returns live (non-revoked) device count. */
@@ -172,6 +194,39 @@ export class DeviceTokenStore {
   /** @returns all devices (including revoked), with token hashes stripped. */
   list(): DeviceRecord[] {
     return this.devices.map(publicRecord)
+  }
+
+  /** Collapse historical duplicate live rows created by older pairing flows. */
+  private mergeLiveClaimants(): boolean {
+    const canonical = new Map<string, StoredDevice>()
+    const next: StoredDevice[] = []
+    let changed = false
+    for (const device of this.devices) {
+      if (device.revokedAt !== null || device.claimantPublicKey === undefined) {
+        next.push(device)
+        continue
+      }
+      const prior = canonical.get(device.claimantPublicKey)
+      if (prior === undefined) {
+        canonical.set(device.claimantPublicKey, device)
+        next.push(device)
+        continue
+      }
+      const winner = prior.lastSeenAt >= device.lastSeenAt ? prior : device
+      const loser = winner === prior ? device : prior
+      winner.createdAt = Math.min(winner.createdAt, loser.createdAt)
+      if (winner.label === undefined && loser.label !== undefined) winner.label = loser.label
+      if (winner.clientType === undefined && loser.clientType !== undefined) winner.clientType = loser.clientType
+      if (winner.room === undefined && loser.room !== undefined) winner.room = loser.room
+      if (winner !== prior) {
+        const index = next.indexOf(prior)
+        if (index >= 0) next[index] = winner
+        canonical.set(device.claimantPublicKey, winner)
+      }
+      changed = true
+    }
+    if (changed) this.devices = next
+    return changed
   }
 
   private save(): void {

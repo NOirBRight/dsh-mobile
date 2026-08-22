@@ -66,7 +66,7 @@ export async function hydrateBootManifestFromCache(
   hostId: string,
   responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean } = { viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth },
 ): Promise<ResponsiveBootSelection | null> {
-  const cached = readCachedBootManifest(hostId)
+  const cached = readCachedBootManifest(hostId) ?? readCachedBootManifest('last')
   if (cached === undefined) return null
   try {
     const selection = selectResponsiveBootManifest(cached, {
@@ -97,12 +97,19 @@ export interface TunnelCredentialLease {
   dispose(): void
 }
 
+export type TunnelManagerActivity =
+  | { phase: 'connecting'; attempt: number; reconnecting: boolean; route: 'direct' | 'tunnel' | null }
+  | { phase: 'retry-wait'; attempt: number; retryInMs: number; route: 'direct' | 'tunnel' | null; error?: string }
+  | { phase: 'open'; attempt: number; route: 'direct' | 'tunnel' | null }
+  | { phase: 'terminal'; attempt: number; route: 'direct' | 'tunnel' | null; error: string }
+
 export interface TunnelManagerOptions {
   offerUrl: string
   connectionPolicy: ConnectionPolicy
   loadCredentials(): Promise<TunnelCredentialLease>
-  onState(state: TunnelState): void
+  onState?(state: TunnelState): void
   onConnectionStatus?: (status: ConnectionStatus) => void
+  onActivity?: (activity: TunnelManagerActivity) => void
   onError?: (message: string) => void
   connect?: (offerUrl: string, options?: ConnectOptions) => Promise<TunnelClient>
   wait?: (delayMs: number) => Promise<void>
@@ -123,6 +130,7 @@ export class TunnelManager {
   private heartbeat: HeartbeatController | null = null
   private waiters: Array<{ resolve: (client: TunnelClient) => void; reject: (error: Error) => void }> = []
   private closeWaiter: (() => void) | null = null
+  private retryWake: (() => void) | null = null
   private stopped = false
   private started = false
   private terminalError: Error | null = null
@@ -148,13 +156,19 @@ export class TunnelManager {
     this.client = null
     this.closeWaiter?.()
     this.closeWaiter = null
+    this.retryWake?.()
+    this.retryWake = null
     const stopped = new TunnelError('closed', 'Active Host connection stopped')
     for (const waiter of this.waiters.splice(0)) waiter.reject(stopped)
   }
 
   async probeNow(): Promise<void> {
+    if (this.heartbeat === null) {
+      this.retryWake?.()
+      return
+    }
     if (this.options.deferHeartbeat === true && !this.heartbeatArmed) return
-    await this.heartbeat?.probeNow()
+    await this.heartbeat.probeNow()
   }
 
   /** Start liveness probes after Host UI boot has finished using the session. */
@@ -164,17 +178,23 @@ export class TunnelManager {
   }
 
   private setState(state: TunnelState): void {
-    this.options.onState(state)
+    if (this.stopped) return
+    this.options.onState?.(state)
     if (state === 'closed') this.closeWaiter?.()
   }
 
   private async loop(): Promise<void> {
     let backoff = 1000
+    let attempt = 0
+    let hasConnected = false
     const connector = this.options.connect ?? connect
     const wait = this.options.wait ?? ((delayMs: number) => new Promise<void>(resolve => setTimeout(resolve, delayMs)))
     const random = this.options.random ?? Math.random
     while (!this.stopped) {
+      attempt += 1
+      this.options.onActivity?.({ phase: 'connecting', attempt, reconnecting: hasConnected || attempt > 1, route: this.lastRoute })
       let lease: TunnelCredentialLease | null = null
+      let retryError: string | undefined
       try {
         lease = await this.options.loadCredentials()
         if (this.stopped) { lease.dispose(); return }
@@ -183,6 +203,7 @@ export class TunnelManager {
         const client = await connector(this.options.offerUrl, {
           clientKeypair: lease.clientKeypair, deviceToken: lease.deviceToken, onDeviceToken: lease.onDeviceToken,
           connectionPolicy: policy, onConnectionStatus: status => {
+            if (this.stopped) return
             if (status.route === 'direct' || status.route === 'tunnel') this.lastRoute = status.route
             this.options.onConnectionStatus?.(status)
           },
@@ -197,9 +218,15 @@ export class TunnelManager {
         lease.dispose(); lease = null
         this.client = client
         backoff = 1000
+        hasConnected = true
+        this.options.onActivity?.({ phase: 'open', attempt, route: this.lastRoute })
         this.heartbeat = new HeartbeatController({
           target: client,
-          onStale: error => { this.options.onError?.(error.code + ': ' + error.message); client.close() },
+          onStale: error => {
+            if (this.stopped) return
+            this.options.onError?.(error.code + ': ' + error.message)
+            client.close()
+          },
         })
         if (this.options.deferHeartbeat !== true || this.heartbeatArmed) this.heartbeat.start()
         for (const waiter of this.waiters.splice(0)) waiter.resolve(client)
@@ -207,23 +234,41 @@ export class TunnelManager {
         this.closeWaiter = null
         this.heartbeat.stop(); this.heartbeat = null
         this.client = null
+        attempt = 1
+        retryError = 'connection closed'
         if (this.lastRoute === 'direct' && this.options.connectionPolicy === 'automatic') this.preferTunnelOnce = true
       } catch (error) {
         lease?.dispose()
+        if (this.stopped) return
         const failure = error instanceof Error ? error : new Error(String(error))
         const code = error instanceof TunnelError ? error.code : null
         this.setState('connecting')
-        this.options.onError?.(code === null ? failure.message : code + ': ' + failure.message)
+        retryError = code === null ? failure.message : code + ': ' + failure.message
+        this.options.onError?.(retryError)
         if (code !== null && TERMINAL_CONNECTION_ERRORS.has(code)) {
           this.terminalError = failure
+          this.options.onActivity?.({ phase: 'terminal', attempt, route: this.lastRoute, error: retryError })
           for (const waiter of this.waiters.splice(0)) waiter.reject(failure)
           return
         }
       }
       if (this.stopped) return
       this.setState('connecting')
-      await wait(Math.round(backoff * (0.8 + random() * 0.4)))
-      backoff = Math.min(backoff * 2, 10_000)
+      const retryInMs = Math.round(backoff * (0.8 + random() * 0.4))
+      let wakeRetry!: () => void
+      const wake = new Promise<void>(resolve => { wakeRetry = resolve })
+      this.retryWake = wakeRetry
+      this.options.onActivity?.({
+        phase: 'retry-wait', attempt, retryInMs, route: this.lastRoute,
+        ...retryError === undefined ? {} : { error: retryError },
+      })
+      if (this.stopped) {
+        if (this.retryWake === wakeRetry) this.retryWake = null
+        return
+      }
+      await Promise.race([wait(retryInMs), wake])
+      if (this.retryWake === wakeRetry) this.retryWake = null
+      backoff = Math.min(backoff * 2, 60_000)
     }
   }
 
@@ -390,21 +435,248 @@ export function installShims(mgr: TunnelClientSource): void {
   } as never
 }
 
-/** Bottom-right tunnel state dot (green open / yellow connecting / red closed). */
-export function installBadge(onActivate?: () => void): (state: TunnelState, route?: string) => void {
-  const el = document.createElement('button')
-  el.style.cssText =
-    'position:fixed;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));min-height:24px;padding:3px 8px;' +
-    'display:flex;align-items:center;border-radius:999px;z-index:9999;transition:background .3s;color:white;' +
-    'font:600 11px/1.2 system-ui,sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.28)'
-  el.type = 'button'
-  el.setAttribute('aria-label', 'Connection route and Host Profiles')
-  if (onActivate !== undefined) el.addEventListener('click', onActivate)
-  document.body.appendChild(el)
-  const titles: Record<TunnelState, string> = { open: '隧道已连接', connecting: '隧道连接中…', closed: '隧道已断开,重连中' }
-  return (state, route = '') => {
-    el.style.background = state === 'open' ? '#22c55e' : state === 'connecting' ? '#eab308' : '#ef4444'
-    el.title = route === '' ? titles[state] : route + ' · ' + titles[state]
-    el.textContent = route === '' ? titles[state] : route
+/** Whether the active runtime can publish the authoritative live-data event. */
+export function supportsLiveDataReadiness(dataset: { readonly dshLiveDataReadiness?: string }): boolean {
+  return dataset.dshLiveDataReadiness === 'v1'
+}
+
+/** User-facing route name: only an Automatic tunnel route is a fallback. */
+export function connectionRouteLabel(
+  route: 'direct' | 'tunnel' | null,
+  endpointKind: 'temporary' | 'custom' | 'relay' | undefined,
+  policy: ConnectionPolicy | undefined,
+): string {
+  if (route === 'direct') return 'WebRTC Direct'
+  if (route !== 'tunnel') return ''
+  if (endpointKind === 'relay') return 'Relay'
+  return policy === 'tunnel-only' ? 'Tunnel' : 'Tunnel Fallback'
+}
+
+export type ConnectionRecovery = 'endpoint' | 'credential'
+
+export interface ConnectionRecoveryNotice {
+  message: string
+  detail: string
+  actionLabel: string
+}
+
+/** Only actionable recovery owns the topbar; transient retries stay in the connection indicator. */
+export function connectionRecoveryNotice(
+  recovery: ConnectionRecovery | null,
+  detail: string,
+): ConnectionRecoveryNotice | null {
+  if (recovery === 'endpoint') {
+    return { message: 'Host 的临时 Public Endpoint 可能已轮换。', detail, actionLabel: '刷新' }
   }
+  if (recovery === 'credential') {
+    return { message: '登录凭证已丢失，请重新扫码。', detail, actionLabel: '重新扫码' }
+  }
+  return null
+}
+
+export interface ConnectionIndicatorPresentation {
+  visible: boolean
+  text: string
+  label: string
+  color: string
+}
+
+/** Pure state presentation shared by the drawer dot and floating cached-shell hint. */
+export function connectionIndicatorPresentation(
+  status: TunnelState | TunnelManagerActivity,
+  route = '',
+  shellMounted = true,
+  liveDataReady = true,
+): ConnectionIndicatorPresentation {
+  if (typeof status !== 'string' && status.phase === 'terminal') {
+    const title = '连接需要处理'
+    return {
+      visible: false,
+      text: '离线',
+      label: route === '' ? title : route + ' · ' + title,
+      color: 'var(--dsw-alias-state-error-primary, #ec1313)',
+    }
+  }
+  const passiveRetry = typeof status !== 'string'
+    && (status.phase === 'retry-wait'
+      || (status.phase === 'connecting' && status.reconnecting && status.attempt >= 3))
+  if (passiveRetry) {
+    const title = '连接中断，后台自动重试'
+    return {
+      visible: shellMounted,
+      text: '离线',
+      label: route === '' ? title : route + ' · ' + title,
+      color: 'var(--dsw-alias-state-error-primary, #ec1313)',
+    }
+  }
+  const state: TunnelState = typeof status === 'string'
+    ? status
+    : status.phase === 'open'
+      ? 'open'
+      : status.phase === 'connecting'
+        ? 'connecting'
+        : 'closed'
+  const reconnecting = typeof status !== 'string' && status.phase === 'connecting' && status.reconnecting
+  const refreshing = state === 'open' && !liveDataReady
+  const title = refreshing
+    ? '正在刷新权威数据…'
+    : state === 'open'
+      ? '权威数据已刷新'
+      : state === 'connecting'
+        ? reconnecting ? '正在重连…' : '隧道连接中…'
+        : '隧道已断开，重连中'
+  const color = state === 'closed'
+    ? 'var(--dsw-alias-state-error-primary, #ec1313)'
+    : state === 'open' && liveDataReady
+      ? 'var(--dsw-alias-state-success-primary, #22c55e)'
+      : 'var(--dsw-alias-state-warn-primary, #f59e0b)'
+  const text = refreshing
+    ? '刷新中…'
+    : state === 'open'
+      ? '已更新'
+      : state === 'connecting'
+        ? reconnecting ? '重连中…' : '连接中…'
+        : '重连中…'
+  return {
+    visible: shellMounted && (state !== 'open' || !liveDataReady),
+    text,
+    label: route === '' ? title : route + ' · ' + title,
+    color,
+  }
+}
+
+/** Keep the drawer dot and a non-blocking floating cached-shell connection hint in sync. */
+export function installBadge(): (
+  state: TunnelState | TunnelManagerActivity,
+  route?: string,
+  shellMounted?: boolean,
+  liveDataReady?: boolean,
+) => void {
+  const el = document.createElement('span')
+  el.style.cssText =
+    'position:static;width:32px;height:32px;padding:9px;display:none;place-items:center;' +
+    'box-sizing:border-box;'
+  el.setAttribute('role', 'status')
+  el.setAttribute('aria-label', '连接状态')
+  el.setAttribute('data-mobile-connection-status', '')
+  const dot = document.createElement('span')
+  dot.setAttribute('aria-hidden', 'true')
+  dot.style.cssText =
+    'display:block;width:14px;height:14px;border:2px solid rgba(255,255,255,.92);' +
+    'border-radius:50%;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,.28);'
+  el.append(dot)
+
+  // Cached content remains fully interactive; this pill is display-only and
+  // disappears as soon as the live tunnel opens.
+  const floating = document.createElement('span')
+  floating.setAttribute('role', 'status')
+  floating.setAttribute('aria-live', 'polite')
+  floating.setAttribute('data-mobile-floating-connection-status', '')
+  floating.style.cssText =
+    'position:fixed;top:calc(env(safe-area-inset-top, 0px) + 58px);left:50%;' +
+    'transform:translateX(-50%);z-index:2147483645;display:none;align-items:center;gap:6px;' +
+    'padding:6px 10px;border:1px solid var(--dsw-alias-border-l2, rgba(0,0,0,.12));border-radius:999px;' +
+    'background:var(--dsw-alias-button-floating-fill, var(--dsw-alias-bg-layer-2, Canvas));' +
+    'color:var(--dsw-alias-label-primary, CanvasText);font:500 12px/1.2 system-ui,sans-serif;' +
+    'white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.24);backdrop-filter:blur(8px);' +
+    '-webkit-backdrop-filter:blur(8px);pointer-events:none;user-select:none;'
+  const floatingDot = document.createElement('span')
+  floatingDot.setAttribute('aria-hidden', 'true')
+  floatingDot.style.cssText = 'width:7px;height:7px;border-radius:50%;flex:none;box-shadow:0 0 0 2px rgba(255,255,255,.14);'
+  const floatingText = document.createElement('span')
+  floating.append(floatingDot, floatingText)
+
+  const place = (): void => {
+    // The dot lives permanently inside the drawer's brand row, right after
+    // the HARNESS wordmark. It has no navigation behavior; device switching
+    // is a separate action beside Settings.
+    const brand = document.querySelector(
+      'nav[aria-label="导航抽屉"] button[aria-label="New session"], nav[aria-label="导航抽屉"] button[aria-label="新建会话"], nav[aria-label="导航抽屉"] button[aria-label="新会话"]',
+    )
+    if (brand === null) {
+      el.style.display = 'none'
+      return
+    }
+    if (el.previousElementSibling !== brand || el.parentElement !== brand.parentElement) {
+      brand.insertAdjacentElement('afterend', el)
+    }
+    el.style.display = 'grid'
+  }
+  document.body.append(el, floating)
+  const observer = new MutationObserver(place)
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-drawer-open'] })
+  place()
+
+  return (state, route = '', shellMounted = true, liveDataReady = true) => {
+    const view = connectionIndicatorPresentation(state, route, shellMounted, liveDataReady)
+    dot.style.background = view.color
+    el.title = view.label
+    el.setAttribute('aria-label', view.label)
+    floating.style.display = view.visible ? 'flex' : 'none'
+    floatingDot.style.background = view.color
+    floatingText.textContent = view.text
+    floating.title = view.label
+    floating.setAttribute('aria-label', view.label)
+  }
+}
+
+/** Add the device-switch action beside the official Settings trigger. */
+export function installProfileAction(onActivate: () => void): () => void {
+  const action = document.createElement('button')
+  action.type = 'button'
+  action.dataset.mobileProfileAction = ''
+  action.setAttribute('aria-label', '切换设备并重新扫码')
+  action.title = '切换设备并重新扫码'
+  action.style.cssText =
+    'box-sizing:border-box;flex:1 1 0!important;min-width:0!important;width:auto!important;' +
+    'margin:0!important;'
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  icon.setAttribute('width', '16')
+  icon.setAttribute('height', '16')
+  icon.setAttribute('viewBox', '0 0 16 16')
+  icon.setAttribute('fill', 'none')
+  icon.setAttribute('aria-hidden', 'true')
+  const iconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  iconPath.setAttribute('d', 'M5.5 2.5H2.5v3M10.5 2.5h3v3M5.5 13.5H2.5v-3M10.5 13.5h3v-3M6 8h4')
+  iconPath.setAttribute('stroke', 'currentColor')
+  iconPath.setAttribute('stroke-width', '1.2')
+  iconPath.setAttribute('stroke-linecap', 'round')
+  iconPath.setAttribute('stroke-linejoin', 'round')
+  icon.append(iconPath)
+  const label = document.createElement('span')
+  label.textContent = '切换设备'
+  action.append(icon, label)
+  action.addEventListener('click', onActivate)
+
+  const place = (): void => {
+    const settings = [...document.querySelectorAll<HTMLButtonElement>('nav button')].find(button => {
+      const text = button.textContent?.trim()
+      return text === '设置' || text === 'Settings'
+    })
+    const area = settings?.parentElement?.parentElement
+    if (settings === undefined || area === undefined || area === null) return
+    // Reuse the official trigger class and its icon/label classes. Only the
+    // flex sizing differs because two equal actions now share this footer row.
+    action.className = settings.className
+    const settingsIcon = settings.querySelector('svg')
+    if (settingsIcon !== null) icon.setAttribute('class', settingsIcon.getAttribute('class') ?? '')
+    const settingsLabel = settings.querySelector('span')
+    if (settingsLabel !== null) label.className = settingsLabel.className
+    area.style.display = 'flex'
+    area.style.alignItems = 'center'
+    area.style.gap = '6px'
+    area.style.width = '100%'
+    settings.style.setProperty('flex', '1 1 0', 'important')
+    settings.style.setProperty('min-width', '0', 'important')
+    settings.style.setProperty('width', 'auto', 'important')
+    settings.style.setProperty('margin', '0', 'important')
+    if (action.parentElement !== settings.parentElement || action.previousElementSibling !== settings) {
+      settings.insertAdjacentElement('afterend', action)
+    }
+  }
+  document.body.append(action)
+  const observer = new MutationObserver(place)
+  observer.observe(document.body, { childList: true, subtree: true })
+  place()
+  return () => { observer.disconnect(); action.remove() }
 }
