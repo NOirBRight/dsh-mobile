@@ -26,9 +26,9 @@ Host 的插件清单和业务插件 bundle 经已认证会话获取；移动壳�
 | 上次会话恢复、权威刷新状态 | — | ✅ |
 | 官方更新后的保证 | Core 继续工作 | 仅精确验证版本启用；未知版本自动停用 |
 
-“设备连接”面板会说明当前模式并允许用户选择。增强模式只在官方 Runtime bundle revision 与 `patches/dsh-runtime-session-hydration.json` 中的白名单完全一致时，插入本地 adapter 并使用 APK 内置的 downstream-compatible Runtime。官方升级导致 revision 变化时，不静默打补丁、不允许未知版本强制启用，自动回退到未经修改的官方 Runtime；配对、连接和设备管理不受影响。
+“设备连接”面板会说明当前模式并允许用户选择；Core 的连接状态明确显示不提供权威刷新确认，不会把 transport-open 冒充数据就绪。增强模式只在官方 Runtime bundle revision 与 `patches/dsh-runtime-session-hydration.json` 中的白名单完全一致时，插入本地 adapter 并使用 APK 内置的 downstream-compatible Runtime。官方升级导致 revision 变化时，不静默打补丁、不允许未知版本强制启用，自动回退到未经修改的官方 Runtime；配对、连接和设备管理不受影响。
 
-缓存策略完全归 dsh-mobile：IndexedDB v2 key 使用 Host Identity 隔离；读取前验证 schema；仅单 Host 配置可迁移旧的未分区 v1 localStorage；空的权威结果会覆盖旧快照；历史记录不会因为插件缓存配额而被逐出。上游 seam 只接触同步 seed、权威 commit 与 replayable readiness，不知道移动端存储策略。
+缓存策略完全归 dsh-mobile：IndexedDB v2 key 使用 Host Identity 隔离；读取前验证 schema；仅单 Host 配置可迁移旧的未分区 v1 localStorage；空的权威结果会覆盖旧快照；失败的写入保留到后续 flush 重试；历史记录不会因为插件缓存配额而被逐出。上游 seam 只接触同步 seed、权威 commit 与 replayable readiness，不知道移动端存储策略。
 
 “设备连接”还提供默认关闭的 **后台连接保护（实验）**。开启后 Android 会请求通知权限、启动 remote-messaging Foreground Service、持有 CPU wake lock，并用常驻通知明确告知用户。它可显著减少 WebView 连接在后台被暂停，但当前加密 Tunnel 仍由 WebView 拥有；Android 强杀进程、厂商省电策略或 WebView 冻结仍可能中断接收，因此不得把该模式描述为绝对可靠的后台推送。彻底可靠需要后续将加密 transport 所有权迁入 native 层，或增加 Host 到设备的系统 Push 唤醒路径。
 

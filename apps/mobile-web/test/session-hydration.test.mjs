@@ -118,6 +118,27 @@ test('failed migration persists neither list nor history and remains retryable',
   assert.deepEqual(retried.adapter.readWindow('old'), { entries: [{ event: event(4) }], hasMore: false })
 })
 
+test('transient history write failure remains pending and retries without evicting prior history', async () => {
+  class FailOnceWindowDatabase extends MemoryDatabase {
+    fail = true
+    async writeWindow(record) {
+      if (this.fail) { this.fail = false; throw new Error('transient quota failure') }
+      await super.writeWindow(record)
+    }
+  }
+  const db = new FailOnceWindowDatabase()
+  const prepared = await prepareSessionHydration({ hostId: 'host-a', database: db })
+  prepared.adapter.committed({
+    kind: 'window', sessionId: 'kept', window: { entries: [{ event: event(9) }], hasMore: false },
+  })
+  await prepared.flush()
+  assert.equal(db.records.has('dsh-mobile:host-a:history:kept:v2'), false)
+  await prepared.flush()
+  assert.deepEqual(db.records.get('dsh-mobile:host-a:history:kept:v2')?.window, {
+    entries: [{ event: event(9) }], hasMore: false,
+  })
+})
+
 test('storage unavailability degrades to an empty non-throwing adapter', async () => {
   const prior = globalThis.indexedDB
   globalThis.indexedDB = undefined

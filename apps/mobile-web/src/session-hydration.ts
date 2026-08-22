@@ -244,7 +244,13 @@ class MobileSessionHydrationAdapter implements SessionHydrationAdapterLike {
     this.writes = this.writes.then(async () => {
       if (list !== undefined) await this.database.writeList(list)
       for (const window of windows) await this.database.writeWindow(window)
-    }).catch(() => { /* persistence is optional; live runtime remains authoritative */ })
+    }).catch(() => {
+      // Retain failed writes for the next flush without replacing newer authoritative commits.
+      if (list !== undefined && this.pendingList === undefined) this.pendingList = list
+      for (const window of windows) {
+        if (!this.pendingWindows.has(window.sessionId)) this.pendingWindows.set(window.sessionId, window)
+      }
+    })
     await this.writes
   }
 

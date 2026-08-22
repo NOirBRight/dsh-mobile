@@ -494,7 +494,7 @@ export function connectionIndicatorPresentation(
   status: TunnelState | TunnelManagerActivity,
   route = '',
   shellMounted = true,
-  liveDataReady: boolean | 'pending' | 'ready' | 'error' = true,
+  liveDataReady: boolean | 'pending' | 'ready' | 'error' | 'unavailable' = true,
 ): ConnectionIndicatorPresentation {
   if (typeof status !== 'string' && status.phase === 'terminal') {
     const title = '连接需要处理'
@@ -528,10 +528,13 @@ export function connectionIndicatorPresentation(
   const readiness = typeof liveDataReady === 'boolean' ? (liveDataReady ? 'ready' : 'pending') : liveDataReady
   const refreshFailed = state === 'open' && readiness === 'error'
   const refreshing = state === 'open' && readiness === 'pending'
+  const readinessUnavailable = state === 'open' && readiness === 'unavailable'
   const title = refreshFailed
     ? '权威数据刷新失败'
     : refreshing
       ? '正在刷新权威数据…'
+      : readinessUnavailable
+        ? '核心兼容模式不提供权威刷新确认'
     : state === 'open'
       ? '权威数据已刷新'
       : state === 'connecting'
@@ -546,6 +549,8 @@ export function connectionIndicatorPresentation(
     ? '刷新失败'
     : refreshing
       ? '刷新中…'
+      : readinessUnavailable
+        ? '核心模式'
     : state === 'open'
       ? '已更新'
       : state === 'connecting'
@@ -559,13 +564,20 @@ export function connectionIndicatorPresentation(
   }
 }
 
+/** Mounted connection indicator controller. */
+export interface ConnectionBadgeUpdater {
+  (
+    state: TunnelState | TunnelManagerActivity,
+    route?: string,
+    shellMounted?: boolean,
+    liveDataReady?: boolean | 'pending' | 'ready' | 'error' | 'unavailable',
+  ): void
+  /** Remove indicator nodes and stop observing shell mutations. */
+  dispose(): void
+}
+
 /** Keep the drawer dot and a non-blocking floating cached-shell connection hint in sync. */
-export function installBadge(): (
-  state: TunnelState | TunnelManagerActivity,
-  route?: string,
-  shellMounted?: boolean,
-  liveDataReady?: boolean | 'pending' | 'ready' | 'error',
-) => void {
+export function installBadge(): ConnectionBadgeUpdater {
   const el = document.createElement('span')
   el.style.cssText =
     'position:static;width:32px;height:32px;padding:9px;display:none;place-items:center;' +
@@ -621,7 +633,7 @@ export function installBadge(): (
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-drawer-open'] })
   place()
 
-  return (state, route = '', shellMounted = true, liveDataReady = true) => {
+  const update: ConnectionBadgeUpdater = (state, route = '', shellMounted = true, liveDataReady = true) => {
     const view = connectionIndicatorPresentation(state, route, shellMounted, liveDataReady)
     dot.style.background = view.color
     el.title = view.label
@@ -632,6 +644,12 @@ export function installBadge(): (
     floating.title = view.label
     floating.setAttribute('aria-label', view.label)
   }
+  update.dispose = () => {
+    observer.disconnect()
+    el.remove()
+    floating.remove()
+  }
+  return update
 }
 
 /** Add the device-switch action beside the official Settings trigger. */

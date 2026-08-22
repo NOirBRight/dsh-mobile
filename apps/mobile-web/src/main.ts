@@ -140,13 +140,28 @@ async function showProfileMenu(
 }
 
 void (async () => {
+  const disposers: Array<() => void | Promise<void>> = []
+  let disposed = false
+  const dispose = (): void => {
+    if (disposed) return
+    disposed = true
+    const pending = disposers.splice(0).reverse().map(disposer => Promise.resolve().then(disposer))
+    void Promise.allSettled(pending)
+  }
+  const own = (disposer: () => void | Promise<void>): void => {
+    if (disposed) void Promise.resolve().then(disposer)
+    else disposers.push(disposer)
+  }
+  window.addEventListener('pagehide', dispose, { once: true })
+
   const appLinks = new AppLinkInbox(validOfferUrl, routeRuntimeOffer)
-  await App.addListener('appUrlOpen', ({ url }) => appLinks.capture(url))
+  const appUrlListener = await App.addListener('appUrlOpen', ({ url }) => appLinks.capture(url))
+  own(() => appUrlListener.remove())
 
   const native = Capacitor.isNativePlatform()
   if (native) purgeLegacyAndroidWebCredentials(localStorage)
   const bridges = claimShellNativeBridges(native)
-  installSystemBarThemeSync(bridges.systemBars)
+  own(installSystemBarThemeSync(bridges.systemBars))
   const backgroundConnection = createBackgroundConnectionControl(bridges.backgroundConnection)
   let backgroundConnectionEnabled = native && readBackgroundConnectionPreference(localStorage)
   const vault = createVault(native, bridges.vault)
@@ -232,6 +247,11 @@ void (async () => {
   const slot = new TunnelManagerSlot()
   if (shouldInstallTunnelShims(sameOriginBoot)) installShims(slot)
   let session: HostSession | null = null
+  own(async () => {
+    session?.stop()
+    await hydration?.dispose()
+    await webEntry?.dispose()
+  })
   let shellMounted = false
 
   if (prepared !== null) {
@@ -248,21 +268,26 @@ void (async () => {
     let transportReady = false
     // Transport readiness and authoritative session-data freshness are
     // intentionally separate: the cached shell remains usable between them.
-    let liveDataReady: boolean | 'pending' | 'ready' | 'error' = false
+    let liveDataReady: boolean | 'pending' | 'ready' | 'error' | 'unavailable' = false
     const updateBadge = installBadge()
+    own(() => updateBadge.dispose())
     // Cached shell may paint before TunnelManager emits its first callback.
     updateBadge(activity, route, shellMounted, liveDataReady)
-    document.addEventListener('dsh:live-data-state', (event) => {
+    const handleLiveDataState = (event: Event): void => {
       const state = (event as CustomEvent<{ state?: unknown }>).detail?.state
       if (state !== 'pending' && state !== 'ready' && state !== 'error') return
       liveDataReady = state
       updateBadge(activity, route, shellMounted, liveDataReady)
-    })
-    document.addEventListener('dsh:live-data-ready', () => {
+    }
+    const handleLiveDataReady = (): void => {
       liveDataReady = 'ready'
       updateBadge(activity, route, shellMounted, liveDataReady)
-    })
-    installProfileAction(() => {
+    }
+    document.addEventListener('dsh:live-data-state', handleLiveDataState)
+    document.addEventListener('dsh:live-data-ready', handleLiveDataReady)
+    own(() => document.removeEventListener('dsh:live-data-state', handleLiveDataState))
+    own(() => document.removeEventListener('dsh:live-data-ready', handleLiveDataReady))
+    own(installProfileAction(() => {
       void showProfileMenu(repository, reconnectActiveHost, enterOnboardingAfterRemoval, async preference => {
         writeSessionEnhancementPreference(localStorage, preference)
         sessionEnhancementPreference = preference
@@ -281,7 +306,7 @@ void (async () => {
         },
         ...(native ? { backgroundConnection: { enabled: backgroundConnectionEnabled } } : {}),
       }))
-    })
+    }))
     const setTopbarNotice = (
       message: string | null,
       detail = '',
@@ -420,10 +445,9 @@ void (async () => {
       transportReady = true
       state = 'open'
       activity = { phase: 'open', attempt: activity.attempt, route: activity.route }
-      // A cached pre-contract runtime cannot emit dsh:live-data-ready. Preserve
-      // its transport-open behavior instead of pinning “刷新中…” forever; the
-      // next boot, using the refreshed runtime, takes the authoritative path.
-      if (!supportsLiveDataReadiness(document.documentElement.dataset)) liveDataReady = true
+      // Core Runtime has no authoritative readiness contract; transport-open
+      // must not be presented as proof that live session baselines refreshed.
+      if (!supportsLiveDataReadiness(document.documentElement.dataset)) liveDataReady = 'unavailable'
       lastError = ''
       endpointRefreshAvailable = false
       updateBadge(activity, route, shellMounted, liveDataReady)
@@ -572,7 +596,7 @@ void (async () => {
         render()
       },
     })
-    backgroundConnection.subscribeWake(() => { void session?.probeNow() })
+    own(backgroundConnection.subscribeWake(() => { void session?.probeNow() }))
     runtimeOfferHandler = offerUrl => { void connectPairingOffer(offerUrl).catch(error => {
       lastError = error instanceof Error ? error.message : String(error)
       render()
@@ -584,8 +608,13 @@ void (async () => {
     }
     shellMounted = await session.hydrate(activeConnection)
     render()
-    window.addEventListener('online', () => { void session?.probeNow() })
-    await App.addListener('appStateChange', ({ isActive }) => { if (isActive) void session?.probeNow() })
+    const handleOnline = (): void => { void session?.probeNow() }
+    window.addEventListener('online', handleOnline)
+    own(() => window.removeEventListener('online', handleOnline))
+    const appStateListener = await App.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) void session?.probeNow()
+    })
+    own(() => appStateListener.remove())
     try {
       await session.connect(activeConnection)
       markTransportReady()
@@ -597,7 +626,7 @@ void (async () => {
   }
 
   const media = matchMedia('(max-width: ' + (NARROW_LAYOUT_BREAKPOINT - 1) + 'px)')
-  media.addEventListener('change', () => {
+  const handleViewportChange = (): void => {
     if (sameOriginManifest !== null) {
       const selection = selectResponsiveBootManifest(sameOriginManifest, {
         viewportWidth: readViewportWidth(),
@@ -609,7 +638,9 @@ void (async () => {
       return
     }
     void session?.remount()
-  })
+  }
+  media.addEventListener('change', handleViewportChange)
+  own(() => media.removeEventListener('change', handleViewportChange))
   if (!shellMounted) {
     await bootDshShell(responsiveSelection)
   }

@@ -121,7 +121,7 @@ Runtime 仅拥有上述 seam、权威生命周期和 fail-soft 规则。以下�
 验证结果：
 
 - Runtime 聚焦测试：168/168；
-- 移动 Shell 完整测试：149/149；
+- 移动 Shell 完整测试：150/150；
 - `npm run verify:cold-start` 验证 Host-scoped 列表与选中历史在 transport ready 前已可绘制；
 - Runtime TypeScript typecheck：通过；
 - `lint:contracts-ready`：通过；
