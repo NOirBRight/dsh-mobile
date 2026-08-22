@@ -263,8 +263,16 @@ class MobileSessionHydrationAdapter implements SessionHydrationAdapterLike {
   }
 }
 
+const unavailableDatabase: SessionCacheDatabase = {
+  async readList() { return undefined },
+  async readWindows() { return [] },
+  async writeList() {},
+  async writeWindow() {},
+  close() {},
+}
+
 export async function prepareSessionHydration(options: PrepareSessionHydrationOptions): Promise<PreparedSessionHydration> {
-  const database = options.database ?? await IndexedDbSessionCacheDatabase.open()
+  const database = options.database ?? await IndexedDbSessionCacheDatabase.open().catch(() => unavailableDatabase)
   let list: readonly SessionListCacheEntry[] | undefined
   const windows = new Map<string, SessionWindowCacheSeed>()
   try { list = readListRecord(await database.readList(options.hostId), options.hostId) } catch { list = undefined }

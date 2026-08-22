@@ -235,12 +235,18 @@ void (async () => {
     let transportReady = false
     // Transport readiness and authoritative session-data freshness are
     // intentionally separate: the cached shell remains usable between them.
-    let liveDataReady = false
+    let liveDataReady: boolean | 'pending' | 'ready' | 'error' = false
     const updateBadge = installBadge()
     // Cached shell may paint before TunnelManager emits its first callback.
     updateBadge(activity, route, shellMounted, liveDataReady)
+    document.addEventListener('dsh:live-data-state', (event) => {
+      const state = (event as CustomEvent<{ state?: unknown }>).detail?.state
+      if (state !== 'pending' && state !== 'ready' && state !== 'error') return
+      liveDataReady = state
+      updateBadge(activity, route, shellMounted, liveDataReady)
+    })
     document.addEventListener('dsh:live-data-ready', () => {
-      liveDataReady = true
+      liveDataReady = 'ready'
       updateBadge(activity, route, shellMounted, liveDataReady)
     })
     installProfileAction(() => {

@@ -494,7 +494,7 @@ export function connectionIndicatorPresentation(
   status: TunnelState | TunnelManagerActivity,
   route = '',
   shellMounted = true,
-  liveDataReady = true,
+  liveDataReady: boolean | 'pending' | 'ready' | 'error' = true,
 ): ConnectionIndicatorPresentation {
   if (typeof status !== 'string' && status.phase === 'terminal') {
     const title = '连接需要处理'
@@ -525,28 +525,34 @@ export function connectionIndicatorPresentation(
         ? 'connecting'
         : 'closed'
   const reconnecting = typeof status !== 'string' && status.phase === 'connecting' && status.reconnecting
-  const refreshing = state === 'open' && !liveDataReady
-  const title = refreshing
-    ? '正在刷新权威数据…'
+  const readiness = typeof liveDataReady === 'boolean' ? (liveDataReady ? 'ready' : 'pending') : liveDataReady
+  const refreshFailed = state === 'open' && readiness === 'error'
+  const refreshing = state === 'open' && readiness === 'pending'
+  const title = refreshFailed
+    ? '权威数据刷新失败'
+    : refreshing
+      ? '正在刷新权威数据…'
     : state === 'open'
       ? '权威数据已刷新'
       : state === 'connecting'
         ? reconnecting ? '正在重连…' : '隧道连接中…'
         : '隧道已断开，重连中'
-  const color = state === 'closed'
+  const color = state === 'closed' || refreshFailed
     ? 'var(--dsw-alias-state-error-primary, #ec1313)'
-    : state === 'open' && liveDataReady
+    : state === 'open' && readiness === 'ready'
       ? 'var(--dsw-alias-state-success-primary, #22c55e)'
       : 'var(--dsw-alias-state-warn-primary, #f59e0b)'
-  const text = refreshing
-    ? '刷新中…'
+  const text = refreshFailed
+    ? '刷新失败'
+    : refreshing
+      ? '刷新中…'
     : state === 'open'
       ? '已更新'
       : state === 'connecting'
         ? reconnecting ? '重连中…' : '连接中…'
         : '重连中…'
   return {
-    visible: shellMounted && (state !== 'open' || !liveDataReady),
+    visible: shellMounted && (state !== 'open' || readiness !== 'ready'),
     text,
     label: route === '' ? title : route + ' · ' + title,
     color,
@@ -558,7 +564,7 @@ export function installBadge(): (
   state: TunnelState | TunnelManagerActivity,
   route?: string,
   shellMounted?: boolean,
-  liveDataReady?: boolean,
+  liveDataReady?: boolean | 'pending' | 'ready' | 'error',
 ) => void {
   const el = document.createElement('span')
   el.style.cssText =

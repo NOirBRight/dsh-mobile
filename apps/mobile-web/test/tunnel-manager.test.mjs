@@ -93,6 +93,10 @@ test('floating connection indicator follows theme and waits for authoritative li
     visible: false, text: '已更新', label: 'WebRTC Direct · 权威数据已刷新',
     color: 'var(--dsw-alias-state-success-primary, #22c55e)',
   })
+  assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, 'error'), {
+    visible: true, text: '刷新失败', label: 'WebRTC Direct · 权威数据刷新失败',
+    color: 'var(--dsw-alias-state-error-primary, #ec1313)',
+  })
 })
 
 test('bare same-origin Host bridge keeps native API while paired and native shells install tunnel shims', () => {

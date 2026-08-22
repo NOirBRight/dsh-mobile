@@ -78,3 +78,17 @@ test('single-profile migration validates legacy v1 records and removes them afte
   const invalid = await prepareSessionHydration({ hostId: 'bad', database: db })
   assert.equal(invalid.adapter.readList(), undefined)
 })
+
+test('storage unavailability degrades to an empty non-throwing adapter', async () => {
+  const prior = globalThis.indexedDB
+  globalThis.indexedDB = undefined
+  try {
+    const prepared = await prepareSessionHydration({ hostId: 'host-a' })
+    assert.equal(prepared.adapter.readList(), undefined)
+    prepared.adapter.committed({ kind: 'list', entries: [] })
+    await prepared.flush()
+    await prepared.dispose()
+  } finally {
+    globalThis.indexedDB = prior
+  }
+})
