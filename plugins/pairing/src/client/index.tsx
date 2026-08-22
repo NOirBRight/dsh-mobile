@@ -9,6 +9,7 @@ import {
   livePairedDevices,
   pairingQrUrl,
   pairingRefreshQrUrl,
+  PAIRING_QR_PRESENTATION,
   REMOTE_SETTINGS_SECTION,
   type PairedDevice,
   type PairingStatus,
@@ -247,7 +248,7 @@ function DshMobileCard({ t }: { t: Translate }) {
           <h3 style={{ ...heading, justifySelf: 'stretch' }}>{t('scanTitle')}</h3>
           <p style={{ ...muted, margin: 0, justifySelf: 'stretch' }}>{t('scanHint')}</p>
           {endpointReady && endpointUrl ? <>
-            <img key={revision} src={pairingQrUrl('android', revision)} alt={t('qrAlt')} style={{ boxSizing: 'border-box', width: 180, maxWidth: '100%', padding: 8, borderRadius: 12, background: '#fff' }} />
+            <img key={revision} src={pairingQrUrl('android', revision)} alt={t('qrAlt')} style={{ boxSizing: 'border-box', width: PAIRING_QR_PRESENTATION.size, maxWidth: '100%', padding: PAIRING_QR_PRESENTATION.padding, borderRadius: 12, background: '#fff' }} />
             <button type="button" onClick={() => void copyUrl(endpointUrl)} style={{
               ...action, display: 'grid', gap: 4, width: '100%', textAlign: 'left', padding: '10px 12px',
               background: 'var(--dsw-alias-bg-layer-1)',
@@ -257,7 +258,7 @@ function DshMobileCard({ t }: { t: Translate }) {
               <span style={{ color: 'var(--dsw-alias-label-tertiary)', fontSize: 12 }}>{copied ? t('copied') : t('copyHint')}</span>
             </button>
             <button type="button" style={action} onClick={() => setRevision(current => current + 1)}>{t('refreshQr')}</button>
-          </> : <div style={{ width: 180, height: 180, boxSizing: 'border-box', display: 'grid', placeContent: 'center', gap: 8, border: '1px dashed var(--dsw-alias-border-l2)', borderRadius: 12, color: 'var(--dsw-alias-label-tertiary)', textAlign: 'center' }}><strong style={{ fontSize: 34, letterSpacing: '.12em' }}>QR</strong><span style={{ fontSize: 12, padding: '0 16px' }}>{t('qrNotReady')}</span></div>}
+          </> : <div style={{ width: PAIRING_QR_PRESENTATION.size, maxWidth: '100%', aspectRatio: '1', boxSizing: 'border-box', display: 'grid', placeContent: 'center', gap: 8, border: '1px dashed var(--dsw-alias-border-l2)', borderRadius: 12, color: 'var(--dsw-alias-label-tertiary)', textAlign: 'center' }}><strong style={{ fontSize: 34, letterSpacing: '.12em' }}>QR</strong><span style={{ fontSize: 12, padding: '0 16px' }}>{t('qrNotReady')}</span></div>}
         </div>
       </div>
 

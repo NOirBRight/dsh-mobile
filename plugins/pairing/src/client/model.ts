@@ -1,5 +1,8 @@
 export type PairingTarget = 'android'
 
+/** Screen-space budget for dense v4 offers: at least 4 px/module through QR version 14. */
+export const PAIRING_QR_PRESENTATION = { size: 360, padding: 12 } as const
+
 /** Settings nav id/order: immediately after official General. */
 export const REMOTE_SETTINGS_SECTION = { id: 'remote', order: 5 } as const
 

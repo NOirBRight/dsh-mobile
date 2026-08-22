@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildEndpointSaveRequest, decodeEndpointSaveResult, decodePairedDevices, decodePairingStatus, endpointDraftDirty, livePairedDevices, pairingQrRevisionOnToggle, pairingQrUrl, pairingRefreshQrUrl, REMOTE_SETTINGS_SECTION } from '../src/client/model.ts'
+import { buildEndpointSaveRequest, decodeEndpointSaveResult, decodePairedDevices, decodePairingStatus, endpointDraftDirty, livePairedDevices, pairingQrRevisionOnToggle, pairingQrUrl, pairingRefreshQrUrl, PAIRING_QR_PRESENTATION, REMOTE_SETTINGS_SECTION } from '../src/client/model.ts'
 
 test('Remote occupies its own settings sidebar section ahead of Models', () => {
   assert.equal(REMOTE_SETTINGS_SECTION.id, 'remote')
@@ -19,6 +19,12 @@ test('pairing settings status decodes endpoint and visible config location', () 
 test('opening the card automatically advances to a fresh QR offer', () => {
   assert.equal(pairingQrRevisionOnToggle(7, true), 8)
   assert.equal(pairingQrRevisionOnToggle(8, false), 8)
+})
+
+test('pairing QR reserves at least four pixels per module for dense public offers', () => {
+  const worstSupportedModulesWithQuietZone = 73 + 8
+  const drawablePixels = PAIRING_QR_PRESENTATION.size - 2 * PAIRING_QR_PRESENTATION.padding
+  assert.ok(drawablePixels / worstSupportedModulesWithQuietZone >= 4)
 })
 
 test('refresh and target produce a fresh non-secret QR URL', () => {
