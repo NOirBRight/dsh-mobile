@@ -26,7 +26,7 @@ DSH Mobile 的 Host 插件。正式版可安装在日常 `:3080` 或 lab `:3082`
 正式版安装：
 
 ~~~sh
-pnpm add github:NOirBRight/dsh-mobile-pairing#v0.1.4
+pnpm add github:NOirBRight/dsh-mobile-pairing#v0.1.5
 ~~~
 
 然后把 `@dsh-mobile/pairing` 加入 profile 的 `dsh.profile.bundles`。包内的 `cordis.patch.yml` 会插入 Remote loader；默认配置面向日常 `:3080`：

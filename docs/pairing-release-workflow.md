@@ -5,7 +5,7 @@ This workflow keeps the production profile read-only while evolving the two inde
 ## Release order
 
 1. **@dsh-mobile/e2e-tunnel**: run `npm test` and `npm run build` in `/home/noirbright/Workstation/dsh-e2e-tunnel`; publish/tag (current: **v0.1.2**).
-2. **@dsh-mobile/pairing**: bump the published dependency to `github:NOirBRight/dsh-e2e-tunnel#v0.1.2`; run full `tsc && tsdown`, tests, and `test/published-e2e-contract.test.mjs`; publish/tag (current: **v0.1.4**).
+2. **@dsh-mobile/pairing**: bump the published dependency to `github:NOirBRight/dsh-e2e-tunnel#v0.1.2`; run full `tsc && tsdown`, tests, and `test/published-e2e-contract.test.mjs`; publish/tag (current: **v0.1.5**).
 3. **Lab validation**: keep `~/.dsh-lab/profiles/web` on `link:` to the monorepo checkout while iterating. For release validation, switch only the lab profile to the two GitHub tags and restart **3082**.
 
 No build output is copied into `~/.dsh`; production changes only through an explicit promote operation.
