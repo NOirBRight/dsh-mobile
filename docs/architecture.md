@@ -1,6 +1,6 @@
 # dsh-mobile 架构
 
-维护者架构备忘。产品介绍见仓库根目录 [README.md](../README.md) / [README.zh.md](../README.zh.md)。
+维护者架构备忘。产品介绍见仓库根目录 [README.md](../README.md) / [README.en.md](../README.en.md)。
 
 DeepSeek Harness 的 Android 客户端，独立于上游 deepseek-harness 开发。
 
