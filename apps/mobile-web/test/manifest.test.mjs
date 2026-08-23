@@ -51,6 +51,8 @@ test('readViewportWidth trusts a CSS-narrow viewport over an inflated JS width',
   assert.equal(readViewportWidth({ matches: true, measured: 1080 }), NARROW_LAYOUT_BREAKPOINT - 1)
   assert.equal(readViewportWidth({ matches: false, measured: 900 }), 900)
   assert.equal(readViewportWidth({ matches: true, measured: 360 }), 360)
+  assert.equal(readViewportWidth({ preferNarrow: true, measured: 980 }), NARROW_LAYOUT_BREAKPOINT - 1)
+  assert.equal(readViewportWidth({ preferNarrow: true, measured: 360 }), 360)
 })
 
 test('selects only the narrow root below 696px and preserves the exact official entry at 696px', () => {
@@ -102,7 +104,7 @@ test('detects the official narrow slot contract and names visible compatibility 
   assert.equal(officialNarrowContractAvailable({ rev: 'host', entries: [official] }), true)
   assert.equal(officialNarrowContractAvailable({ rev: 'host', entries: [{ ...official, inject: [] }] }), false)
   assert.equal(layoutCompatibilityMessage('compatible'), null)
-  assert.match(layoutCompatibilityMessage('revision-mismatch'), /布局版本/)
+  assert.equal(layoutCompatibilityMessage('revision-mismatch'), null)
   assert.match(layoutCompatibilityMessage('missing-contract'), /官方布局/)
   assert.match(layoutCompatibilityMessage('layout-load-failed'), /窄屏布局加载失败/)
 })

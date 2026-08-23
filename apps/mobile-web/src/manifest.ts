@@ -36,11 +36,14 @@ export const NARROW_LAYOUT_BREAKPOINT = 696
  * Android WebViews report an inflated innerWidth (physical px or the 980px
  * fallback) before or instead of honoring width=device-width.
  */
-export function readViewportWidth(input?: { matches?: boolean; measured?: number }): number {
+export function readViewportWidth(input?: { matches?: boolean; measured?: number; preferNarrow?: boolean }): number {
+  const measured = input?.measured ?? readMeasuredViewportWidth()
+  if (input?.preferNarrow === true && measured >= NARROW_LAYOUT_BREAKPOINT) {
+    return NARROW_LAYOUT_BREAKPOINT - 1
+  }
   const matches = input?.matches ?? (typeof matchMedia === 'function'
     ? matchMedia('(max-width: ' + (NARROW_LAYOUT_BREAKPOINT - 1) + 'px)').matches
     : false)
-  const measured = input?.measured ?? readMeasuredViewportWidth()
   if (matches && measured >= NARROW_LAYOUT_BREAKPOINT) return NARROW_LAYOUT_BREAKPOINT - 1
   return measured
 }
@@ -583,7 +586,7 @@ export function officialNarrowContractAvailable(value: unknown): boolean {
 }
 
 export function layoutCompatibilityMessage(compatibility: LayoutCompatibility): string | null {
-  if (compatibility === 'revision-mismatch') return 'Host 布局版本有更新。窄屏布局仍会继续使用。'
+  if (compatibility === 'revision-mismatch') return null
   if (compatibility === 'missing-contract') return '窄屏布局无法安全挂载，已回退到官方布局。'
   if (compatibility === 'layout-load-failed') return '窄屏布局加载失败，已回退官方布局。'
   return null
@@ -592,6 +595,7 @@ export function layoutCompatibilityMessage(compatibility: LayoutCompatibility): 
 export function installCompatibilityNotice(compatibility: LayoutCompatibility): void {
   const message = layoutCompatibilityMessage(compatibility)
   if (message === null || typeof document === 'undefined') return
+  document.querySelector('[data-mobile-compatibility-notice]')?.remove()
   const bar = document.createElement('div')
   bar.setAttribute('role', 'status')
   bar.setAttribute('data-mobile-compatibility-notice', '')

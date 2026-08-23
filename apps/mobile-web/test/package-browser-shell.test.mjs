@@ -10,7 +10,9 @@ test('mobile-web build does not package a browser Product Client shell', async (
 test('mobile shell re-evaluates viewport on tunnel and same-origin breakpoint changes', async () => {
   const source = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /const responsiveOptions/)
-  assert.match(source, /viewportWidth: readViewportWidth\(\)/)
+  assert.match(source, /const viewportWidth = \(\): number => readViewportWidth\(native \? \{ preferNarrow: true \} : undefined\)/)
+  assert.match(source, /viewportWidth: viewportWidth\(\)/)
+  assert.match(source, /if \(!shellMounted && responsiveSelection !== null\)/)
   assert.match(source, /if \(sameOriginManifest !== null\)/)
   assert.match(source, /void bootDshShell\(selection\)/)
   assert.match(source, /selection\.fallbackOfficial/)

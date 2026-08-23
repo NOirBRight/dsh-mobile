@@ -211,6 +211,7 @@ void (async () => {
   own(() => appUrlListener.remove())
 
   const native = Capacitor.isNativePlatform()
+  const viewportWidth = (): number => readViewportWidth(native ? { preferNarrow: true } : undefined)
   if (native) purgeLegacyAndroidWebCredentials(localStorage)
   const bridges = claimShellNativeBridges(native)
   const clientDeviceName = await resolveClientDeviceName(bridges.deviceIdentity)
@@ -232,7 +233,7 @@ void (async () => {
       if (manifest !== null) {
         sameOriginManifest = manifest
         responsiveSelection = selectResponsiveBootManifest(manifest, {
-          viewportWidth: readViewportWidth(),
+          viewportWidth: viewportWidth(),
           narrowContractAvailable: officialNarrowContractAvailable(manifest),
         })
         ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = responsiveSelection.manifest
@@ -609,7 +610,7 @@ void (async () => {
           ? next.profile.presentation.mobileLayoutFailedRev
           : undefined
         const selection = await injectBootManifestFromTunnel(client, {
-          viewportWidth: readViewportWidth(),
+          viewportWidth: viewportWidth(),
           expectedOfficialLayoutRevision,
           failedMobileLayoutRevision,
           localizePlugins: native,
@@ -635,7 +636,7 @@ void (async () => {
           ? next.profile.presentation.mobileLayoutFailedRev
           : undefined
         return hydrateBootManifestFromCache(next.profile.hostId, {
-          viewportWidth: readViewportWidth(),
+          viewportWidth: viewportWidth(),
           localizePlugins: native,
           sessionEnhancementPreference,
           failedMobileLayoutRevision,
@@ -695,7 +696,7 @@ void (async () => {
   const handleViewportChange = (): void => {
     if (sameOriginManifest !== null) {
       const selection = selectResponsiveBootManifest(sameOriginManifest, {
-        viewportWidth: readViewportWidth(),
+        viewportWidth: viewportWidth(),
         narrowContractAvailable: officialNarrowContractAvailable(sameOriginManifest),
       })
       ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = selection.manifest
@@ -707,7 +708,7 @@ void (async () => {
   }
   media.addEventListener('change', handleViewportChange)
   own(() => media.removeEventListener('change', handleViewportChange))
-  if (!shellMounted) {
+  if (!shellMounted && responsiveSelection !== null) {
     await bootDshShell(responsiveSelection)
   }
 })()
