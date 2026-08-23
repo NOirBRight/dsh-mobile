@@ -11,7 +11,7 @@ DSH_HOME="$DSH_HOME" npm run build
 
 `npm run build` compiles the pairing plugin and the mobile web shell used by the Android package. It does not install a Host-side browser shell. The mobile shell must compile against a Host-compatible client checkout: set `DSH_UPSTREAM` (default: sibling `dsh-wt-02` if present, otherwise `deepseek-harness`). The default sibling `deepseek-harness` tree is not sufficient when it still contains static Host plugin modules such as `@deepseek-ai/dsh-client-ui-attachment`.
 
-Build the Android package with `npm run android:sync -w @dsh-mobile/mobile-web` followed by `npm run android:debug -w @dsh-mobile/mobile-web`. The debug APK is written to `apps/mobile-web/android/app/build/outputs/apk/debug/app-debug.apk`. Release signing remains an operator responsibility.
+Build the Android package with `npm run android:sync -w @dsh-mobile/mobile-web` followed by `npm run android:debug -w @dsh-mobile/mobile-web`. The debug APK is written to `apps/mobile-web/android/app/build/outputs/apk/debug/app-debug.apk`. Signed release builds use `npm run android:release -w @dsh-mobile/mobile-web`; operator keystore and `signing.properties` live under `~/.config/dsh-mobile/` (see `apps/mobile-web/android/signing.properties.example`).
 
 Install `cloudflared` from Cloudflare's official distribution when using Temporary Endpoint mode. No Cloudflare account or provider API credential is used. Set `cloudflaredPath` explicitly when it is not on `PATH`.
 

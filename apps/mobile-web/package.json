@@ -18,7 +18,8 @@
     "watch": "vite build --watch",
     "android:copy": "npm run build && cap copy android && node scripts/package-android-layout.mjs",
     "android:sync": "npm run build && cap sync android && node scripts/package-android-layout.mjs",
-    "android:debug": "bash android/build-debug.sh"
+    "android:debug": "bash android/build-debug.sh",
+    "android:release": "bash android/build-release.sh"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

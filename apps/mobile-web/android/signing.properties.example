@@ -1,0 +1,5 @@
+# Copy to signing.properties (gitignored) or symlink from ~/.config/dsh-mobile/android-signing.properties
+storeFile=/home/noirbright/.config/dsh-mobile/android-release.keystore
+storePassword=REPLACE_ME
+keyAlias=dsh-mobile-release
+keyPassword=REPLACE_ME
