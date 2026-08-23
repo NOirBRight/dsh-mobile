@@ -496,6 +496,12 @@ export interface ConnectionIndicatorPresentation {
   color: string
 }
 
+/** True while transport failures are being retried without user action. */
+export function isPassiveConnectionRetry(activity: TunnelManagerActivity): boolean {
+  return activity.phase === 'retry-wait'
+    || (activity.phase === 'connecting' && activity.reconnecting && activity.attempt >= 3)
+}
+
 /** Pure state presentation shared by the drawer dot and floating cached-shell hint. */
 export function connectionIndicatorPresentation(
   status: TunnelState | TunnelManagerActivity,
@@ -513,8 +519,7 @@ export function connectionIndicatorPresentation(
     }
   }
   const passiveRetry = typeof status !== 'string'
-    && (status.phase === 'retry-wait'
-      || (status.phase === 'connecting' && status.reconnecting && status.attempt >= 3))
+    && isPassiveConnectionRetry(status)
   if (passiveRetry) {
     const title = '连接中断，后台自动重试'
     return {

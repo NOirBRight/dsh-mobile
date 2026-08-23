@@ -15,7 +15,7 @@ import { activateHostProfile, completeProfileOnboarding, removeHostProfile } fro
 import { connectionRecoveryDecision, endpointRefreshRequired } from './reconnect-recovery.ts'
 import { BrowserProfileStorage, ProfileRepository } from './profiles.ts'
 import { prepareDshClientBoot } from './dsh-boot.ts'
-import { connectionRecoveryNotice, connectionRouteLabel, coreLiveDataReadiness, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type LiveDataReadiness, type TunnelManagerActivity } from './tunnel.ts'
+import { connectionRecoveryNotice, connectionRouteLabel, coreLiveDataReadiness, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, isPassiveConnectionRetry, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type LiveDataReadiness, type TunnelManagerActivity } from './tunnel.ts'
 import { HostSession } from './host-session.ts'
 import { mountFirstRunScreen } from './first-run-screen.ts'
 import { mountHostProfileMenu, type DeviceConnectionSummary } from './host-profile-menu.ts'
@@ -447,13 +447,18 @@ void (async () => {
         routeLine.textContent = '当前路径：' + route
         wrap.append(routeLine)
       }
-      if (lastError !== '') {
+      if (lastError !== '' && !isPassiveConnectionRetry(activity)) {
         const diagnostic = document.createElement('pre')
         diagnostic.style.cssText = 'white-space:pre-wrap;color:#b91c1c'
         diagnostic.textContent = /credential is missing/i.test(lastError)
           ? '登录凭证已丢失，请重新扫描 Host 二维码配对。'
           : lastError
         wrap.append(diagnostic)
+      } else if (isPassiveConnectionRetry(activity)) {
+        const retry = document.createElement('div')
+        retry.style.cssText = 'margin-top:.75em;opacity:.75'
+        retry.textContent = '连接中断，正在自动重试…'
+        wrap.append(retry)
       }
       if (endpointRefreshAvailable) {
         const box = document.createElement('div')

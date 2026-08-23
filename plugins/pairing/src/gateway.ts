@@ -74,9 +74,10 @@ export function createHostGateway(options: HostGatewayOptions): HostGateway {
     const seat = match[1] + ':' + match[2]
     const occupant = occupied.get(seat)
     if (occupant !== undefined && (occupant.readyState === 0 || occupant.readyState === 1)) {
-      socket.write(['HTTP/1.1 409 Conflict', 'connection: close', '', ''].join('\r\n'))
-      socket.destroy()
-      return
+      sockets.delete(occupant)
+      occupant.close(1000, 'seat replaced')
+      occupant.terminate()
+      if (occupied.get(seat) === occupant) occupied.delete(seat)
     }
     wss.handleUpgrade(req, socket, head, ws => {
       sockets.add(ws)
