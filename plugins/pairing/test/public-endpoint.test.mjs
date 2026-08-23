@@ -38,8 +38,26 @@ test('custom endpoint checks validate HTTP identity/capabilities then WebSocket 
     },
     openWebSocket: async (url) => { opened.push(url); return { close() {} } },
   })
-  assert.deepEqual(result, { ok: true, stage: 'ready', hostIdentity: 'host-key', capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true } })
+  assert.deepEqual(result, { ok: true, stage: 'ready', hostIdentity: 'host-key', hostIdentities: ['host-key'], capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true } })
   assert.deepEqual(opened, ['wss://host.example/signal/check'])
+})
+
+test('custom endpoint checks keep every Host listed on a shared Public Endpoint', async () => {
+  const result = await checkCustomEndpoint('https://pair.example', {
+    fetch: async () => ({
+      ok: true, status: 200,
+      json: async () => ({
+        protocol: 1, hostIdentity: 'daily',
+        hostIdentities: ['lab', 'daily'],
+        capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true },
+      }),
+    }),
+    openWebSocket: async () => ({ close() {} }),
+  })
+  assert.deepEqual(result, {
+    ok: true, stage: 'ready', hostIdentity: 'daily', hostIdentities: ['daily', 'lab'],
+    capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true },
+  })
 })
 
 test('custom endpoint checks reject a retired browser capability', async () => {

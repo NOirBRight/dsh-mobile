@@ -44,8 +44,13 @@ try {
   secondClient.send(Buffer.from('independent-room'))
   assert.equal(String((await secondGot)[0]), 'independent-room')
 
-  const intruder = new WebSocket(url(room, 'client'))
-  assert.equal(await closeCode(intruder), 4409)
+  const previousClientClosed = closeCode(client)
+  const replacement = await open(url(room, 'client'))
+  const previousCode = await previousClientClosed
+  assert.ok(previousCode === 4409 || previousCode === 1006, 'replaced occupant must drop, got ' + previousCode)
+  const replacedGot = once(host, 'message')
+  replacement.send(Buffer.from([2, 2, 2]))
+  assert.deepEqual(Buffer.from((await replacedGot)[0]), Buffer.from([2, 2, 2]))
   await assert.rejects(once(new WebSocket(url(room, 'spy')), 'open'))
   await assert.rejects(once(new WebSocket('ws://127.0.0.1:' + PORT + '/r/short?role=host'), 'open'))
 
@@ -57,7 +62,7 @@ try {
   large.send(Buffer.alloc(300 * 1024))
   assert.equal(await closeCode(large), 1009)
 
-  client.close(); host.close(); secondClient.close(); secondHost.close()
+  replacement.close(); host.close(); secondClient.close(); secondHost.close()
   console.log('ALL OPAQUE RELAY TESTS PASSED')
 } finally {
   proc.kill()

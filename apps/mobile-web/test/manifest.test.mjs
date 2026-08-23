@@ -104,6 +104,7 @@ test('detects the official narrow slot contract and names visible compatibility 
   assert.equal(layoutCompatibilityMessage('compatible'), null)
   assert.match(layoutCompatibilityMessage('revision-mismatch'), /布局版本/)
   assert.match(layoutCompatibilityMessage('missing-contract'), /官方布局/)
+  assert.match(layoutCompatibilityMessage('layout-load-failed'), /窄屏布局加载失败/)
 })
 
 test('falls back to the official root when the narrow slot contract is missing', () => {
@@ -117,6 +118,31 @@ test('falls back to the official root when the narrow slot contract is missing',
   assert.equal(selected.compatibility, 'missing-contract')
   assert.equal(selected.manifest.entries[0], official)
 })
+
+test('retries the narrow layout until a remembered failed official revision still matches', () => {
+  const official = { id: DESKTOP_LAYOUT_ID, url: '/plugins/official.js', rev: 'host-layout', inject: [] }
+  const host = { rev: 'host', entries: [official] }
+
+  const remembered = selectResponsiveBootManifest(host, {
+    viewportWidth: 320,
+    failedMobileLayoutRevision: 'host-layout',
+  })
+  assert.equal(remembered.layout, 'official')
+  assert.equal(remembered.compatibility, 'layout-load-failed')
+  assert.equal(remembered.manifest.entries[0], official)
+  assert.equal(remembered.fallbackOfficial, undefined)
+
+  const recovered = selectResponsiveBootManifest(host, {
+    viewportWidth: 320,
+    failedMobileLayoutRevision: 'older-host-layout',
+  })
+  assert.equal(recovered.layout, 'narrow')
+  assert.equal(recovered.compatibility, 'compatible')
+  assert.equal(recovered.fallbackOfficial?.layout, 'official')
+  assert.equal(recovered.fallbackOfficial?.compatibility, 'layout-load-failed')
+  assert.equal(recovered.fallbackOfficial?.officialLayoutRevision, 'host-layout')
+})
+
 
 test('localizes host plugin scripts while keeping the packaged mobile layout', async () => {
   const manifest = {

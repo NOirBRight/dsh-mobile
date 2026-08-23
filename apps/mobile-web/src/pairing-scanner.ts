@@ -1,5 +1,5 @@
 /** Native QR acquisition boundary for Android automatic pairing. */
-import { parseOffer } from '@dsh-mobile/e2e-tunnel'
+import { parseOffer, TunnelError } from '@dsh-mobile/e2e-tunnel'
 import { claimedNativeBridges, concealShellNativeBridges } from './native-bridges.ts'
 
 export interface BarcodeScanResult { ScanResult: string }
@@ -36,7 +36,10 @@ export async function scanPairingQr(scan: ScanBarcode = scanNativeQr, ensurePerm
   if (result === '') throw new Error('pairing scan cancelled')
   try {
     parseOffer(result)
-  } catch {
+  } catch (error) {
+    if (error instanceof TunnelError && error.code === 'expired') {
+      throw new Error('二维码已过期，请等电脑画面更新后再扫')
+    }
     throw new Error('QR code is not a valid DSH pairing code')
   }
   return result

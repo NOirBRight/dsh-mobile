@@ -69,17 +69,20 @@ function joinRoom(roomId, role, ws) {
     room = { host: null, client: null, emptySince: 0 }
     rooms.set(roomId, room)
   }
-  if (room[role] !== null) {
-    ws.close(4409, 'room role occupied')
-    return
-  }
+  const previous = room[role]
   room[role] = ws
   room.emptySince = 0
   sockets.add(ws)
-  ws.meta = { roomId, role, alive: true, bytes: 0, byteResetAt: Date.now() + 60_000 }
+  ws.meta = { roomId, role, lastSeen: Date.now(), bytes: 0, byteResetAt: Date.now() + 60_000 }
+  if (previous !== null && previous !== ws) {
+    sockets.delete(previous)
+    previous.close(4409, 'room role replaced')
+    previous.terminate()
+  }
 
-  ws.on('pong', () => { ws.meta.alive = true })
+  ws.on('pong', () => { ws.meta.lastSeen = Date.now() })
   ws.on('message', (data, isBinary) => {
+    ws.meta.lastSeen = Date.now()
     // Official Relay carries only opaque binary tunnel frames. It must never
     // become a generic text/signaling or HTTP proxy by accident.
     if (!isBinary) {
@@ -122,12 +125,11 @@ const reaper = setInterval(() => {
   for (const [roomId, room] of rooms) {
     for (const role of ['host', 'client']) {
       const ws = room[role]
-      if (ws === null) continue
-      if (!ws.meta.alive) {
-        ws.terminate()
-        continue
-      }
-      ws.meta.alive = false
+      if (ws === null || ws.readyState !== WebSocket.OPEN) continue
+      // Ping keeps NAT/load-balancer mappings alive. Missed pongs never
+      // evict a seat: phones and carrier proxies often swallow ping/pong
+      // while the TCP session is still the live one. A later join for the
+      // same role replaces a zombie; TCP close still clears a real hangup.
       ws.ping()
     }
     if (room.host === null && room.client === null && room.emptySince > 0 && now - room.emptySince > EMPTY_ROOM_TTL_MS) {

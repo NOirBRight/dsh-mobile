@@ -7,17 +7,16 @@ export interface PreferenceStorage {
   setItem(key: string, value: string): void
 }
 
-/** Core compatibility is fail-closed and remains the default until the user opts in. */
-export function readSessionEnhancementPreference(storage: PreferenceStorage): SessionEnhancementPreference {
-  try { return storage.getItem(SESSION_ENHANCEMENT_PREFERENCE_KEY) === 'enhanced' ? 'enhanced' : 'compatible' }
-  catch { return 'compatible' }
+/** Runtime Patch / Session Hydration exited the product. Preference is Core-only. */
+export function readSessionEnhancementPreference(_storage: PreferenceStorage): SessionEnhancementPreference {
+  return 'compatible'
 }
 
 export function writeSessionEnhancementPreference(
   storage: PreferenceStorage,
-  preference: SessionEnhancementPreference,
+  _preference: SessionEnhancementPreference,
 ): void {
-  storage.setItem(SESSION_ENHANCEMENT_PREFERENCE_KEY, preference)
+  storage.setItem(SESSION_ENHANCEMENT_PREFERENCE_KEY, 'compatible')
 }
 
 export function enhancementDisclosure(

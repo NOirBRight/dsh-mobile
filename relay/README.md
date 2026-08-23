@@ -8,7 +8,8 @@ proxies HTTP/WebSocket traffic to a Host.
 - HTTP: GET /healthz
 - WebSocket: /r/<32 lowercase-hex room>?role=host|client
 - one Host and one Client seat per room; many rooms per Relay
-- duplicate role: close 4409
+- a later join for the same role replaces the previous occupant (close 4409)
+- ping keeps NAT mappings alive; missed pongs never evict a seat
 - text frames: close 4400
 - frame cap: 256 KiB by default
 - idle empty rooms are garbage-collected; no queue or replay

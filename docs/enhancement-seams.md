@@ -25,7 +25,7 @@
 | # | 依赖 | 位置 | 风险 |
 |---|------|------|------|
 | 5 | 顶栏动作区顺序/紧凑文案：CSS 用 `[class*="headerActions"]`、`[class*="count"]` 等子串匹配官方 CSS-module 哈希类名 | `packages/ui-layout-mobile/src/client/MobileFrame.module.css` | 官方改类名/结构即静默失效（已发生过一次：display:contents 被同特异性后写规则击败） |
-| 6 | "子代""命令"文案靠 `::after` content 注入 | 同上 | 官方改 DOM（span 包层变化）即失效，且无视觉回退 |
+| 6 | "子代""后台任务"文案靠 `::after` content 注入 | 同上 | 官方改 DOM（span 包层变化）即失效，且无视觉回退 |
 | 7 | 官方 DOM 几何（顶栏、抽屉、tab 顺序）断言 | `apps/mobile-web/test/fixtures/mobile-layout/fixture.tsx` + `mobile-layout.test.mjs` | 这是**好**的解耦：fixture 即契约。但 fixture 与真实上游组件的同步靠手工 |
 
 建议：

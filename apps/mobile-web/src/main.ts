@@ -12,8 +12,6 @@ import { installCompatibilityNotice, loadSameOriginMobileBootManifest, NARROW_LA
 import { scanPairingQr } from './pairing-scanner.ts'
 import { prepareProfileConnection, type PreparedProfileConnection } from './profile-connection.ts'
 import { activateHostProfile, completeProfileOnboarding, removeHostProfile } from './profile-lifecycle.ts'
-import { enhancementDisclosure, readSessionEnhancementPreference, writeSessionEnhancementPreference } from './enhancement-preference.ts'
-import { prepareSessionHydration, type PreparedSessionHydration } from './session-hydration.ts'
 import { connectionRecoveryDecision, endpointRefreshRequired } from './reconnect-recovery.ts'
 import { BrowserProfileStorage, ProfileRepository } from './profiles.ts'
 import { prepareDshClientBoot } from './dsh-boot.ts'
@@ -21,6 +19,7 @@ import { connectionRecoveryNotice, connectionRouteLabel, coreLiveDataReadiness, 
 import { HostSession } from './host-session.ts'
 import { mountFirstRunScreen } from './first-run-screen.ts'
 import { mountHostProfileMenu, type DeviceConnectionSummary } from './host-profile-menu.ts'
+import { inspectChromeAnchors } from './anchors.ts'
 import type { ScanSurface } from './scan-surface.ts'
 
 const root = document.getElementById('root')
@@ -29,15 +28,64 @@ const el: HTMLElement = root
 document.documentElement.dataset.dshSurface = 'mobile'
 let webEntry: AppWebEntry | null = null
 
-async function bootDshShell(selection: ResponsiveBootSelection | null): Promise<void> {
-  await webEntry?.dispose()
-  webEntry = null
-  if (selection !== null) await prepareDshClientBoot(selection.manifest)
-  el.replaceChildren()
-  if (selection !== null) installCompatibilityNotice(selection.compatibility)
-  concealShellNativeBridges()
-  webEntry = new AppWebEntry(el)
-  await webEntry.run()
+const MOBILE_ACTION_STYLE_ID = 'dsh-mobile-shell-action-style'
+const MOBILE_ACTION_STYLE = `
+[data-mobile-shell-action] {
+  box-sizing: border-box;
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1px solid var(--dsw-alias-border-l1, ButtonBorder);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2, Canvas);
+  color: var(--dsw-alias-label-primary, CanvasText);
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-mobile-shell-action]:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover, ButtonFace);
+}
+
+[data-mobile-shell-action]:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+
+[data-mobile-shell-action]:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary, Highlight);
+  outline-offset: 2px;
+}
+`
+
+function installMobileActionStyles(): void {
+  if (document.getElementById(MOBILE_ACTION_STYLE_ID) !== null) return
+  const style = document.createElement('style')
+  style.id = MOBILE_ACTION_STYLE_ID
+  style.textContent = MOBILE_ACTION_STYLE
+  ;(document.head ?? document.documentElement).append(style)
+}
+
+async function bootDshShell(selection: ResponsiveBootSelection | null): Promise<ResponsiveBootSelection | null> {
+  try {
+    await webEntry?.dispose()
+    webEntry = null
+    if (selection !== null) await prepareDshClientBoot(selection.manifest)
+    el.replaceChildren()
+    if (selection !== null) installCompatibilityNotice(selection.compatibility)
+    concealShellNativeBridges()
+    webEntry = new AppWebEntry(el)
+    await webEntry.run()
+    const health = inspectChromeAnchors()
+    if (!health.ok) console.warn('[dsh-mobile]', health.message, health.missing.join(','))
+    return selection
+  } catch (error) {
+    if (selection?.layout === 'narrow' && selection.fallbackOfficial !== undefined) {
+      console.warn('[dsh-mobile] mobile layout failed, falling back to official', error)
+      return bootDshShell(selection.fallbackOfficial)
+    }
+    throw error
+  }
 }
 
 function validOfferUrl(value: string): string | null {
@@ -45,8 +93,9 @@ function validOfferUrl(value: string): string | null {
 }
 
 async function waitForScanRetry(message: string): Promise<void> {
+  installMobileActionStyles()
   el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">' +
-    message + '<br/><button id="scan-pairing" style="margin-top:1.5em;padding:.8em 1.4em">重新扫码</button></div>'
+    message + '<br/><button id="scan-pairing" data-mobile-shell-action style="margin-top:1.5em">重新扫码</button></div>'
   await new Promise<void>(resolve => document.getElementById('scan-pairing')?.addEventListener('click', () => resolve(), { once: true }))
 }
 
@@ -64,9 +113,12 @@ async function scanUntilPaired(surface: ScanSurface = rootScanSurface): Promise<
   let automatic = true
   while (true) {
     await surface.show('正在打开相机扫描配对二维码…')
-    try { return await scanPairingQr() } catch {
+    try { return await scanPairingQr() } catch (error) {
+      const reason = error instanceof Error ? error.message : ''
       await surface.show(
-        automatic ? '没有识别到有效的 DSH 配对二维码' : '扫码失败，请对准 Host 二维码重试',
+        /过期|expired/i.test(reason)
+          ? '二维码已过期，请等电脑画面更新后再扫'
+          : automatic ? '没有识别到有效的 DSH 配对二维码' : '扫码失败，请对准 Host 二维码重试',
         '重新扫码',
       )
       automatic = false
@@ -97,7 +149,6 @@ async function showProfileMenu(
   repository: ProfileRepository,
   onActiveHostChanged: () => Promise<void>,
   onProfilesEmpty: () => Promise<void>,
-  onEnhancementChange: (preference: import('./manifest.ts').SessionEnhancementPreference) => Promise<void>,
   onBackgroundConnectionChange: (enabled: boolean) => Promise<void>,
   onPairOffer: (offerUrl: string) => Promise<void>,
   connection: () => DeviceConnectionSummary,
@@ -109,10 +160,9 @@ async function showProfileMenu(
     profiles,
     active,
     connection: connection(),
-    enhancement: connection().enhancement,
     backgroundConnection: connection().backgroundConnection,
-    onEnhancementChange,
     onBackgroundConnectionChange,
+    chromeHealth: inspectChromeAnchors(),
     onActivate: hostId => activateHostProfile(hostId, {
       setActive: id => repository.setActiveHost(id),
       reconnect: onActiveHostChanged,
@@ -135,6 +185,7 @@ async function showProfileMenu(
     },
     onScan: async (surface) => {
       const offer = await scanUntilPaired(surface)
+      menu?.close()
       await onPairOffer(offer)
     },
   })
@@ -168,9 +219,7 @@ void (async () => {
   let backgroundConnectionEnabled = native && readBackgroundConnectionPreference(localStorage)
   const vault = createVault(native, bridges.vault)
   const repository = new ProfileRepository(new BrowserProfileStorage(), vault)
-  let sessionEnhancementPreference = readSessionEnhancementPreference(localStorage)
-  let hydration: PreparedSessionHydration | null = null
-  let enhancementState: NonNullable<ResponsiveBootSelection['enhancement']> = { status: 'core' }
+  const sessionEnhancementPreference = 'compatible' as const
   let scannedOffer = offerFromCurrentHash()
   let sameOriginBoot = false
   setSameOriginHostBridgeCapability(false)
@@ -251,7 +300,6 @@ void (async () => {
   let session: HostSession | null = null
   own(async () => {
     session?.stop()
-    await hydration?.dispose()
     await webEntry?.dispose()
   })
   let shellMounted = false
@@ -290,11 +338,7 @@ void (async () => {
     own(() => document.removeEventListener('dsh:live-data-state', handleLiveDataState))
     own(() => document.removeEventListener('dsh:live-data-ready', handleLiveDataReady))
     own(installProfileAction(() => {
-      void showProfileMenu(repository, reconnectActiveHost, enterOnboardingAfterRemoval, async preference => {
-        writeSessionEnhancementPreference(localStorage, preference)
-        sessionEnhancementPreference = preference
-        await reconnectActiveHost()
-      }, async enabled => {
+      void showProfileMenu(repository, reconnectActiveHost, enterOnboardingAfterRemoval, async enabled => {
         await backgroundConnection.setEnabled(enabled)
         backgroundConnectionEnabled = enabled
         writeBackgroundConnectionPreference(localStorage, enabled)
@@ -302,10 +346,6 @@ void (async () => {
         state,
         route,
         profile: activeConnection.profile,
-        enhancement: {
-          preference: sessionEnhancementPreference,
-          disclosure: enhancementDisclosure(enhancementState),
-        },
         ...(native ? { backgroundConnection: { enabled: backgroundConnectionEnabled } } : {}),
       }))
     }))
@@ -380,7 +420,8 @@ void (async () => {
                   await session?.connect(activeConnection)
                   markTransportReady()
                 } catch (error) {
-                  lastError = 'Endpoint Refresh: ' + (error instanceof Error ? error.message : 'unknown error')
+                  lastError = error instanceof Error ? error.message : 'unknown error'
+                  endpointRefreshAvailable ||= endpointRefreshRequired(activeConnection.profile.endpoint.kind, lastError)
                   render()
                 }
               })()
@@ -417,11 +458,13 @@ void (async () => {
         const box = document.createElement('div')
         box.style.marginTop = '1.5em'
         const hint = document.createElement('div')
-        hint.textContent = 'Host 的临时 Public Endpoint 可能已轮换。'
+        hint.textContent = '电脑连接地址已失效，请重新扫码。'
+        installMobileActionStyles()
         const refresh = document.createElement('button')
         refresh.id = 'endpoint-refresh'
-        refresh.style.cssText = 'margin-top:.8em;padding:.8em 1.4em'
-        refresh.textContent = '扫描 Endpoint Refresh'
+        refresh.setAttribute('data-mobile-shell-action', '')
+        refresh.style.marginTop = '.8em'
+        refresh.textContent = '重新扫码'
         box.append(hint, refresh)
         wrap.append(box)
       }
@@ -430,6 +473,8 @@ void (async () => {
         const button = event.currentTarget as HTMLButtonElement
         button.disabled = true
         session?.stop()
+        endpointRefreshAvailable = false
+        lastError = ''
         const offerUrl = await scanUntilPaired()
         el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">正在更新临时 Endpoint…</div>'
         try {
@@ -438,7 +483,8 @@ void (async () => {
           await session?.connect(activeConnection)
           markTransportReady()
         } catch (error) {
-          lastError = 'Endpoint Refresh: ' + (error instanceof Error ? error.message : 'unknown error')
+          lastError = error instanceof Error ? error.message : 'unknown error'
+          endpointRefreshAvailable ||= endpointRefreshRequired(activeConnection.profile.endpoint.kind, lastError)
           render()
         }
       }, { once: true })
@@ -514,6 +560,7 @@ void (async () => {
         return new TunnelManager({
           offerUrl: next.offerUrl,
           connectionPolicy: next.profile.connectionPolicy,
+          endpointKind: next.profile.endpoint.kind,
           deviceLabel: clientDeviceName,
           clientType: 'android',
           deferHeartbeat: true,
@@ -548,11 +595,6 @@ void (async () => {
               lastError = nextActivity.error
               const recovery = connectionRecoveryDecision(next.profile.endpoint.kind, nextActivity.phase, lastError)
               endpointRefreshAvailable ||= recovery === 'endpoint'
-              if (nextActivity.phase === 'retry-wait' && recovery !== null) {
-                session?.stop()
-                activity = { phase: 'terminal', attempt: nextActivity.attempt, route: nextActivity.route, error: lastError }
-                state = 'closed'
-              }
             }
             updateBadge(activity, route, shellMounted, liveDataReady)
             render()
@@ -563,9 +605,13 @@ void (async () => {
         const expectedOfficialLayoutRevision = typeof next.profile.presentation.officialLayoutRevision === 'string'
           ? next.profile.presentation.officialLayoutRevision
           : undefined
+        const failedMobileLayoutRevision = typeof next.profile.presentation.mobileLayoutFailedRev === 'string'
+          ? next.profile.presentation.mobileLayoutFailedRev
+          : undefined
         const selection = await injectBootManifestFromTunnel(client, {
           viewportWidth: readViewportWidth(),
           expectedOfficialLayoutRevision,
+          failedMobileLayoutRevision,
           localizePlugins: native,
           hostId: next.profile.hostId,
           sessionEnhancementPreference,
@@ -574,38 +620,38 @@ void (async () => {
           const latest = await repository.getActive() ?? next.profile
           await repository.upsert({
             ...latest,
-            presentation: { ...latest.presentation, officialLayoutRevision: selection.officialLayoutRevision },
+            presentation: {
+              ...latest.presentation,
+              officialLayoutRevision: selection.officialLayoutRevision,
+              mobileLayoutFailedRev: null,
+            },
             updatedAt: new Date().toISOString(),
           })
         }
         return selection
       },
       async hydrateBoot(next) {
+        const failedMobileLayoutRevision = typeof next.profile.presentation.mobileLayoutFailedRev === 'string'
+          ? next.profile.presentation.mobileLayoutFailedRev
+          : undefined
         return hydrateBootManifestFromCache(next.profile.hostId, {
           viewportWidth: readViewportWidth(),
           localizePlugins: native,
           sessionEnhancementPreference,
+          failedMobileLayoutRevision,
         })
       },
-      async mount(selection, hostId) {
-        responsiveSelection = selection
-        enhancementState = selection.enhancement ?? { status: 'core' }
-        await hydration?.dispose()
-        hydration = null
-        delete (globalThis as typeof globalThis & { __DSH_MOBILE_SESSION_HYDRATION__?: unknown }).__DSH_MOBILE_SESSION_HYDRATION__
-        if (enhancementState.status === 'enabled') {
-          const preparedHydration = await prepareSessionHydration({
-            hostId,
-            legacyStorage: localStorage,
-            allowLegacyMigration: (await repository.list()).length === 1,
+      async mount(selection, _hostId) {
+        const booted = await bootDshShell(selection)
+        responsiveSelection = booted
+        if (booted?.compatibility === 'layout-load-failed') {
+          const latest = await repository.getActive() ?? activeConnection.profile
+          await repository.upsert({
+            ...latest,
+            presentation: { ...latest.presentation, mobileLayoutFailedRev: booted.officialLayoutRevision },
+            updatedAt: new Date().toISOString(),
           })
-          hydration = preparedHydration
-          ;(globalThis as typeof globalThis & { __DSH_MOBILE_SESSION_HYDRATION__?: unknown }).__DSH_MOBILE_SESSION_HYDRATION__ = {
-            adapter: preparedHydration.adapter,
-            dispose: () => preparedHydration.dispose(),
-          }
         }
-        await bootDshShell(selection)
         shellMounted = true
         if (!supportsLiveDataReadiness(document.documentElement.dataset)) {
           liveDataReady = coreLiveDataReadiness(transportReady, shellMounted)

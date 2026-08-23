@@ -14,8 +14,12 @@ export async function startFakeRelay() {
     if (!match || (role !== 'host' && role !== 'client')) { ws.close(4400); return }
     let room = rooms.get(match[1])
     if (!room) { room = { host: null, client: null }; rooms.set(match[1], room) }
-    if (room[role]) { ws.close(4409); return }
+    const previous = room[role]
     room[role] = ws
+    if (previous && previous !== ws) {
+      previous.close(4409)
+      previous.terminate()
+    }
     ws.on('message', (data, isBinary) => {
       const peer = room[role === 'host' ? 'client' : 'host']
       if (peer && peer.readyState === peer.OPEN) peer.send(data, { binary: isBinary })

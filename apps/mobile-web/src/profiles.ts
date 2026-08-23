@@ -221,15 +221,6 @@ export class ProfileRepository {
     }
     if (!isHostProfile(profile)) throw new Error('invalid HostProfile')
     const document = await this.#load()
-    const endpointOwner = Object.values(document.profiles).find(
-      saved => saved.endpoint.url === profile.endpoint.url
-        && saved.hostId !== profile.hostId
-        && saved.endpoint.kind !== 'relay'
-        && profile.endpoint.kind !== 'relay',
-    )
-    if (endpointOwner !== undefined) {
-      throw new HostIdentityMismatchError(endpointOwner.hostId, profile.hostId, profile.endpoint.url)
-    }
     const credentialOwner = Object.values(document.profiles).find(
       saved => saved.credentialRef === profile.credentialRef && saved.hostId !== profile.hostId,
     )
@@ -328,15 +319,6 @@ export class ProfileRepository {
       updatedAt: refresh.updatedAt,
     }
     if (!isHostProfile(refreshed)) throw new Error('invalid Endpoint Refresh')
-    const endpointOwner = Object.values(document.profiles).find(
-      saved => saved.endpoint.url === refreshed.endpoint.url
-        && saved.hostId !== hostId
-        && saved.endpoint.kind !== 'relay'
-        && refreshed.endpoint.kind !== 'relay',
-    )
-    if (endpointOwner !== undefined) {
-      throw new HostIdentityMismatchError(endpointOwner.hostId, hostId, refreshed.endpoint.url)
-    }
     document.profiles[hostId] = refreshed
     await this.#storage.save(document)
     return copy(refreshed)

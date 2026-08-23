@@ -13,6 +13,12 @@ test('mobile layout does not paginate older history during session changes', asy
   assert.doesNotMatch(source, /history-prefetch|loadOlder/, 'session changes must not start background history pagination')
 })
 
+test('narrow composer stats wrap so TTFT remains visible', async () => {
+  const css = await readFile(resolve(import.meta.dirname, '../../../packages/ui-layout-mobile/src/client/MobileFrame.module.css'), 'utf8')
+  assert.match(css, /\[data-composer-card\]\) ~ div/)
+  assert.match(css, /white-space:\s*normal/)
+})
+
 test('mobile drawer closes on navigation and reports its constrained rendered width', async () => {
   const outDir = await mkdtemp(join(tmpdir(), 'dsh-mobile-ui-'))
   try {
@@ -61,7 +67,11 @@ test('mobile drawer closes on navigation and reports its constrained rendered wi
     assert.match(capture('subagent-copy-en') ?? '', /Subs/)
     assert.match(capture('job-copy-en') ?? '', /Jobs/)
     assert.match(capture('subagent-copy-zh') ?? '', /子代/)
-    assert.match(capture('job-copy-zh') ?? '', /命令/)
+    assert.match(capture('job-copy-zh') ?? '', /后台任务/)
+    assert.equal(capture('subagent-copy-display'), 'inline-block')
+    assert.equal(capture('subagent-copy-line-height'), '18px')
+    assert.equal(capture('job-copy-display'), 'inline-block')
+    assert.equal(capture('job-copy-line-height'), '18px')
     assert.match(capture('mode-text') ?? '', /Standard mode/)
     assert.equal(capture('mode-font-size'), '12px')
     assert.equal(capture('mode-max-width'), '82px')

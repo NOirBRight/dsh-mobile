@@ -38,3 +38,17 @@ test('camera QR scan rejects cancellation and unrelated QR content', async () =>
   await assert.rejects(() => scanPairingQr(async () => ({ ScanResult: '' }), async () => {}), /cancelled/)
   await assert.rejects(() => scanPairingQr(async () => ({ ScanResult: 'https://example.com/' }), async () => {}), /not a valid DSH pairing code/)
 })
+
+test('camera QR scan says the Host code expired instead of calling it invalid', async () => {
+  const offer = {
+    v: 4, mode: 'public', protocol: 1,
+    endpoint: 'https://host.example', endpointKind: 'temporary',
+    room: 'a'.repeat(32),
+    pubkey: Buffer.from(new Uint8Array(32).fill(7)).toString('base64url'),
+    code: 'code', exp: Math.floor(Date.now() / 1000) - 10,
+    ice: ['stun:stun.example.com:3478'],
+    capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true },
+  }
+  const url = 'dsh-mobile://pair#offer=' + Buffer.from(JSON.stringify(offer)).toString('base64url')
+  await assert.rejects(() => scanPairingQr(async () => ({ ScanResult: url }), async () => {}), /二维码已过期/)
+})

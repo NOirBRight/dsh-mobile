@@ -241,7 +241,13 @@ function startHostSession(
   /** Answer 413 for an oversized request body and drop the pending state. */
   function refuseBody(id: string): void {
     state.requests.delete(id)
-    sendMsg({ t: 'http-res', id, status: 413, headers: {}, body: '' })
+    sendMsg({
+      t: 'http-res',
+      id,
+      status: 413,
+      headers: { 'content-type': 'text/plain' },
+      body: Buffer.from('request body exceeds ' + MAX_BODY_BYTES + ' bytes').toString('base64'),
+    })
   }
 
   function forwardRequest(id: string): void {
@@ -274,7 +280,13 @@ function startHostSession(
       if (size > MAX_BODY_BYTES) {
         overflow = true
         res.destroy()
-        sendMsg({ t: 'http-res', id, status: 502, headers: {}, body: '' })
+        sendMsg({
+          t: 'http-res',
+          id,
+          status: 502,
+          headers: { 'content-type': 'text/plain' },
+          body: Buffer.from('upstream response exceeds ' + MAX_BODY_BYTES + ' bytes').toString('base64'),
+        })
         return
       }
       chunks.push(chunk)

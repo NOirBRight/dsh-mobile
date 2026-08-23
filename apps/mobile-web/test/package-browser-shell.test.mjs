@@ -13,6 +13,10 @@ test('mobile shell re-evaluates viewport on tunnel and same-origin breakpoint ch
   assert.match(source, /viewportWidth: readViewportWidth\(\)/)
   assert.match(source, /if \(sameOriginManifest !== null\)/)
   assert.match(source, /void bootDshShell\(selection\)/)
+  assert.match(source, /selection\.fallbackOfficial/)
+  assert.match(source, /layout-load-failed/)
+  assert.match(source, /mobileLayoutFailedRev/)
+  assert.match(source, /inspectChromeAnchors\(\)/)
 })
 
 test('mobile Vite alias follows the cross-version public web entry', async () => {

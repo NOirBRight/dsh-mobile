@@ -18,6 +18,8 @@ import { b64encode, concat, utf8Decode, utf8Encode } from '../src/bytes.ts'
 export function startFakeDcHost(dc, opts = {}) {
   const keys = nacl.box.keyPair()
   const expectedCode = opts.expectedCode ?? 'test-code'
+  const maxHttpBodyBytes = opts.maxHttpBodyBytes ?? 8 * 1024 * 1024
+  const advertisedLimit = opts.advertiseMaxHttpBodyBytes === false ? {} : { maxHttpBodyBytes }
   // Shareable across host instances so a deviceToken reconnect can pair on a
   // fresh channel against the same store (the real host's token table
   // outlives any one connection).
@@ -62,9 +64,9 @@ export function startFakeDcHost(dc, opts = {}) {
       if (hello.code === expectedCode) {
         const token = 'tok-' + ++state.tokenCounter
         state.deviceTokens.add(token)
-        ack = { ok: true, deviceToken: token, hostName: 'Noir Workstation' }
+        ack = { ok: true, deviceToken: token, hostName: 'Noir Workstation', ...advertisedLimit }
       } else if (typeof hello.deviceToken === 'string' && state.deviceTokens.has(hello.deviceToken)) {
-        ack = { ok: true, hostName: 'Noir Workstation' }
+        ack = { ok: true, hostName: 'Noir Workstation', ...advertisedLimit }
       } else {
         sendFrame(utf8Encode(JSON.stringify({ error: 'bad-code' })))
         clientPub = null // stay pre-session, like the real host
@@ -86,6 +88,19 @@ export function startFakeDcHost(dc, opts = {}) {
           sendFrame(seal({ t: 'http-res', id: msg.id, status: 200, headers: {} }))
           sendFrame(seal({ t: 'http-data', id: msg.id, data: b64encode(utf8Encode('chunk-1;')), last: false }))
           sendFrame(seal({ t: 'http-data', id: msg.id, data: b64encode(utf8Encode('chunk-2')), last: true }))
+          return
+        }
+        if (msg.path === '/tiny') {
+          sendFrame(seal({
+            t: 'http-res', id: msg.id, status: 200, headers: {},
+            body: b64encode(utf8Encode('ok')),
+          }))
+          return
+        }
+        if (msg.path === '/oversized-chunked') {
+          sendFrame(seal({ t: 'http-res', id: msg.id, status: 200, headers: {} }))
+          sendFrame(seal({ t: 'http-data', id: msg.id, data: b64encode(utf8Encode('12345')), last: false }))
+          sendFrame(seal({ t: 'http-data', id: msg.id, data: b64encode(utf8Encode('67890')), last: true }))
           return
         }
         sendFrame(seal({

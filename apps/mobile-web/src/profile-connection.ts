@@ -78,11 +78,13 @@ export async function prepareProfileConnection(options: PrepareProfileConnection
         const replacement = profileFromOffer(parsed, ref, now())
         try {
           profile = await options.repository.upsert(replacement)
+          profile = await disambiguateDisplayName(options.repository, profile)
         } catch (error) {
           const acknowledged = error instanceof HostIdentityMismatchError
             && await options.acknowledgeIdentityChange?.(error) === true
           if (!acknowledged) throw error
           profile = await options.repository.acknowledgeIdentityChange(error, replacement)
+          profile = await disambiguateDisplayName(options.repository, profile)
         }
       } catch (error) {
         if (ref !== null) await options.vault.delete(ref)
@@ -152,6 +154,16 @@ export async function prepareProfileConnection(options: PrepareProfileConnection
   }
 }
 
+async function disambiguateDisplayName(repository: ProfileRepository, profile: HostProfile): Promise<HostProfile> {
+  const taken = async (name: string) => (await repository.list()).some(item => item.hostId !== profile.hostId && item.displayName === name)
+  if (!await taken(profile.displayName)) return profile
+  let extra: string
+  try { extra = new URL(profile.endpoint.url).host } catch { extra = profile.endpoint.url }
+  const withHost = profile.displayName + ' · ' + extra
+  const unique = await taken(withHost) ? withHost + ' · ' + profile.hostId.slice(0, 6) : withHost
+  return repository.upsert({ ...profile, displayName: unique })
+}
+
 function profileFromOffer(offer: PublicEndpointOffer | RelayOffer, credentialRef: string, now: Date, existing?: HostProfile): HostProfile {
   const timestamp = now.toISOString()
   const relay = offer.mode === 'relay'
@@ -159,7 +171,7 @@ function profileFromOffer(offer: PublicEndpointOffer | RelayOffer, credentialRef
   return {
     schemaVersion: HOST_PROFILE_SCHEMA_VERSION,
     hostId: offer.pubkey,
-    displayName: existing?.displayName ?? new URL(endpointUrl).hostname,
+    displayName: offer.hostName ?? existing?.displayName ?? new URL(endpointUrl).hostname,
     endpoint: { url: endpointUrl, kind: relay ? 'relay' : offer.endpointKind },
     capabilities: relay ? ['tunnel'] : Object.entries(offer.capabilities).filter(([, enabled]) => enabled).map(([name]) => name),
     credentialRef,
@@ -175,14 +187,14 @@ function profileFromOffer(offer: PublicEndpointOffer | RelayOffer, credentialRef
 function offerFromProfile(profile: HostProfile, code: string, now: Date): string {
   const exp = Math.floor(now.getTime() / 1000) + 300
   if (profile.endpoint.kind === 'relay') {
-    const offer: RelayOffer = { v: 2, mode: 'relay', addr: profile.endpoint.url, room: profile.room, pubkey: profile.hostId, code, exp }
+    const offer: RelayOffer = { v: 2, mode: 'relay', addr: profile.endpoint.url, room: profile.room, pubkey: profile.hostId, code, exp, hostName: profile.displayName }
     return 'dsh-mobile://pair#offer=' + b64urlEncode(new TextEncoder().encode(JSON.stringify(offer)))
   }
   const enabled = new Set(profile.capabilities)
   const offer: PublicEndpointOffer = {
     v: 4, mode: 'public', protocol: 1,
     endpoint: profile.endpoint.url, endpointKind: profile.endpoint.kind,
-    room: profile.room, pubkey: profile.hostId, code, exp,
+    room: profile.room, pubkey: profile.hostId, code, exp, hostName: profile.displayName,
     ice: [...profile.ice],
     capabilities: {
       browser: enabled.has('browser'), direct: enabled.has('direct'),

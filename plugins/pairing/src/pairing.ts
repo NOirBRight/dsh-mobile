@@ -5,6 +5,7 @@
  * any server (Paseo's #offer=... pattern).
  */
 import { randomBytes } from 'node:crypto'
+import { compactDisplayName } from '@dsh-mobile/e2e-tunnel'
 
 /** Legacy QR payloads retained only for migration and compatibility. */
 export interface LegacyPairingOfferPayload {
@@ -15,6 +16,8 @@ export interface LegacyPairingOfferPayload {
   pubkey: string
   code: string
   exp: number
+  /** Human-facing Host Display Name. */
+  hostName?: string
   /** STUN discovery URLs; TURN is deliberately forbidden in direct mode. */
   ice?: string[]
 }
@@ -38,6 +41,7 @@ export interface PublicPairingOfferPayload {
   code: string
   exp: number
   capabilities: PublicEndpointCapabilities
+  hostName?: string
   ice?: string[]
 }
 
@@ -48,6 +52,7 @@ export interface MintPublicOfferOptions {
   endpointKind: 'temporary' | 'custom'
   room: string
   pubkey: string
+  hostName?: string
   ice?: string[]
   capabilities?: Partial<PublicEndpointCapabilities>
 }
@@ -94,6 +99,7 @@ export class PairingOfferManager {
     room: string | null,
     pubkey: string,
     ice?: string[],
+    hostName?: string,
   ): PairingOfferPayload {
     if (mode === 'direct') {
       if (room === null) throw new Error('direct pairing requires a signaling room')
@@ -102,11 +108,12 @@ export class PairingOfferManager {
       }
     }
     this.prune()
+    const displayName = hostName === undefined ? undefined : compactDisplayName(hostName, 'Host')
     const code = randomBytes(24).toString('base64url')
     const expMs = Date.now() + this.ttlMs
     this.pending.set(code, room === null ? { expMs } : { expMs, room })
     const v = mode === 'direct' ? 3 : mode === 'relay' ? 2 : 1
-    return { v, mode, addr, room, pubkey, code, exp: Math.floor(expMs / 1000), ...(mode === 'direct' ? { ice } : {}) }
+    return { v, mode, addr, room, pubkey, code, exp: Math.floor(expMs / 1000), ...(displayName === undefined ? {} : { hostName: displayName }), ...(mode === 'direct' ? { ice } : {}) }
   }
 
   /** Mint the current Host-owned Public Endpoint offer. */
@@ -125,6 +132,7 @@ export class PairingOfferManager {
       throw new Error('public endpoint pairing requires STUN-only ICE URLs')
     }
     this.prune()
+    const displayName = options.hostName === undefined ? undefined : compactDisplayName(options.hostName, 'Host')
     const code = randomBytes(24).toString('base64url')
     const expMs = Date.now() + this.ttlMs
     this.pending.set(code, { expMs, room: options.room })
@@ -132,6 +140,7 @@ export class PairingOfferManager {
       v: 4, mode: 'public', protocol: 1, endpoint: options.endpoint, endpointKind: options.endpointKind,
       room: options.room, pubkey: options.pubkey, code, exp: Math.floor(expMs / 1000),
       capabilities: { ...PUBLIC_CAPABILITIES, ...options.capabilities, browser: false },
+      ...(displayName === undefined ? {} : { hostName: displayName }),
       ...(options.ice === undefined ? {} : { ice: options.ice }),
     }
   }
@@ -213,7 +222,10 @@ export function buildCompactPublicOfferUrl(appUrl: string, offer: PublicPairingO
     | (capabilities.tunnel ? 4 : 0) | (capabilities.endpointRefresh ? 8 : 0)
   const payload = [
     4, offer.endpoint, offer.endpointKind === 'custom' ? 1 : 0, offer.room,
-    offer.pubkey, offer.code, offer.exp, mask, ...(offer.ice === undefined ? [] : [offer.ice]),
+    offer.pubkey, offer.code, offer.exp, mask,
+    ...(offer.hostName === undefined
+      ? (offer.ice === undefined ? [] : [offer.ice])
+      : [offer.ice ?? null, offer.hostName]),
   ]
   return `${appUrl.split('#')[0]}#offer=${Buffer.from(JSON.stringify(payload)).toString('base64url')}`
 }

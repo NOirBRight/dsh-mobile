@@ -191,6 +191,10 @@ function App() {
       document.documentElement.lang = 'zh-CN'
       document.body.dataset.subagentCopyZh = getComputedStyle(subagentCount, '::after').content
       document.body.dataset.jobCopyZh = getComputedStyle(jobCount, '::after').content
+      document.body.dataset.subagentCopyDisplay = getComputedStyle(subagentCount, '::after').display
+      document.body.dataset.subagentCopyLineHeight = getComputedStyle(subagentCount, '::after').lineHeight
+      document.body.dataset.jobCopyDisplay = getComputedStyle(jobCount, '::after').display
+      document.body.dataset.jobCopyLineHeight = getComputedStyle(jobCount, '::after').lineHeight
       document.body.dataset.logCopy = getComputedStyle(header.querySelector<HTMLElement>('[data-header-utility] span')!, '::after').content
       document.body.dataset.subagentMenuPosition = getComputedStyle(header.querySelector<HTMLElement>('[data-subagent-menu]')!).position
       document.body.dataset.jobMenuPosition = getComputedStyle(header.querySelector<HTMLElement>('[data-job-menu]')!).position

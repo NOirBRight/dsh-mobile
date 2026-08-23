@@ -7,6 +7,11 @@ test('native Client Device Name is sanitized before Host presentation', async ()
   assert.equal(name, 'Noir Phone')
 })
 
+test('Client Device Name uses a compact model label in narrow Host lists', async () => {
+  const name = await resolveClientDeviceName({ getName: async () => ({ name: 'OPPO Find X8s+' }) })
+  assert.equal(name, 'OPPO X8s+')
+})
+
 test('Client Device Name has a stable product fallback when native lookup fails', async () => {
   const name = await resolveClientDeviceName({ getName: async () => { throw new Error('unavailable') } })
   assert.equal(name, 'Android device')

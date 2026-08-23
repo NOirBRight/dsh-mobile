@@ -8,12 +8,12 @@ class Storage {
   setItem(key, value) { this.values.set(key, value) }
 }
 
-test('compatibility mode is the default and enhancement requires an explicit choice', () => {
+test('compatibility mode is the only product preference', () => {
   const storage = new Storage()
   assert.equal(readSessionEnhancementPreference(storage), 'compatible')
   writeSessionEnhancementPreference(storage, 'enhanced')
-  assert.equal(readSessionEnhancementPreference(storage), 'enhanced')
-  storage.setItem('dsh-mobile:session-enhancement-mode:v1', 'unknown')
+  assert.equal(readSessionEnhancementPreference(storage), 'compatible')
+  storage.setItem('dsh-mobile:session-enhancement-mode:v1', 'enhanced')
   assert.equal(readSessionEnhancementPreference(storage), 'compatible')
 })
 

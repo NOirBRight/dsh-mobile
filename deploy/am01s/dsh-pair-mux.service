@@ -1,0 +1,17 @@
+[Unit]
+Description=Operator-local Public Endpoint mux (this Host's Gateway ports only; not a product default)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PATH=/home/noirbright/.nvm/versions/node/v22.22.2/bin:/home/noirbright/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=DSH_PAIR_MUX_BIND=127.0.0.1
+Environment=DSH_PAIR_MUX_PORT=43168
+Environment=DSH_PAIR_MUX_BACKENDS=43170,43169
+ExecStart=/home/noirbright/.nvm/versions/node/v22.22.2/bin/node /home/noirbright/Workstation/dsh-mobile/plugins/pairing/lib/mux-cli.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

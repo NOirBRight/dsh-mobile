@@ -40,7 +40,7 @@ pnpm add github:NOirBRight/dsh-mobile-pairing#v0.1.1
     gatewayPort: 0
 ~~~
 
-lab profile 使用 `:3082` 时，将该 profile 的配置覆盖为 `dshPort: 3082`，并使用独立的 Gateway/Public Endpoint。两个 DSH 可以同时安装，但不能共用 `43169` 或同一个自定义域名。
+lab profile 使用 `:3082` 时，将该 profile 的配置覆盖为 `dshPort: 3082` 和独立的 `gatewayPort`。产品默认是一台 Host 一个 Gateway（`gatewayPort: 0`）；手机只连接二维码里的 Public Endpoint，不会连到维护者机器。可选的 `dsh-pair-mux` 只跑在操作者自己的 Host 上回环，后端端口必须由环境变量显式给出。
 
 | 键 | 默认 | 说明 |
 |---|---|---|

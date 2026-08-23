@@ -1,5 +1,6 @@
 import { b64urlDecode } from './bytes.ts'
 import { TunnelError } from './errors.ts'
+import { compactDisplayName } from './display-name.ts'
 
 /** Shared offer fields (tunnel-protocol.md §1). */
 interface OfferBase {
@@ -13,6 +14,8 @@ interface OfferBase {
   code: string
   /** Expiry, unix seconds. */
   exp: number
+  /** Human-facing Host name; presentation metadata, never endpoint or Room identity. */
+  hostName?: string
 }
 
 /** v2: traffic rides the relay room (NaCl-sealed frames over the room WebSocket). */
@@ -54,6 +57,8 @@ export interface PublicEndpointOffer {
   code: string
   exp: number
   capabilities: PublicEndpointCapabilities
+  /** Human-facing Host name available immediately after scanning. */
+  hostName?: string
   /** STUN-only ICE discovery; Tunnel Fallback is the non-direct path. */
   ice?: string[]
 }
@@ -89,10 +94,11 @@ export function parseOffer(offerUrl: string, options: ParseOfferOptions = {}): O
     throw new TunnelError('bad-offer', 'offer payload is not base64url JSON')
   }
   if (Array.isArray(parsed)) {
-    const [version, endpoint, kind, room, pubkey, code, exp, capabilityMask, ice] = parsed
+    const [version, endpoint, kind, room, pubkey, code, exp, capabilityMask, ice, hostName] = parsed
     const mask = typeof capabilityMask === 'number' && Number.isInteger(capabilityMask) && capabilityMask >= 0 && capabilityMask <= 15
       ? capabilityMask
       : null
+    const compactIce = ice === null ? undefined : ice
     parsed = {
       v: version, mode: 'public', protocol: 1, endpoint,
       endpointKind: kind === 0 ? 'temporary' : kind === 1 ? 'custom' : undefined,
@@ -101,7 +107,8 @@ export function parseOffer(offerUrl: string, options: ParseOfferOptions = {}): O
         browser: (mask & 1) !== 0, direct: (mask & 2) !== 0,
         tunnel: (mask & 4) !== 0, endpointRefresh: (mask & 8) !== 0,
       },
-      ...(ice === undefined ? {} : { ice }),
+      ...(compactIce === undefined ? {} : { ice: compactIce }),
+      ...(hostName === undefined ? {} : { hostName }),
     }
   }
   const o = parsed as Record<string, unknown>
@@ -119,6 +126,15 @@ export function parseOffer(offerUrl: string, options: ParseOfferOptions = {}): O
   if (typeof o.code !== 'string' || o.code.length === 0) throw new TunnelError('bad-offer', 'missing code')
   if (typeof o.exp !== 'number' || !Number.isFinite(o.exp)) throw new TunnelError('bad-offer', 'missing exp')
   if (!options.allowExpired && o.exp * 1000 <= Date.now()) throw new TunnelError('expired', 'offer has expired; rescan the QR code')
+
+  const hostName = o.hostName === undefined
+    ? undefined
+    : typeof o.hostName === 'string'
+      ? o.hostName.replace(/[\u0000-\u001f\u007f]/g, '').trim() === ''
+        ? null
+        : compactDisplayName(o.hostName, 'Host')
+      : null
+  if (hostName === null || (o.hostName !== undefined && hostName === '')) throw new TunnelError('bad-offer', 'hostName must be a non-empty string')
 
   const validateIce = (): string[] | undefined => {
     if (o.ice === undefined) return undefined
@@ -148,7 +164,7 @@ export function parseOffer(offerUrl: string, options: ParseOfferOptions = {}): O
       if (typeof capabilities[key] !== 'boolean') throw new TunnelError('bad-offer', 'public endpoint capabilities must be boolean')
     }
     if (capabilities.browser !== false) throw new TunnelError('incompatible', 'public endpoint offers are APK-only')
-    const common = { room: o.room, pubkey: o.pubkey, code: o.code, exp: o.exp }
+    const common = { room: o.room, pubkey: o.pubkey, code: o.code, exp: o.exp, ...(hostName === undefined ? {} : { hostName }) }
     const ice = validateIce()
     return {
       ...common, v: 4, mode: 'public', protocol: 1, endpoint: o.endpoint, endpointKind: o.endpointKind,
@@ -164,7 +180,7 @@ export function parseOffer(offerUrl: string, options: ParseOfferOptions = {}): O
   } catch {
     throw new TunnelError('bad-offer', o.v === 2 ? 'official Relay address must be WSS without credentials' : 'addr must be a credential-free WebSocket URL')
   }
-  const base: OfferBase = { addr: o.addr, room: o.room, pubkey: o.pubkey, code: o.code, exp: o.exp }
+  const base: OfferBase = { addr: o.addr, room: o.room, pubkey: o.pubkey, code: o.code, exp: o.exp, ...(hostName === undefined ? {} : { hostName }) }
   if (o.v === 2) {
     if (o.ice !== undefined) throw new TunnelError('bad-offer', 'ice is only valid on direct or public offers')
     return { ...base, v: 2, mode: 'relay' }

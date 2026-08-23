@@ -15,6 +15,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { createMobileLayoutStore } from './stores.ts'
 import css from './MobileFrame.module.css'
+import { isOfficialNewSessionLabel } from './chrome-anchors.ts'
 import { blurComposer } from './composer-attach.ts'
 import { resolveMobileViewportHeight } from './mobile-viewport.ts'
 
@@ -34,7 +35,7 @@ export function shouldCloseDrawerForTarget(target: EventTarget | null): boolean 
   const button = target.closest('button[aria-label]')
   if (!(button instanceof HTMLButtonElement)) return false
   const label = button.getAttribute('aria-label') ?? ''
-  return /(?:new|create)\s+session/i.test(label) || /(?:新建|创建)会话/.test(label)
+  return isOfficialNewSessionLabel(label)
 }
 
 /** Full composed props: runtime share + child-slot render share + store share. */
@@ -143,7 +144,7 @@ export function MobileFrame({
       data-drawer-open={panels.drawerOpen || undefined}
       data-details-open={panels.detailsOpen || undefined}
     >
-      <header className={css.topbar}>
+      <header className={css.topbar} data-mobile-topbar>
         <button
           type="button"
           className={css.menuButton}

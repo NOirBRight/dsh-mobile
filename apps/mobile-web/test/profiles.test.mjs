@@ -90,7 +90,7 @@ test('Endpoint Refresh preserves authorization and Active Host selection across 
   await assert.rejects(() => restored.setActiveHost(HOST_C), /unknown Host Identity/)
 })
 
-test('Endpoint Refresh rejects another Host endpoint and malformed metadata', async () => {
+test('Endpoint Refresh may share another Host Public Endpoint and rejects malformed metadata', async () => {
   const repository = new ProfileRepository(new MemoryProfileStorage(), new MemoryCredentialVault())
   await repository.upsert(profile())
   await repository.upsert(profile({
@@ -99,14 +99,13 @@ test('Endpoint Refresh rejects another Host endpoint and malformed metadata', as
     credentialRef: 'vault:opaque-B',
   }))
 
-  await assert.rejects(
-    () => repository.refreshEndpoint(HOST_A, {
-      endpoint: { url: 'https://travel.example', kind: 'custom' },
-      capabilities: ['direct'],
-      updatedAt: '2026-08-16T12:00:00.000Z',
-    }),
-    /different Host Identity/,
-  )
+  const shared = await repository.refreshEndpoint(HOST_A, {
+    endpoint: { url: 'https://travel.example', kind: 'custom' },
+    capabilities: ['direct'],
+    updatedAt: '2026-08-16T12:00:00.000Z',
+  })
+  assert.deepEqual(shared.endpoint, { url: 'https://travel.example', kind: 'custom' })
+  assert.equal((await repository.list()).length, 2)
   await assert.rejects(
     () => repository.refreshEndpoint(HOST_A, {
       endpoint: { url: 'https://valid.example', kind: 'custom' },
@@ -182,34 +181,22 @@ test('browser ProfileRepository restores versioned Profiles and last Active Host
   ])
 })
 
-test('an endpoint presenting a different Host Identity cannot overwrite a saved Profile', async () => {
+test('two Host Identities may share one Public Endpoint without replacing each other', async () => {
   const repository = new ProfileRepository(new MemoryProfileStorage(), new MemoryCredentialVault())
   await repository.upsert(profile())
-
-  await assert.rejects(
-    () => repository.upsert(profile({ hostId: HOST_C, credentialRef: 'vault:other' })),
-    error => error instanceof HostIdentityMismatchError
-      && error.savedHostId === HOST_A
-      && error.presentedHostId === HOST_C,
-  )
-  assert.deepEqual((await repository.list()).map(saved => saved.hostId), [HOST_A])
+  await repository.upsert(profile({ hostId: HOST_C, credentialRef: 'vault:other' }))
+  assert.deepEqual((await repository.list()).map(saved => saved.hostId).sort(), [HOST_A, HOST_C].sort())
+  assert.equal((await repository.getActive())?.hostId, HOST_A)
 })
 
-test('explicit acknowledgement continues pairing after an endpoint changes Host Identity', async () => {
+test('explicit acknowledgement can still replace a saved Host after an operator-confirmed reset', async () => {
   const vault = new MemoryCredentialVault()
   const oldRef = await vault.store(new TextEncoder().encode('old-host-token'))
   const newRef = await vault.store(new TextEncoder().encode('new-host-token'))
   const repository = new ProfileRepository(new MemoryProfileStorage(), vault)
   await repository.upsert(profile({ credentialRef: oldRef }))
   const replacement = profile({ hostId: HOST_C, credentialRef: newRef, displayName: 'Reset Host' })
-
-  let conflict
-  try {
-    await repository.upsert(replacement)
-  } catch (error) {
-    conflict = error
-  }
-  assert.ok(conflict instanceof HostIdentityMismatchError)
+  const conflict = new HostIdentityMismatchError(HOST_A, HOST_C, replacement.endpoint.url)
   await repository.acknowledgeIdentityChange(conflict, replacement)
 
   assert.deepEqual((await repository.list()).map(saved => saved.hostId), [HOST_C])

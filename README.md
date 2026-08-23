@@ -6,7 +6,7 @@ DeepSeek Harness 的 Android 客户端，独立于上游 deepseek-harness 开发
 
 - **Android 本地壳**：Capacitor APK 内含 WebView shell、字体、样式和优化版移动布局，不访问 CDN 或静态站。浏览器 Product Client 已按 ADR 0005 移除。
 - **相机自动配对**：首次启动自动扫描桌面端 QR；也接受 dsh-mobile://pair#offer=... Deep Link。
-- **连接入口**：用户界面只提供 Quick（临时地址）和 Relay（国内/海外两个预置 WSS 地址）。Relay 按用户独立 Room 转发 sealed frames，不暴露 DSH :3080。旧 Host-owned Custom Endpoint 仅兼容已有配置。
+- **连接入口**：用户界面提供“自动生成”和“填写地址”两种方式。后者不内置任何服务地址，用户可填写小范围发布获得的 WSS 地址，也可按 `relay/deploy/` 配方自行部署后填写。连接服务按用户独立 Room 转发 sealed frames，不暴露 DSH :3080；旧 Host-owned Custom Endpoint 仅兼容已有配置。
 - **连接策略**：默认隧道优先——立即经所配置端点建立加密 Tunnel 会话；WebRTC 直连仅作为同网场景的限时并行优化。Direct Only 与 Tunnel Only 可选。无 TURN；端点只做不可信管道。
 - **端到端认证**：任何路由建立后仍执行以 QR Host 公钥为信任锚的 NaCl hello/ack。Endpoint 提供者不可信。
 - **带宽预算**：隧道只承载封装协议帧;素材全部打包在 APK,插件 bundle 按内容哈希缓存。

@@ -8,6 +8,6 @@
   "dependencies": { "ws": "^8.21.3" },
   "scripts": {
     "start": "node server.js",
-    "test": "node test/relay.test.mjs"
+    "test": "node test/relay.test.mjs && node test/keepalive.test.mjs"
   }
 }

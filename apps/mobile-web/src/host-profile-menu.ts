@@ -1,4 +1,3 @@
-import type { SessionEnhancementPreference } from './manifest.ts'
 import type { ConnectionPolicy, HostProfile } from './profiles.ts'
 import type { ScanSurface } from './scan-surface.ts'
 
@@ -9,6 +8,19 @@ const POLICY_OPTIONS: readonly [ConnectionPolicy, string][] = [
   ['tunnel-only', '仅隧道'],
 ]
 
+const REMOVE_ICON = `
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+  <path d="M5 3.5h6M3.5 5.5h9M6.5 5.5V12M9.5 5.5V12M5.5 5.5l.4 7.2h4.2l.4-7.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+`.trim()
+
+const SCAN_ICON = `
+<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+  <path d="M3 6.5V3.5h3M15 6.5V3.5h-3M3 11.5v3h3M15 11.5v3h-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="6.5" y="6.5" width="5" height="5" rx="0.8" stroke="currentColor" stroke-width="1.3"/>
+</svg>
+`.trim()
+
 const STYLE = `
 [data-dsh-profile-menu] {
   --dsh-profile-top-clearance: max(40px, calc(env(safe-area-inset-top) + 12px));
@@ -17,7 +29,7 @@ const STYLE = `
   inset: 0;
   z-index: 10000;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   box-sizing: border-box;
   padding: var(--dsh-profile-top-clearance) 12px var(--dsh-profile-bottom-clearance);
@@ -30,7 +42,7 @@ const STYLE = `
 [data-dsh-profile-panel] {
   box-sizing: border-box;
   width: min(100%, 560px);
-  max-height: min(760px, calc(100dvh - var(--dsh-profile-top-clearance) - var(--dsh-profile-bottom-clearance)));
+  max-height: calc(100dvh - var(--dsh-profile-top-clearance) - var(--dsh-profile-bottom-clearance));
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -40,10 +52,6 @@ const STYLE = `
   border-radius: 26px;
   background: var(--dsw-alias-bg-layer-2, Canvas);
   box-shadow: var(--dsw-shadow-lv3, 0 -14px 44px rgb(15 23 42 / 22%));
-}
-
-[data-dsh-profile-panel][data-profile-multiple] {
-  height: min(760px, calc(100dvh - var(--dsh-profile-top-clearance) - var(--dsh-profile-bottom-clearance)));
 }
 
 [data-dsh-profile-panel] [data-profile-handle] {
@@ -58,8 +66,9 @@ const STYLE = `
 [data-dsh-profile-panel] [data-profile-header] {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 4px;
+  flex: none;
+  margin-bottom: 8px;
 }
 
 [data-dsh-profile-panel] [data-profile-heading] {
@@ -82,18 +91,20 @@ const STYLE = `
   line-height: 18px;
 }
 
+[data-dsh-profile-panel] [data-profile-scan-button],
 [data-dsh-profile-panel] [data-profile-close] {
   display: grid;
   place-items: center;
+  box-sizing: content-box;
   flex: none;
   width: 24px;
   height: 24px;
-  margin-top: 2px;
-  padding: 0;
+  margin: -6px -4px 0 0;
+  padding: 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 10px;
   background: transparent;
-  color: var(--dsw-alias-label-primary, CanvasText);
+  color: var(--dsw-alias-label-tertiary, #718096);
   font: inherit;
   font-size: 18px;
   line-height: 24px;
@@ -101,17 +112,101 @@ const STYLE = `
   -webkit-tap-highlight-color: transparent;
 }
 
+[data-dsh-profile-panel] [data-profile-scan-button] {
+  color: var(--dsw-alias-label-secondary, #4b5563);
+}
+
 [data-dsh-profile-panel] [data-profile-close]:hover,
 [data-dsh-profile-panel] [data-profile-close]:active,
-[data-dsh-profile-panel] [data-profile-close]:focus {
+[data-dsh-profile-panel] [data-profile-scan-button]:hover,
+[data-dsh-profile-panel] [data-profile-scan-button]:active {
   background: transparent !important;
   border-color: transparent !important;
-  box-shadow: none !important;
+}
+
+[data-dsh-profile-panel] [data-profile-close]:focus:not(:focus-visible),
+[data-dsh-profile-panel] [data-profile-scan-button]:focus:not(:focus-visible) {
   outline: none;
 }
 
-[data-dsh-profile-panel] [data-profile-close]:focus-visible {
-  outline: none;
+[data-dsh-profile-panel] [data-profile-close]:focus-visible,
+[data-dsh-profile-panel] [data-profile-scan-button]:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary, #4e78cc);
+  outline-offset: 2px;
+}
+
+[data-dsh-profile-menu] [data-profile-scan-button]:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+
+[data-dsh-profile-menu] [data-profile-add-device] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 6px;
+  padding: 14px 12px;
+  border: 1px dashed var(--dsw-alias-border-l1, rgb(127 143 169 / 35%));
+  border-radius: 16px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #4b5563);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-dsh-profile-menu] [data-profile-add-device]:hover,
+[data-dsh-profile-menu] [data-profile-add-device]:active {
+  background: var(--dsw-alias-bg-layer-1, rgb(127 143 169 / 7%));
+}
+
+[data-dsh-profile-menu] [data-profile-add-device]:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+
+[data-dsh-profile-menu] [data-profile-scan-status] {
+  flex: none;
+  margin: 0 2px 8px;
+  color: var(--dsw-alias-label-tertiary, #718096);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+[data-dsh-profile-menu] [data-profile-scan-status][data-error] {
+  color: var(--dsw-alias-state-error-primary, #c2413a);
+}
+
+[data-dsh-profile-menu] [data-profile-device-list] {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsw-alias-border-l2, rgb(127 143 169 / 35%)) transparent;
+}
+
+[data-dsh-profile-menu] [data-profile-device-list]::-webkit-scrollbar {
+  width: 4px;
+}
+
+[data-dsh-profile-menu] [data-profile-device-list]::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: var(--dsw-alias-border-l2, rgb(127 143 169 / 35%));
+}
+
+[data-dsh-profile-menu] [data-profile-device-list] > [data-profile-device] {
+  flex: none;
+}
+
+[data-dsh-profile-menu] [data-profile-settings] {
+  flex: none;
+  margin-top: 10px;
 }
 
 [data-dsh-profile-menu] [data-profile-card] {
@@ -123,149 +218,30 @@ const STYLE = `
   background: var(--dsw-alias-bg-layer-1, rgb(127 143 169 / 7%));
 }
 
-[data-dsh-profile-menu] [data-profile-status-card] {
-  display: grid;
-  grid-template-columns: 12px minmax(0, 1fr);
-  gap: 11px;
-  align-items: start;
-}
-
 [data-dsh-profile-menu] [data-profile-status-dot] {
-  width: 10px;
-  height: 10px;
-  margin-top: 5px;
+  flex: none;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #eab308;
-  box-shadow: 0 0 0 4px rgb(234 179 8 / 14%);
+  box-shadow: 0 0 0 3px rgb(234 179 8 / 14%);
 }
 
 [data-dsh-profile-menu] [data-profile-status-dot][data-state="open"] {
   background: #22c55e;
-  box-shadow: 0 0 0 4px rgb(34 197 94 / 14%);
+  box-shadow: 0 0 0 3px rgb(34 197 94 / 14%);
 }
 
 [data-dsh-profile-menu] [data-profile-status-dot][data-state="closed"] {
   background: #ef4444;
-  box-shadow: 0 0 0 4px rgb(239 68 68 / 14%);
-}
-
-[data-dsh-profile-menu] [data-profile-status-title] {
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 600;
-}
-
-[data-dsh-profile-menu] [data-profile-status-detail] {
-  margin-top: 3px;
-  overflow: hidden;
-  color: var(--dsw-alias-label-tertiary, #718096);
-  font-size: 12px;
-  line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-[data-dsh-profile-menu] [data-profile-status-host] {
-  margin-top: 6px;
-  color: var(--dsw-alias-label-secondary, #4b5563);
-  font-size: 13px;
-  line-height: 19px;
-  font-weight: 500;
-}
-
-[data-dsh-profile-menu] [data-profile-scan] {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-[data-dsh-profile-menu] [data-profile-scan-copy] {
-  min-width: 0;
-}
-
-[data-dsh-profile-menu] [data-profile-scan-title] {
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 600;
-}
-
-[data-dsh-profile-menu] [data-profile-scan-hint] {
-  margin: 3px 0 0;
-  color: var(--dsw-alias-label-tertiary, #718096);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-[data-dsh-profile-menu] [data-profile-scan-button],
-[data-dsh-profile-menu] [data-profile-switch],
-[data-dsh-profile-menu] [data-profile-remove] {
-  flex: none;
-  min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--dsw-alias-border-l1, rgb(127 143 169 / 22%));
-  border-radius: 11px;
-  background: var(--dsw-alias-bg-layer-2, Canvas);
-  color: var(--dsw-alias-label-primary, CanvasText);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-[data-dsh-profile-menu] [data-profile-scan-button] {
-  min-height: 36px;
-  border: 0;
-  background: var(--dsw-alias-state-business-primary, #4e78cc);
-  color: var(--dsw-alias-label-inverse, #fff);
-}
-
-[data-dsh-profile-menu] [data-profile-scan-button]:disabled,
-[data-dsh-profile-menu] [data-profile-switch]:disabled {
-  cursor: wait;
-  opacity: .6;
-}
-
-[data-dsh-profile-menu] [data-profile-device-list] {
-  min-height: 0;
-}
-
-[data-dsh-profile-menu] [data-profile-device-list] > [data-profile-device] {
-  flex: none;
-}
-
-[data-dsh-profile-menu] [data-profile-multiple] [data-profile-device-list] {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--dsw-alias-border-l2, rgb(127 143 169 / 35%)) transparent;
-}
-
-[data-dsh-profile-menu] [data-profile-multiple] [data-profile-device-list]::-webkit-scrollbar {
-  width: 4px;
-}
-
-[data-dsh-profile-menu] [data-profile-multiple] [data-profile-device-list]::-webkit-scrollbar-thumb {
-  border-radius: 99px;
-  background: var(--dsw-alias-border-l2, rgb(127 143 169 / 35%));
-}
-
-[data-dsh-profile-menu] [data-profile-scan-status] {
-  margin: 9px 0 0;
-  color: var(--dsw-alias-label-tertiary, #718096);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-[data-dsh-profile-menu] [data-profile-scan-status][data-error] {
-  color: var(--dsw-alias-state-error-primary, #c2413a);
+  box-shadow: 0 0 0 3px rgb(239 68 68 / 14%);
 }
 
 [data-dsh-profile-menu] [data-profile-section-title] {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 14px 2px 6px;
+  margin: 4px 2px 6px;
   color: var(--dsw-alias-label-secondary, #4b5563);
   font-size: 12px;
   line-height: 18px;
@@ -273,14 +249,9 @@ const STYLE = `
   letter-spacing: .02em;
 }
 
-[data-dsh-profile-menu] [data-profile-count] {
-  color: var(--dsw-alias-label-caption, #8a95a8);
-  font-weight: 500;
-}
-
-[data-dsh-profile-menu] [data-profile-section-hint] {
-  margin: -2px 2px 5px;
-  color: var(--dsw-alias-label-caption, #8a95a8);
+[data-dsh-profile-menu] [data-profile-chrome-health] {
+  margin: 0 2px 8px;
+  color: var(--dsw-alias-state-warn-primary, #b45309);
   font-size: 11px;
   line-height: 17px;
 }
@@ -300,15 +271,37 @@ const STYLE = `
   box-shadow: none;
 }
 
-[data-dsh-profile-menu] [data-profile-device-head],
-[data-dsh-profile-menu] [data-profile-device-actions] {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+[data-dsh-profile-menu] [data-profile-device]:not([data-active]) {
+  cursor: pointer;
 }
 
 [data-dsh-profile-menu] [data-profile-device-head] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+}
+
+[data-dsh-profile-menu] [data-profile-remove] {
+  flex: none;
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #718096);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-dsh-profile-menu] [data-profile-remove]:hover,
+[data-dsh-profile-menu] [data-profile-remove]:active {
+  background: transparent;
+  color: var(--dsw-alias-state-error-primary, #c2413a);
 }
 
 [data-dsh-profile-menu] [data-profile-device-name] {
@@ -352,25 +345,35 @@ const STYLE = `
 }
 
 [data-dsh-profile-menu] select {
+  box-sizing: border-box;
   min-width: 104px;
-  min-height: 28px;
-  padding: 0 8px;
+  height: 36px;
+  padding: 0 36px 0 12px;
   border: 1px solid var(--dsw-alias-border-l1, rgb(127 143 169 / 22%));
-  border-radius: 9px;
-  outline: none;
-  background: var(--dsw-alias-bg-layer-2, Canvas);
+  border-radius: 10px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--dsw-alias-bg-layer-2, Canvas);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='m1 1.5 5 5 5-5' stroke='%23718096' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 8px;
   color: var(--dsw-alias-label-primary, CanvasText);
   font: inherit;
   font-size: 11px;
 }
 
-[data-dsh-profile-menu] [data-profile-remove] {
-  min-height: 28px;
-  padding: 0 9px;
-  border-color: transparent;
-  background: transparent;
+[data-dsh-profile-menu] select:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary, #4e78cc);
+  outline-offset: 2px;
+}
+
+[data-dsh-profile-menu] select:disabled {
+  border-color: var(--dsw-alias-border-l1, rgb(127 143 169 / 22%));
+  background-color: var(--dsw-alias-bg-layer-1, rgb(127 143 169 / 7%));
   color: var(--dsw-alias-label-tertiary, #718096);
-  font-weight: 500;
+  cursor: not-allowed;
+  opacity: .65;
 }
 
 [data-dsh-profile-menu] [data-profile-empty] {
@@ -385,7 +388,6 @@ export interface DeviceConnectionSummary {
   state: 'open' | 'connecting' | 'closed'
   route: string
   profile?: HostProfile
-  enhancement?: HostProfileMenuOptions['enhancement']
   backgroundConnection?: HostProfileMenuOptions['backgroundConnection']
 }
 
@@ -395,12 +397,11 @@ export interface HostProfileMenuOptions {
   connection: DeviceConnectionSummary
   onActivate: (hostId: string) => Promise<void>
   onPolicyChange: (profile: HostProfile, policy: ConnectionPolicy) => Promise<void>
-  enhancement?: { preference: SessionEnhancementPreference; disclosure: string }
-  onEnhancementChange?: (preference: SessionEnhancementPreference) => Promise<void>
   backgroundConnection?: { enabled: boolean }
   onBackgroundConnectionChange?: (enabled: boolean) => Promise<void>
   onRemove: (profile: HostProfile) => Promise<void>
   onScan: (surface: ScanSurface) => Promise<void>
+  chromeHealth?: { ok: boolean; message: string }
 }
 
 export interface HostProfileMenu {
@@ -437,7 +438,12 @@ function button(label: string, attribute: string): HTMLButtonElement {
   return el
 }
 
-/** Render the device-switch surface separately from the status-only green dot. */
+function isInteractiveControl(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  return target.closest('button, select, label, a, input') !== null
+}
+
+/** Render the device-switch sheet: scan in the header, devices as the body, settings last. */
 export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfileMenu {
   ensureStyle()
   const overlay = document.createElement('div')
@@ -445,7 +451,6 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
   overlay.setAttribute('role', 'presentation')
   const panel = document.createElement('section')
   panel.dataset.dshProfilePanel = ''
-  if (options.profiles.length > 1) panel.dataset.profileMultiple = ''
   panel.setAttribute('role', 'dialog')
   panel.setAttribute('aria-modal', 'true')
   panel.setAttribute('aria-labelledby', 'dsh-profile-title')
@@ -462,92 +467,38 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
   title.textContent = '设备连接'
   const subtitle = document.createElement('p')
   subtitle.dataset.profileSubtitle = ''
-  subtitle.textContent = '上方显示实时连接；下方列出本机保存的配对设备'
+  subtitle.textContent = '点列表切换已保存设备，或点「添加设备」扫码连接另一台电脑'
   heading.append(title, subtitle)
+  const scanButton = document.createElement('button')
+  scanButton.type = 'button'
+  scanButton.dataset.profileScanButton = ''
+  scanButton.setAttribute('aria-label', '扫码添加或重新配对')
+  scanButton.title = '扫码添加或重新配对'
+  scanButton.innerHTML = SCAN_ICON
   const closeButton = button('×', 'data-profile-close')
   closeButton.setAttribute('aria-label', '关闭设备连接')
-  header.append(heading, closeButton)
+  header.append(heading, scanButton, closeButton)
 
-  const statusCard = document.createElement('div')
-  statusCard.dataset.profileCard = ''
-  statusCard.dataset.profileStatusCard = ''
-  const statusDot = document.createElement('span')
-  statusDot.dataset.profileStatusDot = ''
-  statusDot.dataset.state = options.connection.state
-  const statusCopy = document.createElement('div')
-  const statusTitle = document.createElement('div')
-  statusTitle.dataset.profileStatusTitle = ''
-  statusTitle.textContent = '当前连接 · ' + stateLabel(options.connection.state)
-  const statusDetail = document.createElement('div')
-  statusDetail.dataset.profileStatusDetail = ''
-  statusDetail.textContent = routeLabel(options.connection.route)
-  const statusHost = document.createElement('div')
-  statusHost.dataset.profileStatusHost = ''
-  statusHost.textContent = options.connection.profile === undefined
-    ? '尚未选择设备'
-    : '当前设备：' + options.connection.profile.displayName
-  statusCopy.append(statusTitle, statusDetail, statusHost)
-  statusCard.append(statusDot, statusCopy)
-
-  const scanCard = document.createElement('div')
-  scanCard.dataset.profileCard = ''
-  scanCard.dataset.profileScan = ''
-  const scanCopy = document.createElement('div')
-  scanCopy.dataset.profileScanCopy = ''
-  const scanTitle = document.createElement('div')
-  scanTitle.dataset.profileScanTitle = ''
-  scanTitle.textContent = '添加或切换设备'
-  const scanHint = document.createElement('p')
-  scanHint.dataset.profileScanHint = ''
-  scanHint.textContent = '使用 Host 上的新二维码重新配对'
-  scanCopy.append(scanTitle, scanHint)
-  const scanButton = button('重新扫码配对', 'data-profile-scan-button')
-  scanButton.setAttribute('aria-label', '重新扫码配对')
-  scanCard.append(scanCopy, scanButton)
   const scanStatus = document.createElement('div')
   scanStatus.dataset.profileScanStatus = ''
   scanStatus.setAttribute('role', 'status')
   scanStatus.setAttribute('aria-live', 'polite')
   scanStatus.hidden = true
-  scanCard.append(scanStatus)
 
-  const enhancementCard = document.createElement('div')
-  enhancementCard.dataset.profileCard = ''
-  enhancementCard.dataset.profileEnhancement = ''
-  enhancementCard.hidden = options.enhancement === undefined
-  if (options.enhancement !== undefined) {
-    const label = document.createElement('label')
-    label.dataset.profilePolicy = ''
-    const labelText = document.createElement('span')
-    labelText.textContent = '会话体验模式'
-    const select = document.createElement('select')
-    select.setAttribute('aria-label', '会话体验模式')
-    for (const [value, text] of [
-      ['compatible', '默认兼容模式'],
-      ['enhanced', '可选会话缓存增强'],
-    ] as const) {
-      const option = document.createElement('option')
-      option.value = value
-      option.textContent = text
-      option.selected = options.enhancement.preference === value
-      select.append(option)
-    }
-    const disclosure = document.createElement('div')
-    disclosure.dataset.profileScanHint = ''
-    disclosure.style.marginTop = '8px'
-    disclosure.textContent = options.enhancement.disclosure
-    select.addEventListener('change', () => {
-      select.disabled = true
-      const prior = options.enhancement?.preference ?? 'compatible'
-      void options.onEnhancementChange?.(select.value as SessionEnhancementPreference).then(close).catch(error => {
-        select.value = prior
-        setPanelError(error instanceof Error ? error.message : '会话体验模式保存失败')
-      }).finally(() => { select.disabled = false })
-    })
-    label.append(labelText, select)
-    enhancementCard.append(label, disclosure)
-  }
+  const deviceList = document.createElement('div')
+  deviceList.dataset.profileDeviceList = ''
+  const addDevice = document.createElement('button')
+  addDevice.type = 'button'
+  addDevice.dataset.profileAddDevice = ''
+  addDevice.setAttribute('aria-label', '扫码添加另一台电脑')
+  addDevice.textContent = '添加设备'
+  deviceList.append(addDevice)
 
+  const settings = document.createElement('div')
+  settings.dataset.profileSettings = ''
+  const settingsTitle = document.createElement('div')
+  settingsTitle.dataset.profileSectionTitle = ''
+  settingsTitle.textContent = '设置'
   const backgroundCard = document.createElement('div')
   backgroundCard.dataset.profileCard = ''
   backgroundCard.dataset.profileBackgroundConnection = ''
@@ -567,8 +518,10 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
       select.append(option)
     }
     const disclosure = document.createElement('div')
-    disclosure.dataset.profileScanHint = ''
     disclosure.style.marginTop = '8px'
+    disclosure.style.color = 'var(--dsw-alias-label-tertiary, #718096)'
+    disclosure.style.fontSize = '12px'
+    disclosure.style.lineHeight = '18px'
     disclosure.textContent = '开启后 Android 会显示常驻通知，并使用前台服务减少后台冻结；连接仍由 WebView 管理，系统仍可能终止进程。'
     select.addEventListener('change', () => {
       select.disabled = true
@@ -582,20 +535,17 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     label.append(labelText, select)
     backgroundCard.append(label, disclosure)
   }
-
-  const deviceSectionTitle = document.createElement('div')
-  deviceSectionTitle.dataset.profileSectionTitle = ''
-  const deviceSectionLabel = document.createElement('span')
-  deviceSectionLabel.textContent = '已配对设备'
-  const deviceSectionHint = document.createElement('div')
-  deviceSectionHint.dataset.profileSectionHint = ''
-  deviceSectionHint.textContent = '列表包含当前设备；标记“当前连接”的就是上方状态对应的设备。'
-  const deviceCount = document.createElement('span')
-  deviceCount.dataset.profileCount = ''
-  deviceCount.textContent = String(options.profiles.length)
-  deviceSectionTitle.append(deviceSectionLabel, deviceCount)
-  const deviceList = document.createElement('div')
-  deviceList.dataset.profileDeviceList = ''
+  if (options.chromeHealth !== undefined && !options.chromeHealth.ok) {
+    const health = document.createElement('div')
+    health.dataset.profileChromeHealth = ''
+    health.setAttribute('role', 'status')
+    health.textContent = options.chromeHealth.message
+    settings.append(health)
+  }
+  if (options.backgroundConnection !== undefined) {
+    settings.append(settingsTitle, backgroundCard)
+  }
+  settings.hidden = settings.childElementCount === 0
 
   let closed = false
   let retryResolver: (() => void) | null = null
@@ -607,6 +557,10 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     retryResolver = null
     overlay.remove()
   }
+  const setScanBusy = (busy: boolean): void => {
+    scanButton.disabled = busy
+    addDevice.disabled = busy
+  }
   const setPanelError = (message: string): void => {
     scanStatus.hidden = false
     scanStatus.dataset.error = ''
@@ -617,13 +571,12 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     scanStatus.removeAttribute('data-error')
     scanStatus.textContent = message
     if (retryLabel === undefined) {
-      scanButton.disabled = true
-      scanButton.textContent = '正在打开相机…'
+      setScanBusy(true)
       return
     }
     scanStatus.dataset.error = ''
-    scanButton.disabled = false
-    scanButton.textContent = retryLabel
+    setScanBusy(false)
+    scanStatus.textContent = message + ' · ' + retryLabel
     return new Promise(resolve => { retryResolver = resolve })
   }
   const runScan = async (): Promise<void> => {
@@ -636,17 +589,17 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     }
     if (scanning) return
     scanning = true
-    scanButton.disabled = true
+    setScanBusy(true)
     try {
       await options.onScan({ show: showScanState })
     } catch (error) {
       scanning = false
-      scanButton.disabled = false
-      scanButton.textContent = '重新扫码配对'
+      setScanBusy(false)
       setPanelError(error instanceof Error ? error.message : '扫码失败，请重试')
     }
   }
   scanButton.addEventListener('click', () => { void runScan() })
+  addDevice.addEventListener('click', () => { void runScan() })
   closeButton.addEventListener('click', close)
   overlay.addEventListener('click', event => { if (event.target === overlay) close() })
 
@@ -657,6 +610,13 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     if (active) device.dataset.active = ''
     const deviceHead = document.createElement('div')
     deviceHead.dataset.profileDeviceHead = ''
+    if (active) {
+      const statusDot = document.createElement('span')
+      statusDot.dataset.profileStatusDot = ''
+      statusDot.dataset.state = options.connection.state
+      statusDot.title = stateLabel(options.connection.state)
+      deviceHead.append(statusDot)
+    }
     const name = document.createElement('div')
     name.dataset.profileDeviceName = ''
     name.textContent = profile.displayName
@@ -669,7 +629,9 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     }
     const endpoint = document.createElement('div')
     endpoint.dataset.profileDeviceEndpoint = ''
-    endpoint.textContent = endpointLabel(profile)
+    endpoint.textContent = active
+      ? stateLabel(options.connection.state) + ' · ' + routeLabel(options.connection.route)
+      : endpointLabel(profile)
     const policy = document.createElement('label')
     policy.dataset.profilePolicy = ''
     const policyText = document.createElement('span')
@@ -691,36 +653,39 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
       }).finally(() => { select.disabled = false })
     })
     policy.append(policyText, select)
-    const actions = document.createElement('div')
-    actions.dataset.profileDeviceActions = ''
+    const remove = document.createElement('button')
+    remove.type = 'button'
+    remove.dataset.profileRemove = ''
+    remove.setAttribute('aria-label', '移除' + profile.displayName)
+    remove.title = '移除设备'
+    remove.innerHTML = REMOVE_ICON
+    remove.addEventListener('click', event => {
+      event.stopPropagation()
+      void options.onRemove(profile)
+    })
+    deviceHead.append(remove)
     if (!active) {
-      const activate = button('切换到此设备', 'data-profile-switch')
-      activate.addEventListener('click', async () => {
-        activate.disabled = true
+      device.setAttribute('aria-label', '切换到' + profile.displayName)
+      device.addEventListener('click', async event => {
+        if (isInteractiveControl(event.target)) return
+        device.setAttribute('aria-busy', 'true')
         try { await options.onActivate(profile.hostId); close() } catch (error) {
-          activate.disabled = false
+          device.removeAttribute('aria-busy')
           setPanelError(error instanceof Error ? error.message : '切换设备失败')
         }
       })
-      actions.append(activate)
     }
-    const remove = button('移除', 'data-profile-remove')
-    remove.addEventListener('click', () => { void options.onRemove(profile) })
-    actions.append(remove)
-    device.append(deviceHead, endpoint, policy, actions)
+    device.append(deviceHead, endpoint, policy)
     deviceList.append(device)
   }
   if (options.profiles.length === 0) {
     const empty = document.createElement('div')
     empty.dataset.profileEmpty = ''
-    empty.textContent = '暂无已保存设备'
+    empty.textContent = '还没有已保存设备'
     deviceList.append(empty)
   }
 
-  panel.append(
-    handle, header, statusCard, scanCard, enhancementCard, backgroundCard,
-    deviceSectionTitle, deviceSectionHint, deviceList,
-  )
+  panel.append(handle, header, scanStatus, deviceList, settings)
   document.body.append(overlay)
   closeButton.focus({ preventScroll: true })
   return { close }

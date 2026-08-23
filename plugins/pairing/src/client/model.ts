@@ -3,12 +3,27 @@ export type PairingTarget = 'android'
 /** Screen-space budget for dense v4 offers: at least 4 px/module through QR version 14. */
 export const PAIRING_QR_PRESENTATION = { size: 360, padding: 12 } as const
 
+/** Host pairing codes live this long; the on-screen QR must rotate sooner. */
+export const PAIRING_OFFER_TTL_MS = 300_000
+
+/** Remint cadence for a visible pairing QR. Must stay below {@link PAIRING_OFFER_TTL_MS}. */
+export const PAIRING_QR_ROTATE_MS = 20_000
+
+export function pairingQrNeedsRefresh(mintedAtMs: number, nowMs: number, rotateMs = PAIRING_QR_ROTATE_MS, ttlMs = PAIRING_OFFER_TTL_MS): boolean {
+  if (rotateMs >= ttlMs) return true
+  return nowMs - mintedAtMs >= rotateMs
+}
+
 /** Settings nav id/order: immediately after official General. */
 export const REMOTE_SETTINGS_SECTION = { id: 'remote', order: 5 } as const
+
+export type EndpointProvisionState = 'loading' | 'ready' | 'error'
 
 export interface PairingStatus {
   endpoint: null | { url: string; kind: 'temporary' | 'custom' | 'relay' }
   endpointMode: 'quick' | 'custom' | 'relay'
+  endpointState: EndpointProvisionState
+  endpointError?: string | null
   customEndpointUrl?: string | null
   relayUrl?: string | null
   hostIdentity: string
@@ -46,8 +61,12 @@ export function decodePairingStatus(value: unknown): PairingStatus | null {
   }
   const customEndpointUrl = record.customEndpointUrl
   if (customEndpointUrl !== undefined && customEndpointUrl !== null && typeof customEndpointUrl !== 'string') return null
+  const endpointState = record.endpointState ?? (endpoint === null ? 'loading' : 'ready')
+  if (endpointState !== 'loading' && endpointState !== 'ready' && endpointState !== 'error') return null
+  if (record.endpointError !== undefined && record.endpointError !== null && typeof record.endpointError !== 'string') return null
   return {
-    endpoint, endpointMode, hostIdentity,
+    endpoint, endpointMode, hostIdentity, endpointState,
+    ...(typeof record.endpointError === 'string' ? { endpointError: record.endpointError } : {}),
     ...(typeof customEndpointUrl === 'string' ? { customEndpointUrl } : {}),
     ...(typeof record.relayUrl === 'string' ? { relayUrl: record.relayUrl } : {}),
     configuration: { file: config.file, entryId: config.entryId, customEndpointField: config.customEndpointField, ...(typeof config.relayEndpointField === 'string' ? { relayEndpointField: config.relayEndpointField } : {}), legacyRelayConfigured: config.legacyRelayConfigured, ...(typeof config.relayConfigured === 'boolean' ? { relayConfigured: config.relayConfigured } : {}) },

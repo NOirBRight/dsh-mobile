@@ -1,4 +1,5 @@
-/** Use the official 16px link glyph so Remote matches other settings-nav icons. */
+/** Official settings.section slot has no icon field (label/order/locale only).
+ *  Swap the gear for the Remote glyph. Missing nav buttons stay silent. */
 
 const LABELS = new Set(['Remote', '远程'])
 const MARK = 'data-dsh-remote-icon'
@@ -23,20 +24,48 @@ function patch(): void {
   }
 }
 
+export function recordsTouchSettingsNav(records: Iterable<MutationRecord>, labels: ReadonlySet<string> = LABELS): boolean {
+  for (const record of records) {
+    if (touchesSettingsNav(record.target, labels)) return true
+    for (const added of record.addedNodes) {
+      if (touchesSettingsNav(added, labels)) return true
+    }
+  }
+  return false
+}
+
+function touchesSettingsNav(node: Node, labels: ReadonlySet<string>): boolean {
+  if (!(node instanceof Element)) return false
+  if (node.closest('nav') !== null) return true
+  if (node.querySelector('nav') !== null) return true
+  const buttons = node.matches('button') ? [node, ...node.querySelectorAll('button')] : [...node.querySelectorAll('button')]
+  for (const button of buttons) {
+    for (const span of button.querySelectorAll('span')) {
+      if (labels.has(span.textContent?.trim() ?? '')) return true
+    }
+  }
+  return false
+}
+
 /** Watch the settings nav and keep the Remote glyph in place across re-renders. */
 export function installRemoteNavIcon(): () => void {
   if (typeof document === 'undefined' || document.body === null) return () => {}
-  let scheduled = false
-  const flush = (): void => {
-    scheduled = false
-    patch()
-  }
-  const observer = new MutationObserver(() => {
-    if (scheduled) return
-    scheduled = true
-    requestAnimationFrame(flush)
+  let frame = 0
+  const observer = new MutationObserver((records) => {
+    if (!recordsTouchSettingsNav(records)) return
+    if (frame !== 0) return
+    frame = requestAnimationFrame(() => {
+      frame = 0
+      patch()
+      observer.takeRecords()
+    })
   })
   observer.observe(document.body, { childList: true, subtree: true })
   patch()
-  return () => observer.disconnect()
+  observer.takeRecords()
+  return () => {
+    observer.disconnect()
+    if (frame !== 0) cancelAnimationFrame(frame)
+    frame = 0
+  }
 }

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TunnelError } from '@dsh-mobile/e2e-tunnel'
-import { connectionIndicatorPresentation, coreLiveDataReadiness, connectionRecoveryNotice, connectionRouteLabel, DeferredWebSocket, supportsLiveDataReadiness, isHostGatewaySocketPath, isPackagedShellPluginPath, isPublicEndpointPluginPath, shouldInstallTunnelShims, TunnelManager } from '../src/tunnel.ts'
+import { connectionIndicatorPresentation, coreLiveDataReadiness, connectionRecoveryNotice, connectionRouteLabel, DeferredWebSocket, findConnectionBadgeAnchor, supportsLiveDataReadiness, isHostGatewaySocketPath, isPackagedShellPluginPath, isPublicEndpointPluginPath, shouldInstallTunnelShims, TunnelManager } from '../src/tunnel.ts'
 
 test('Core readiness completes independently after transport and official shell are both live', () => {
   assert.equal(supportsLiveDataReadiness({ dshLiveDataReadiness: 'v1' }), true)
@@ -22,7 +22,7 @@ test('tunnel-only connections are not mislabeled as fallbacks', () => {
 test('transient reconnects stay out of the actionable topbar notice', () => {
   assert.equal(connectionRecoveryNotice(null, 'network unavailable'), null)
   assert.deepEqual(connectionRecoveryNotice('endpoint', 'dns failed'), {
-    message: 'Host 的临时 Public Endpoint 可能已轮换。', detail: 'dns failed', actionLabel: '刷新',
+    message: '电脑连接地址已失效，请重新扫码。', detail: 'dns failed', actionLabel: '重新扫码',
   })
   assert.deepEqual(connectionRecoveryNotice('credential', 'credential is missing'), {
     message: '登录凭证已丢失，请重新扫码。', detail: 'credential is missing', actionLabel: '重新扫码',
@@ -90,21 +90,48 @@ test('floating connection indicator follows theme and waits for authoritative li
     color: 'var(--dsw-alias-state-error-primary, #ec1313)',
   })
   assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, false), {
-    visible: true, text: '刷新中…', label: 'WebRTC Direct · 正在刷新权威数据…',
+    visible: true, text: '刷新中…', label: 'WebRTC Direct · 正在刷新会话…',
     color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
   })
   assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, true), {
-    visible: false, text: '已更新', label: 'WebRTC Direct · 权威数据已刷新',
+    visible: false, text: '已连接', label: 'WebRTC Direct · 已连接',
     color: 'var(--dsw-alias-state-success-primary, #22c55e)',
   })
   assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, 'core-ready'), {
-    visible: false, text: '核心模式', label: 'WebRTC Direct · 核心兼容模式不提供权威刷新确认',
-    color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
+    visible: false, text: '已连接', label: 'WebRTC Direct · 已连接',
+    color: 'var(--dsw-alias-state-success-primary, #22c55e)',
   })
   assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, 'error'), {
-    visible: true, text: '刷新失败', label: 'WebRTC Direct · 权威数据刷新失败',
+    visible: true, text: '刷新失败', label: 'WebRTC Direct · 会话数据刷新失败',
     color: 'var(--dsw-alias-state-error-primary, #ec1313)',
   })
+})
+
+test('connection badge prefers the drawer brand over the mobile topbar title', () => {
+  const title = { id: 'title' }
+  const brand = { id: 'brand' }
+  const root = {
+    querySelector(selector) {
+      if (selector === '[data-mobile-drawer-brand]') return brand
+      if (selector === '[data-mobile-session-title]') return title
+      return null
+    },
+  }
+  assert.equal(findConnectionBadgeAnchor(root), brand)
+})
+
+test('connection badge falls back to the drawer New session control', () => {
+  const fallback = { id: 'new-session' }
+  const root = {
+    querySelector(selector) {
+      if (selector === '[data-mobile-drawer-brand]') return null
+      if (selector === '[data-mobile-session-title]') return null
+      if (selector === 'nav[aria-label="导航抽屉"]') return { querySelector() { return null } }
+      if (String(selector).includes('button[aria-label')) return fallback
+      return null
+    },
+  }
+  assert.equal(findConnectionBadgeAnchor(root), fallback)
 })
 
 test('bare same-origin Host bridge keeps native API while paired and native shells install tunnel shims', () => {
@@ -150,6 +177,53 @@ test('TunnelManager loads and disposes private credentials and surfaces active r
   assert.equal(statuses.at(-1).route, 'direct')
   manager.stop()
   assert.equal(closed, true)
+})
+
+test('an unreachable temporary endpoint stops retrying with the handshake error', async () => {
+  let attempts = 0
+  let waits = 0
+  const activities = []
+  const manager = new TunnelManager({
+    offerUrl: 'offer', connectionPolicy: 'automatic', endpointKind: 'temporary',
+    loadCredentials: async () => ({ clientKeypair: keypair, deviceToken: 'token', onDeviceToken: async () => {}, dispose() {} }),
+    connect: async () => {
+      attempts += 1
+      throw new TunnelError('handshake', 'endpoint WebSocket connection failed')
+    },
+    wait: async () => { waits += 1 },
+    onState: () => {},
+    onActivity: activity => activities.push(activity),
+  })
+  manager.start()
+  await assert.rejects(manager.current(), error => (
+    error instanceof TunnelError
+    && error.code === 'handshake'
+    && error.message === 'endpoint WebSocket connection failed'
+  ))
+  assert.equal(attempts, 1)
+  assert.equal(waits, 0)
+  assert.equal(activities.at(-1)?.phase, 'terminal')
+  manager.stop()
+})
+
+test('custom endpoint handshake failures keep retrying instead of asking for a rescan', async () => {
+  let attempts = 0
+  const client = { state: 'open', deviceToken: 'token', fetch() {}, openWebSocket() {}, probe: async () => {}, close() {} }
+  const manager = new TunnelManager({
+    offerUrl: 'offer', connectionPolicy: 'automatic', endpointKind: 'custom', random: () => 0.5,
+    loadCredentials: async () => ({ clientKeypair: keypair, deviceToken: 'token', onDeviceToken: async () => {}, dispose() {} }),
+    connect: async () => {
+      attempts += 1
+      if (attempts === 1) throw new TunnelError('handshake', 'endpoint WebSocket connection failed')
+      return client
+    },
+    wait: async () => {},
+    onState: () => {},
+  })
+  manager.start()
+  assert.equal(await manager.current(), client)
+  assert.equal(attempts, 2)
+  manager.stop()
 })
 
 test('TunnelManager rejects readiness and never reconnects terminal Host authorization failures', async () => {

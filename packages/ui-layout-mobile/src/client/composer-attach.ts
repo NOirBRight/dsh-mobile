@@ -1,5 +1,9 @@
 /** Narrow composer plus-button attach helpers. Pure: no React, no cordis. */
 
+import { isComposerSendLabel, isComposerStopLabel } from './chrome-anchors.ts'
+
+export { isComposerSendLabel, isComposerStopLabel } from './chrome-anchors.ts'
+
 /** Official image MIME set used by the Host draft-image registry. */
 export const IMAGE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'] as const
 
@@ -42,19 +46,6 @@ export function composerControlButton(target: EventTarget | null): HTMLButtonEle
   if (!(button instanceof HTMLButtonElement)) return null
   if (button.closest('[data-composer-card]') === null) return null
   return button
-}
-
-const COMPOSER_STOP_LABEL = /^(?:停止生成|停止|stop generating|stop)$/i
-const COMPOSER_SEND_LABEL = /^(?:发送消息|发送|send message|send)$/i
-
-/** Match the localized label used by the official primary stop action. */
-export function isComposerStopLabel(label: string | null): boolean {
-  return label !== null && COMPOSER_STOP_LABEL.test(label.trim())
-}
-
-/** Match the localized label used by the official primary send action. */
-export function isComposerSendLabel(label: string | null): boolean {
-  return label !== null && COMPOSER_SEND_LABEL.test(label.trim())
 }
 
 function composerCardForButton(button: HTMLButtonElement): HTMLElement | null {

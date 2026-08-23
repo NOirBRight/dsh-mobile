@@ -9,7 +9,7 @@ export interface CustomEndpointAdapters {
   openWebSocket(url: string): Promise<EndpointWebSocket>
 }
 export type CustomEndpointCheck =
-  | { ok: true; stage: 'ready'; hostIdentity: string; capabilities: PublicEndpointCapabilities }
+  | { ok: true; stage: 'ready'; hostIdentity: string; hostIdentities: string[]; capabilities: PublicEndpointCapabilities }
   | { ok: false; stage: 'endpoint' | 'tls' | 'identity' | 'protocol' | 'capabilities' | 'websocket'; error: string }
 
 export function validateCustomEndpoint(value: string): string {
@@ -73,6 +73,8 @@ export async function checkCustomEndpoint(value: string, adapters: CustomEndpoin
   const record = body as Record<string, unknown>
   if (record.protocol !== 1) return { ok: false, stage: 'protocol', error: 'unsupported Gateway protocol ' + String(record.protocol) }
   if (typeof record.hostIdentity !== 'string') return { ok: false, stage: 'identity', error: 'Gateway identity is missing' }
+  const listed = Array.isArray(record.hostIdentities) ? record.hostIdentities.filter((value): value is string => typeof value === 'string' && value !== '') : []
+  const hostIdentities = [record.hostIdentity, ...listed.filter(identity => identity !== record.hostIdentity)]
   const caps = capabilities(record.capabilities)
   if (caps === null) return { ok: false, stage: 'capabilities', error: 'Gateway capabilities are invalid' }
   if (caps.browser !== false || caps.tunnel !== true || caps.endpointRefresh !== true) {
@@ -84,7 +86,7 @@ export async function checkCustomEndpoint(value: string, adapters: CustomEndpoin
   let socket: EndpointWebSocket
   try { socket = await adapters.openWebSocket(wsUrl.toString()) } catch (error) { return { ok: false, stage: 'websocket', error: String((error as Error).message ?? error) } }
   socket.close()
-  return { ok: true, stage: 'ready', hostIdentity: record.hostIdentity, capabilities: caps }
+  return { ok: true, stage: 'ready', hostIdentity: record.hostIdentity, hostIdentities, capabilities: caps }
 }
 
 /** Production adapters for Host-side Custom Endpoint checks. Tests inject their own. */

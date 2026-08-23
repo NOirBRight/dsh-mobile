@@ -1,12 +1,14 @@
 /** Host-owned Public Endpoint and bounded loopback Gateway plugin. */
 import type { Context } from '@deepseek-ai/cordis'
-import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import type { WebServer } from '@deepseek-ai/dsh-host-webserver'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { renderPairingQrSvg } from './qr.js'
 import z from '@deepseek-ai/schemastery'
+import { compactDisplayName } from '@dsh-mobile/e2e-tunnel'
 import { Config, resolveConfig } from './config.ts'
 import { loadOrCreateKeypair } from './keys.ts'
 import { DeviceTokenStore } from './tokens.ts'
@@ -23,7 +25,6 @@ import { renderPairingSettingsPage } from './settings-page.ts'
 
 export const name = 'dsh-mobile-pairing'
 export const inject = ['webServer', 'settings']
-interface PairingWebServer { register(route: WebRoute): () => void }
 export { Config, resolveConfig } from './config.ts'
 export { loadOrCreateKeypair } from './keys.ts'; export type { DaemonKeypair } from './keys.ts'
 export { DeviceTokenStore, DeviceLimitError, MAX_LIVE_DEVICES } from './tokens.ts'; export type { DeviceClientType, DeviceRecord } from './tokens.ts'
@@ -37,6 +38,7 @@ export { attachHandshakeTransport, attachRelaySocket } from './tunnel-server.ts'
 export { attachDirectSignaling, encodeSignalDescription } from './direct-signaling.ts'; export type { DirectSignalingGate, DirectSignalingOptions } from './direct-signaling.ts'
 export { WeriftDataChannelTransport } from './webrtc-transport.ts'
 export { createHostGateway } from './gateway.ts'; export type { GatewayAsset, GatewayEndpoint, HostGateway, HostGatewayOptions } from './gateway.ts'
+export { createEndpointMux } from './endpoint-mux.ts'; export type { EndpointMux, EndpointMuxOptions } from './endpoint-mux.ts'
 export { QuickTunnelController, CLOUDFLARED_QUICK_PROVIDER } from './quick-tunnel.ts'; export type { QuickTunnelChild, QuickTunnelOptions, QuickTunnelProvider, QuickTunnelStatus } from './quick-tunnel.ts'
 export { checkCustomEndpoint, checkRelayEndpoint, createNodeCustomEndpointAdapters, validateCustomEndpoint, validateRelayEndpoint } from './public-endpoint.ts'; export type { CustomEndpointAdapters, CustomEndpointCheck, RelayEndpointCheck } from './public-endpoint.ts'
 export { applyPublicEndpointSelection, loadPublicEndpointOverlay, parseEndpointSelection, savePublicEndpointOverlay } from './endpoint-settings.ts'
@@ -44,10 +46,10 @@ export type { PublicEndpointApplyResult, PublicEndpointSelection } from './endpo
 export { renderPairingSettingsPage } from './settings-page.ts'; export type { PairingSettingsPageOptions } from './settings-page.ts'
 
 export function apply(ctx: Context, config: Config): void {
-  const webServer = (ctx as unknown as { webServer: PairingWebServer }).webServer
-  const settings = (ctx as unknown as { settings?: { register(ns: string, schema: unknown): unknown } }).settings
-  settings?.register('dsh-mobile', z.object({}))
+  const webServer: WebServer = ctx.webServer
+  ctx.settings.register(settingsNamespace('dsh-mobile'), z.object({}))
   const resolved = resolveConfig(config)
+  const displayName = compactDisplayName(resolved.hostName, 'Host')
   const overlayPath = join(resolved.dshHome, 'mobile', 'public-endpoint.json')
   const overlay = loadPublicEndpointOverlay(overlayPath)
   const live = {
@@ -63,9 +65,11 @@ export function apply(ctx: Context, config: Config): void {
     : live.mode === 'relay' && live.relayUrl !== undefined
       ? { url: validateRelayEndpoint(live.relayUrl), kind: 'relay' }
       : null
+  let endpointState: 'loading' | 'ready' | 'error' = endpoint === null ? 'loading' : 'ready'
+  let endpointError: string | null = null
   let localGateway: string | null = null
   const relayCampaigns = new Map<string, { relayUrl: string; connector: ReturnType<typeof createRelayConnector> }>()
-  function tunnelOptions(room: string) { return { upstreamHost: resolved.dshHost, upstreamPort: resolved.dshPort, handshake: { keypair, offers, devices: store, room, hostName: resolved.hostName }, logger: (message: string) => ctx.logger.info('dsh-mobile-pairing: ' + message) } }
+  function tunnelOptions(room: string) { return { upstreamHost: resolved.dshHost, upstreamPort: resolved.dshPort, handshake: { keypair, offers, devices: store, room, hostName: displayName }, logger: (message: string) => ctx.logger.info('dsh-mobile-pairing: ' + message) } }
   function ensureRelayRoom(room: string, code: string): void {
     if (live.mode !== 'relay' || live.relayUrl === undefined) return
     const previous = relayCampaigns.get(room)
@@ -102,8 +106,10 @@ export function apply(ctx: Context, config: Config): void {
   }
   let quick: QuickTunnelController | null = null
   function onQuickStatus(status: QuickTunnelStatus): void {
-    if (status.state === 'ready' || status.state === 'rotated') endpoint = { url: status.endpoint, kind: 'temporary' }
-    if (status.state === 'error' || status.state === 'stopped') endpoint = null
+    if (status.state === 'starting') { endpoint = null; endpointState = 'loading'; endpointError = null }
+    if (status.state === 'ready' || status.state === 'rotated') { endpoint = { url: status.endpoint, kind: 'temporary' }; endpointState = 'ready'; endpointError = null }
+    if (status.state === 'error') { endpoint = null; endpointState = 'error'; endpointError = status.error }
+    if (status.state === 'stopped' && live.mode === 'quick') { endpoint = null; endpointState = 'loading'; endpointError = null }
     if (status.state === 'error') ctx.logger.error(new Error('dsh-mobile-pairing: ' + status.error))
     else ctx.logger.info('dsh-mobile-pairing: Quick Tunnel ' + status.state + ('endpoint' in status ? ' ' + status.endpoint : ''))
   }
@@ -138,7 +144,7 @@ export function apply(ctx: Context, config: Config): void {
         quick = retained
         retained.reattach(onQuickStatus)
         const existing = retained.endpoint()
-        if (existing !== null) endpoint = { url: existing, kind: 'temporary' }
+        if (existing !== null) { endpoint = { url: existing, kind: 'temporary' }; endpointState = 'ready'; endpointError = null }
         ctx.logger.info('dsh-mobile-pairing: Quick Tunnel reused ' + (existing ?? local))
         return
       }
@@ -165,33 +171,41 @@ export function apply(ctx: Context, config: Config): void {
       quick = null
       retainQuickTunnel(null)
       endpoint = applied.endpoint
+      endpointState = 'ready'
+      endpointError = null
       for (const room of store.liveRooms()) gateway.authorizeRoom(room)
     } else if (applied.endpointMode === 'relay') {
       await quick?.stop()
       quick = null
       retainQuickTunnel(null)
       endpoint = applied.endpoint
+      endpointState = 'ready'
+      endpointError = null
       restartRelayRooms()
-    } else if (localGateway !== null) {
-      closeRelayRooms()
-      for (const room of store.liveRooms()) gateway.authorizeRoom(room)
+    } else {
       endpoint = null
-      if (quick === null || !quick.alive()) {
-        void retainQuickTunnel()?.stop()
-        startQuickTunnel(localGateway)
+      endpointState = 'loading'
+      endpointError = null
+      if (localGateway !== null) {
+        closeRelayRooms()
+        for (const room of store.liveRooms()) gateway.authorizeRoom(room)
+        if (quick === null || !quick.alive()) {
+          void retainQuickTunnel()?.stop()
+          startQuickTunnel(localGateway)
+        }
       }
     }
-    json(res, 200, { ok: true, endpoint, endpointMode: live.mode, customEndpointUrl: live.customUrl ?? null, relayUrl: live.relayUrl ?? null, ...(applied.endpointMode === 'custom' ? { check: applied.check } : {}) })
+    json(res, 200, { ok: true, endpoint, endpointMode: live.mode, endpointState, endpointError, customEndpointUrl: live.customUrl ?? null, relayUrl: live.relayUrl ?? null, ...(applied.endpointMode === 'custom' ? { check: applied.check } : {}) })
   }
-  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/ui', handler: (req, res) => { if (req.method !== 'GET') return methodNotAllowed(res); res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(renderPairingSettingsPage({ hostIdentity: keypair.publicKeyBase64Url, endpoint, endpointMode: live.mode, customEndpointUrl: live.customUrl, relayUrl: live.relayUrl })) } }))
-  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/status', handler: (req, res) => { if (req.method !== 'GET') return methodNotAllowed(res); json(res, 200, { endpoint, endpointMode: live.mode, customEndpointUrl: live.customUrl ?? null, relayUrl: live.relayUrl ?? null, hostIdentity: keypair.publicKeyBase64Url, configuration: { file: 'cordis.patch.yml', entryId: 'dsh-mobile-pairing', customEndpointField: 'customEndpointUrl', relayEndpointField: 'relayUrl', legacyRelayConfigured: resolved.signalingUrl !== undefined, relayConfigured: live.relayUrl !== undefined } }) } }))
+  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/ui', handler: (req, res) => { if (req.method !== 'GET') return methodNotAllowed(res); res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(renderPairingSettingsPage({ hostIdentity: keypair.publicKeyBase64Url, endpoint, endpointMode: live.mode, endpointState, endpointError, customEndpointUrl: live.customUrl, relayUrl: live.relayUrl })) } }))
+  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/status', handler: (req, res) => { if (req.method !== 'GET') return methodNotAllowed(res); json(res, 200, { endpoint, endpointMode: live.mode, endpointState, endpointError, customEndpointUrl: live.customUrl ?? null, relayUrl: live.relayUrl ?? null, hostIdentity: keypair.publicKeyBase64Url, configuration: { file: 'cordis.patch.yml', entryId: 'dsh-mobile-pairing', customEndpointField: 'customEndpointUrl', relayEndpointField: 'relayUrl', legacyRelayConfigured: resolved.signalingUrl !== undefined, relayConfigured: live.relayUrl !== undefined } }) } }))
   ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/endpoint', handler: (req, res) => { void handleEndpointSave(req, res) } }))
-  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair', handler: (req, res) => handleLocalPair(req, res, endpoint, keypair.publicKeyBase64Url, resolved.appUrl, resolved.stunUrls, offers, store, gateway, ensureRelayRoom) }))
+  ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair', handler: (req, res) => handleLocalPair(req, res, endpoint, keypair.publicKeyBase64Url, resolved.appUrl, displayName, resolved.stunUrls, offers, store, gateway, ensureRelayRoom) }))
   ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/devices', handler: (req, res) => { if (req.method !== 'GET') return methodNotAllowed(res); json(res, 200, { devices: store.list() }) } }))
   ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/revoke', handler: async (req, res) => { if (req.method !== 'POST') return methodNotAllowed(res); const body = await readJsonBody(req, res); if (body === null) return; const id = (body as Record<string, unknown>).id; const room = typeof id === 'string' ? store.list().find(device => device.id === id)?.room : undefined; const revoked = typeof id === 'string' && store.revoke(id); if (revoked && room !== undefined) { relayCampaigns.get(room)?.connector.close(); relayCampaigns.delete(room) } json(res, revoked ? 200 : 404, { ok: revoked }) } }))
   ctx.effect(() => webServer.register({ kind: 'exact', path: '/pair/label', handler: async (req, res) => { if (req.method !== 'POST') return methodNotAllowed(res); const body = await readJsonBody(req, res); if (body === null) return; const record = body as Record<string, unknown>; const renamed = typeof record.id === 'string' && typeof record.label === 'string' && store.rename(record.id, record.label); json(res, renamed ? 200 : 404, { ok: renamed }) } }))
 }
-async function handleLocalPair(req: IncomingMessage, res: ServerResponse, endpoint: GatewayEndpoint | null, pubkey: string, appUrl: string, stunUrls: string[], offers: PairingOfferManager, store: Pick<DeviceTokenStore, 'hasLiveForRoom'>, gateway: { authorizeRoom(room: string, expiresAtMs?: number): void }, ensureRelayRoom: (room: string, code: string) => void): Promise<void> {
+async function handleLocalPair(req: IncomingMessage, res: ServerResponse, endpoint: GatewayEndpoint | null, pubkey: string, appUrl: string, hostName: string, stunUrls: string[], offers: PairingOfferManager, store: Pick<DeviceTokenStore, 'hasLiveForRoom'>, gateway: { authorizeRoom(room: string, expiresAtMs?: number): void }, ensureRelayRoom: (room: string, code: string) => void): Promise<void> {
   if (req.method !== 'GET') return methodNotAllowed(res)
   if (endpoint === null) { json(res, 503, { error: 'Public Endpoint is not ready' }); return }
   const params = new URL(req.url ?? '/', 'http://loopback').searchParams
@@ -199,7 +213,7 @@ async function handleLocalPair(req: IncomingMessage, res: ServerResponse, endpoi
   if (requestedRoom !== null && !store.hasLiveForRoom(requestedRoom)) { json(res, 404, { error: 'unknown authorized device room' }); return }
   const room = requestedRoom ?? randomBytes(16).toString('hex')
   if (endpoint.kind === 'relay') {
-    const offer = offers.mint('relay', endpoint.url, room, pubkey)
+    const offer = offers.mint('relay', endpoint.url, room, pubkey, undefined, hostName)
     ensureRelayRoom(room, offer.code)
     const nativeOfferUrl = buildOfferUrl(appUrl, offer)
     if (params.get('format') === 'svg') {
@@ -209,7 +223,7 @@ async function handleLocalPair(req: IncomingMessage, res: ServerResponse, endpoi
     json(res, 200, { ...offer, offerUrl: nativeOfferUrl, nativeOfferUrl })
     return
   }
-  const offer = offers.mintPublic({ endpoint: endpoint.url, endpointKind: endpoint.kind, room, pubkey, ice: stunUrls })
+  const offer = offers.mintPublic({ endpoint: endpoint.url, endpointKind: endpoint.kind, room, pubkey, hostName, ice: stunUrls })
   gateway.authorizeRoom(room, offer.exp * 1000)
   const nativeOfferUrl = buildOfferUrl(appUrl, offer)
   if (params.get('format') === 'svg') {

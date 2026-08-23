@@ -29,8 +29,10 @@ wss://relay.example.com/r/<32-lowercase-hex-room>?role=host|client
 ~~~
 
 Only binary sealed tunnel frames are accepted on the room route. Text frames,
-unknown roles, invalid rooms, and a second occupant for the same role are
-rejected. Empty rooms are garbage-collected; no frame queue or replay exists.
+unknown roles, and invalid rooms are rejected. A later join for the same role
+replaces the previous occupant so a phone can reopen onto a live Host seat.
+WebSocket ping keeps NAT mappings alive and never evicts a seated socket.
+Empty rooms are garbage-collected; no frame queue or replay exists.
 
 ## Maintainer regions
 

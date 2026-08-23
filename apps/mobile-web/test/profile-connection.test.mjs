@@ -12,7 +12,7 @@ const keypair = { publicKey: new Uint8Array(32).fill(1), secretKey: new Uint8Arr
 const offerUrl = (over = {}) => 'dsh-mobile://pair#offer=' + b64urlEncode(new TextEncoder().encode(JSON.stringify({
   v: 4, mode: 'public', protocol: 1, endpoint: 'https://host.example', endpointKind: 'temporary',
   room, pubkey: hostId, code: '123456', exp: Math.floor(Date.now() / 1000) + 300, ice: ['stun:stun.example.com:3478'],
-  capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true }, ...over,
+  capabilities: { browser: false, direct: true, tunnel: true, endpointRefresh: true }, hostName: 'Noir Workstation', ...over,
 })))
 
 function fixture() {
@@ -27,6 +27,7 @@ test('new v4 pairing stores retry key and code only in the vault and activates o
   assert.equal(active.hostId, hostId)
   assert.equal(active.room, room)
   assert.equal(active.endpoint.url, 'https://host.example')
+  assert.equal(active.displayName, 'Noir PC')
   assert.deepEqual(active.ice, ['stun:stun.example.com:3478'])
   assert.equal(prepared.offerUrl, offerUrl())
   const secret = decodeSessionCredential(await vault.read(active.credentialRef))
@@ -116,23 +117,51 @@ test('saved active Profile reconstructs v4 connection metadata without localStor
   loaded.dispose()
 })
 
-test('changed Host Identity requires explicit acknowledgement before endpoint replacement', async () => {
+test('a second Host with the same display name is labeled by its endpoint host', async () => {
+  const { vault, repository } = fixture()
+  await prepareProfileConnection({ repository, vault, offerUrl: offerUrl(), generateKeypair: () => ({ publicKey: keypair.publicKey.slice(), secretKey: keypair.secretKey.slice() }) })
+  const otherHost = b64urlEncode(new Uint8Array(32).fill(8))
+  const second = await prepareProfileConnection({
+    repository,
+    vault,
+    offerUrl: offerUrl({ pubkey: otherHost, endpoint: 'https://lab.example', room: 'b'.repeat(32) }),
+    generateKeypair: () => ({ publicKey: new Uint8Array(32).fill(3), secretKey: new Uint8Array(32).fill(4) }),
+  })
+  assert.equal((await repository.list()).length, 2)
+  assert.equal((await repository.list()).find(item => item.hostId === hostId)?.displayName, 'Noir PC')
+  assert.equal(second.profile.displayName, 'Noir PC · lab.example')
+})
+
+test('a second Host on the same Public Endpoint is saved beside the first', async () => {
+  const { vault, repository } = fixture()
+  await prepareProfileConnection({ repository, vault, offerUrl: offerUrl(), generateKeypair: () => ({ publicKey: keypair.publicKey.slice(), secretKey: keypair.secretKey.slice() }) })
+  const otherHost = b64urlEncode(new Uint8Array(32).fill(8))
+  const second = await prepareProfileConnection({
+    repository,
+    vault,
+    offerUrl: offerUrl({ pubkey: otherHost, room: 'b'.repeat(32) }),
+    generateKeypair: () => ({ publicKey: new Uint8Array(32).fill(3), secretKey: new Uint8Array(32).fill(4) }),
+  })
+  const listed = await repository.list()
+  assert.equal(listed.length, 2)
+  assert.equal(listed.find(item => item.hostId === hostId)?.endpoint.url, 'https://host.example')
+  assert.equal(second.profile.endpoint.url, 'https://host.example')
+  assert.equal(second.profile.hostId, otherHost)
+  assert.equal((await repository.getActive()).hostId, otherHost)
+})
+
+test('scanning a new Host Identity on a shared endpoint does not require replacing the saved Host', async () => {
   const { vault, repository } = fixture()
   await prepareProfileConnection({ repository, vault, offerUrl: offerUrl(), generateKeypair: () => ({ publicKey: keypair.publicKey.slice(), secretKey: keypair.secretKey.slice() }) })
   const changedHost = b64urlEncode(new Uint8Array(32).fill(9))
   const changed = offerUrl({ pubkey: changedHost, room: 'c'.repeat(32) })
-  await assert.rejects(prepareProfileConnection({
+  const second = await prepareProfileConnection({
     repository, vault, offerUrl: changed,
-    generateKeypair: () => ({ publicKey: keypair.publicKey.slice(), secretKey: keypair.secretKey.slice() }),
+    generateKeypair: () => ({ publicKey: new Uint8Array(32).fill(5), secretKey: new Uint8Array(32).fill(6) }),
     acknowledgeIdentityChange: () => false,
-  }), /different Host Identity/)
-  const accepted = await prepareProfileConnection({
-    repository, vault, offerUrl: changed,
-    generateKeypair: () => ({ publicKey: keypair.publicKey.slice(), secretKey: keypair.secretKey.slice() }),
-    acknowledgeIdentityChange: () => true,
   })
-  assert.equal(accepted.profile.hostId, changedHost)
-  assert.equal((await repository.list()).length, 1)
+  assert.equal(second.profile.hostId, changedHost)
+  assert.equal((await repository.list()).length, 2)
 })
 
 test('a new pairing code replaces a stale mint room before a token exists', async () => {

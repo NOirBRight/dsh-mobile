@@ -277,7 +277,7 @@ export function extractBootManifestJson(html: string, missing = 'boot manifest n
 
 const NARROW_LAYOUT_DEPENDENCIES = ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-theme'] as const
 
-export type LayoutCompatibility = 'compatible' | 'revision-mismatch' | 'missing-contract'
+export type LayoutCompatibility = 'compatible' | 'revision-mismatch' | 'missing-contract' | 'layout-load-failed'
 export type ResponsiveRoot = 'official' | 'narrow'
 
 export interface ResponsiveBootSelectionOptions {
@@ -287,6 +287,10 @@ export interface ResponsiveBootSelectionOptions {
   expectedOfficialLayoutRevision?: string
   /** Result of the caller's narrow slot-contract capability check. */
   narrowContractAvailable?: boolean
+  /** Official layout rev that previously crashed the mobile layout; skip retry until Host rev changes. */
+  failedMobileLayoutRevision?: string
+  /** Optional explicit opt-in to the exact-verified session enhancement. */
+  sessionEnhancementPreference?: SessionEnhancementPreference
 }
 
 export interface ResponsiveBootSelection {
@@ -295,6 +299,8 @@ export interface ResponsiveBootSelection {
   compatibility: LayoutCompatibility
   officialLayoutRevision: string
   enhancement?: Omit<SessionEnhancementSelection, 'manifest'>
+  /** Official-root selection used when the narrow adapter fails to load. */
+  fallbackOfficial?: ResponsiveBootSelection
 }
 
 const BOOT_CACHE_PREFIX = 'dsh-mobile:boot:'
@@ -455,20 +461,27 @@ export function selectResponsiveBootManifest(
   value: unknown,
   options: ResponsiveBootSelectionOptions,
 ): ResponsiveBootSelection {
-  const manifest = validateBootManifest(value)
+  const { manifest, ...enhancement } = selectSessionEnhancement(value, {
+    preference: options.sessionEnhancementPreference ?? 'compatible',
+  })
   const official = manifest.entries.find(entry => entry.id === DESKTOP_LAYOUT_ID)!
   const hostEntries = manifest.entries.filter(entry => entry.id !== CLIENT_HMR_ID)
   const wantsNarrow = options.viewportWidth < NARROW_LAYOUT_BREAKPOINT
   const contractAvailable = options.narrowContractAvailable !== false
+  const layoutLoadFailed = options.failedMobileLayoutRevision !== undefined &&
+    options.failedMobileLayoutRevision === official.rev
   const revisionMismatch = options.expectedOfficialLayoutRevision !== undefined &&
     options.expectedOfficialLayoutRevision !== official.rev
 
-  if (!wantsNarrow || !contractAvailable) {
+  if (!wantsNarrow || !contractAvailable || layoutLoadFailed) {
     return {
       manifest: { ...manifest, entries: hostEntries },
       layout: 'official',
-      compatibility: wantsNarrow && !contractAvailable ? 'missing-contract' : 'compatible',
+      compatibility: wantsNarrow && layoutLoadFailed
+        ? 'layout-load-failed'
+        : wantsNarrow && !contractAvailable ? 'missing-contract' : 'compatible',
       officialLayoutRevision: official.rev,
+      enhancement,
     }
   }
 
@@ -491,9 +504,16 @@ export function selectResponsiveBootManifest(
     layout: 'narrow',
     compatibility: revisionMismatch ? 'revision-mismatch' : 'compatible',
     officialLayoutRevision: official.rev,
+    enhancement,
+    fallbackOfficial: {
+      manifest: { ...manifest, entries: hostEntries },
+      layout: 'official',
+      compatibility: 'layout-load-failed',
+      officialLayoutRevision: official.rev,
+      enhancement,
+    },
   }
 }
-
 
 export type SessionEnhancementPreference = 'compatible' | 'enhanced'
 export type SessionEnhancementSelection = {
@@ -565,6 +585,7 @@ export function officialNarrowContractAvailable(value: unknown): boolean {
 export function layoutCompatibilityMessage(compatibility: LayoutCompatibility): string | null {
   if (compatibility === 'revision-mismatch') return 'Host 布局版本有更新。窄屏布局仍会继续使用。'
   if (compatibility === 'missing-contract') return '窄屏布局无法安全挂载，已回退到官方布局。'
+  if (compatibility === 'layout-load-failed') return '窄屏布局加载失败，已回退官方布局。'
   return null
 }
 
@@ -573,6 +594,7 @@ export function installCompatibilityNotice(compatibility: LayoutCompatibility): 
   if (message === null || typeof document === 'undefined') return
   const bar = document.createElement('div')
   bar.setAttribute('role', 'status')
+  bar.setAttribute('data-mobile-compatibility-notice', '')
   // The notice is prepended before the mobile shell; reserve the Android
   // status-bar inset so system icons never cover its text.
   bar.style.cssText = 'position:sticky;top:0;z-index:10001;box-sizing:border-box;padding:calc(6px + env(safe-area-inset-top)) 12px 6px;background:var(--dsw-alias-bg-base,Canvas);color:var(--dsw-alias-label-primary,CanvasText);border-bottom:1px solid var(--dsw-alias-border-l1,ButtonBorder);font:13px/1.4 system-ui,sans-serif;display:flex;justify-content:space-between;align-items:center;gap:8px'
@@ -582,9 +604,34 @@ export function installCompatibilityNotice(compatibility: LayoutCompatibility): 
   close.type = 'button'
   close.textContent = 'Dismiss'
   close.setAttribute('aria-label', 'Dismiss')
-  close.style.cssText = 'border:0;background:transparent;color:inherit;font:inherit;cursor:pointer'
+  close.setAttribute('data-mobile-compatibility-dismiss', '')
+  const style = document.createElement('style')
+  style.textContent = `
+[data-mobile-compatibility-notice] [data-mobile-compatibility-dismiss] {
+  box-sizing: border-box;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-mobile-compatibility-notice] [data-mobile-compatibility-dismiss]:hover {
+  background: var(--dsw-alias-interactive-bg-hover, ButtonFace);
+}
+
+[data-mobile-compatibility-notice] [data-mobile-compatibility-dismiss]:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary, Highlight);
+  outline-offset: 2px;
+}
+`
   close.onclick = () => bar.remove()
-  bar.append(text, close)
+  bar.append(style, text, close)
   document.body.prepend(bar)
 }
 

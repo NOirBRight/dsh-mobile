@@ -449,7 +449,7 @@ test('a mid-socket re-handshake on the relay socket replaces the session and res
   const ackFrame = await inbox.waitFor((f) => {
     try { return openSealed(f.data, clientKeysB, hostKeys.publicKey).ok === true } catch { return false }
   })
-  assert.deepEqual(openSealed(ackFrame.data, clientKeysB, hostKeys.publicKey), { ok: true })
+  assert.deepEqual(openSealed(ackFrame.data, clientKeysB, hostKeys.publicKey), { ok: true, hostName: 'Host', maxHttpBodyBytes: 8 * 1024 * 1024 })
 
   // Both seq domains reset: the new session starts at 0 again.
   const codecB = sessionCodec(clientKeysB, hostKeys.publicKey)

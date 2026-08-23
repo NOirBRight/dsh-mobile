@@ -4,6 +4,8 @@ export interface PairingSettingsPageOptions {
   hostIdentity: string
   endpoint: GatewayEndpoint | null
   endpointMode?: 'quick' | 'custom' | 'relay'
+  endpointState?: 'loading' | 'ready' | 'error'
+  endpointError?: string | null
   customEndpointUrl?: string
   relayUrl?: string
 }
@@ -16,33 +18,41 @@ function escapeHtml(value: string): string {
 export function renderPairingSettingsPage(options: PairingSettingsPageOptions): string {
   const identity = escapeHtml(options.hostIdentity)
   const endpoint = options.endpoint === null ? '' : escapeHtml(options.endpoint.url)
-  const kind = options.endpoint?.kind === 'relay' ? 'Relay' : options.endpoint?.kind === 'custom' ? 'Saved Endpoint' : options.endpoint === null ? 'Not configured' : 'Temporary Endpoint'
+  const kind = options.endpoint === null ? 'Not ready' : options.endpoint.kind === 'temporary' ? 'Generated automatically' : 'Entered address'
   const mode = options.endpointMode === 'relay' ? 'relay' : 'quick'
   const relayUrl = escapeHtml(options.relayUrl ?? '')
-  const qrReady = options.endpoint !== null && ((mode === 'quick' && options.endpoint.kind === 'temporary') || (mode === 'relay' && options.endpoint.kind === 'relay'))
-  const qrMarkup = qrReady ? '<img id="qr-shared" alt="Pairing QR" src="/pair?format=svg">' : '<div id="qr-placeholder" class="qr-placeholder" role="img" aria-label="Pairing QR not ready"><span>QR</span><small>Set and save an endpoint first</small></div>'
+  const qrReady = options.endpoint !== null && options.endpointState !== 'error'
+  const addressLoading = mode === 'quick' && !qrReady && options.endpointState !== 'error'
+  const qrMarkup = qrReady
+    ? '<div id="qr-shell" class="qr-shell" data-state="loading"><img id="qr-shared" alt="Pairing QR" src="/pair?format=svg"><div class="qr-feedback qr-loading"><i></i><small>Generating code…</small></div><div class="qr-feedback qr-error"><span>QR</span><small>Could not generate the code</small><button type="button" id="retry-qr">Try again</button></div></div>'
+    : addressLoading
+      ? '<div id="qr-placeholder" class="qr-placeholder" role="status"><i></i><small>Generating address and code…</small></div>'
+      : '<div id="qr-placeholder" class="qr-placeholder" role="img" aria-label="Pairing QR not ready"><span>QR</span><small>' + (options.endpointState === 'error' ? 'Could not generate the address. Try again.' : 'Enter an address first') + '</small></div>'
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DSH Mobile Pairing</title><style>
-:root{color-scheme:light dark;font:15px/1.45 system-ui,sans-serif}body{max-width:980px;margin:auto;padding:24px}h1{margin:.2em 0}.muted{opacity:.7}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.card{border:1px solid #8886;border-radius:12px;padding:16px}code{word-break:break-all}img{box-sizing:border-box;display:block;max-width:320px;width:100%;padding:12px;background:white;margin:12px auto;border-radius:8px}button,a.button{border:1px solid #777;border-radius:8px;padding:8px 12px;background:transparent;color:inherit;text-decoration:none;cursor:pointer}.danger{color:#dc2626}.device{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0;border-top:1px solid #8884}.device span{flex:1;min-width:180px}.qr-placeholder{box-sizing:border-box;width:320px;height:240px;display:grid;place-content:center;gap:8px;border:1px dashed #8888;border-radius:8px;background:repeating-linear-gradient(45deg,#8881 0 2px,transparent 2px 8px);color:#888;text-align:center}.qr-placeholder span{font-size:36px;font-weight:700;letter-spacing:.12em}.qr-placeholder small{font-size:12px}.hidden{display:none}</style></head><body>
+:root{color-scheme:light dark;font:15px/1.45 system-ui,sans-serif}body{max-width:980px;margin:auto;padding:24px}h1{margin:.2em 0}.muted{opacity:.7}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.card{border:1px solid #8886;border-radius:12px;padding:16px}code{word-break:break-all}img{box-sizing:border-box;display:block;max-width:320px;width:100%;padding:12px;background:white;margin:auto;border-radius:8px}button,a.button{min-height:38px;border:1px solid #777;border-radius:8px;padding:8px 12px;background:transparent;color:inherit;font:inherit;text-decoration:none;cursor:pointer}.mode-options{display:flex;gap:8px;flex-wrap:wrap}.mode-options label{min-height:40px;display:inline-flex;align-items:center;gap:7px;box-sizing:border-box;padding:7px 10px;border:1px solid #8886;border-radius:8px;cursor:pointer}.mode-options input{width:18px;height:18px;margin:0;accent-color:Highlight}.mode-options label:focus-within{outline:2px solid Highlight;outline-offset:2px}input[type=url]{box-sizing:border-box;width:min(100%,480px);min-height:40px;border:1px solid #777;border-radius:8px;padding:8px 12px;background:transparent;color:inherit;font:inherit}.danger{color:#dc2626}.device{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0;border-top:1px solid #8884}.device span{flex:1;min-width:180px}.qr-shell,.qr-placeholder{box-sizing:border-box;width:320px;max-width:100%;aspect-ratio:1;display:grid;place-items:center;margin:12px auto;border-radius:8px;overflow:hidden}.qr-shell>*{grid-area:1/1}.qr-feedback,.qr-placeholder{align-content:center;gap:8px;color:#888;text-align:center}.qr-feedback{display:none}.qr-shell[data-state=loading] .qr-loading,.qr-shell[data-state=error] .qr-error{display:grid}.qr-shell[data-state=loading] img,.qr-shell[data-state=error] img{visibility:hidden}.qr-placeholder{border:1px dashed #8888;background:repeating-linear-gradient(45deg,#8881 0 2px,transparent 2px 8px)}.qr-placeholder span,.qr-error span{font-size:36px;font-weight:700;letter-spacing:.12em}.qr-placeholder small,.qr-feedback small{font-size:12px}.qr-placeholder i,.qr-loading i{width:28px;height:28px;box-sizing:border-box;border:3px solid #8886;border-top-color:currentColor;border-radius:50%;animation:qr-spin .8s linear infinite}@keyframes qr-spin{to{transform:rotate(360deg)}}.hidden{display:none}</style></head><body>
 <h1>DSH Mobile</h1>
 <p class="muted">Host Identity: <code>${identity}</code>. Pairing offers expire after five minutes and are single-use. Scan this code with the DSH Mobile app. Each device needs a new code; codes rotate after a successful pair and every 20 seconds.</p>
-<section class="card" style="margin-top:16px"><h2>Public Endpoint</h2>
-<form id="endpoint-form"><label><input type="radio" name="mode" value="quick"${mode === 'quick' ? ' checked' : ''}> Temporary address</label>
-<label style="margin-left:12px"><input type="radio" name="mode" value="relay"${mode === 'relay' ? ' checked' : ''}> Relay</label>
-<p><span id="endpoint-kind">${kind}</span><br><code id="endpoint">${endpoint}</code></p>
-<p id="relay-picker" class="${mode === 'relay' ? '' : 'hidden'}"><select id="relay-url" name="relayUrl" value="${relayUrl}" style="width:min(100%,480px)"><option value="wss://relay.noirbright.top"${relayUrl === 'wss://relay.noirbright.top' ? ' selected' : ''}>Domestic Relay</option><option value="wss://relay-overseas.noirbright.top"${relayUrl === 'wss://relay-overseas.noirbright.top' ? ' selected' : ''}>Overseas Relay</option>${relayUrl !== '' && relayUrl !== 'wss://relay.noirbright.top' && relayUrl !== 'wss://relay-overseas.noirbright.top' ? '<option value="' + relayUrl + '" selected>' + relayUrl + '</option>' : ''}</select></p>
-<button type="submit">Check and save</button> <span id="endpoint-save" class="muted"></span></form>
-<p class="muted">Relay is checked through its health endpoint. Self-host Docker from <a href="https://github.com/NOirBRight/dsh-mobile/tree/master/relay/deploy">GitHub</a>.</p></section>
-<section class="card" style="margin-top:16px"><h2>Add a device</h2>${qrMarkup}<button type="button" id="refresh-qr-button"${qrReady ? '' : ' disabled'}>New code</button></section>
+<section class="card" style="margin-top:16px"><h2>Connection method</h2>
+<form id="endpoint-form"><div class="mode-options"><label><input type="radio" name="mode" value="quick"${mode === 'quick' ? ' checked' : ''}> Generate automatically</label>
+<label><input type="radio" name="mode" value="relay"${mode === 'relay' ? ' checked' : ''}> Enter an address</label></div>
+<h3>Connection address</h3>
+<div id="quick-address" class="${mode === 'quick' ? '' : 'hidden'}"><span id="endpoint-kind">${kind}</span><br><code id="endpoint">${endpoint}</code><p class="muted">The address and code are generated together.</p></div>
+<div id="relay-picker" class="${mode === 'relay' ? '' : 'hidden'}"><label for="relay-url" class="muted">Connection address</label><p><input id="relay-url" name="relayUrl" type="url" inputmode="url" autocomplete="off" placeholder="wss://your-service.example" value="${relayUrl}"> <button type="submit">Generate code</button></p><p class="muted"><a href="https://github.com/NOirBRight/dsh-mobile/tree/master/relay/deploy">How to deploy your own connection service</a></p></div>
+<span id="endpoint-save" class="muted"></span></form>
+<h2>Add a device</h2>${qrMarkup}</section>
 <section class="card" style="margin-top:16px"><h2>Authorized devices</h2><p class="muted">Rename is Host-side. Update address keeps the selected device authorization. Revocation is Host-side; Profile Removal in the app is local-only.</p><div id="devices">Loading…</div></section>
 <section id="refresh" class="card hidden" style="margin-top:16px"><h2>Endpoint Refresh</h2><p id="refresh-label"></p><img id="refresh-qr-image" alt="Endpoint Refresh QR"><button id="close-refresh">Close</button></section>
 <script>
 const devices = document.getElementById('devices');
 let liveCount=0;
 function qrUrl(){return '/pair?format=svg&_='+Date.now()}
-function rotateQrs(){const qr=document.getElementById('qr-shared'); if(qr) qr.src=qrUrl()}
-document.getElementById('refresh-qr-button').onclick=rotateQrs;
-const relayPicker=document.getElementById('relay-picker');function updateMode(){const selected=[...document.querySelectorAll('input[name=mode]')].find(input=>input.checked)?.value;relayPicker.classList.toggle('hidden',selected!=='relay')}document.querySelectorAll('input[name=mode]').forEach(input=>input.onchange=updateMode);updateMode();
+function wireQr(qr){const shell=document.getElementById('qr-shell');if(!shell)return;shell.dataset.state='loading';qr.onload=()=>{shell.dataset.state='ready'};qr.onerror=()=>{shell.dataset.state='error'};if(qr.complete)shell.dataset.state=qr.naturalWidth>0?'ready':'error'}
+function rotateQrs(){const qr=document.getElementById('qr-shared');const shell=document.getElementById('qr-shell');if(qr){if(shell)shell.dataset.state='loading';qr.src=qrUrl()}}
+function activateQr(){let qr=document.getElementById('qr-shared');if(qr){rotateQrs();return}const placeholder=document.getElementById('qr-placeholder');if(!placeholder)return;const shell=document.createElement('div');shell.id='qr-shell';shell.className='qr-shell';shell.dataset.state='loading';shell.innerHTML='<img id="qr-shared" alt="Pairing QR"><div class="qr-feedback qr-loading"><i></i><small>Generating code…</small></div><div class="qr-feedback qr-error"><span>QR</span><small>Could not generate the code</small><button type="button" id="retry-qr">Try again</button></div>';placeholder.replaceWith(shell);qr=document.getElementById('qr-shared');wireQr(qr);document.getElementById('retry-qr').onclick=rotateQrs;rotateQrs()}
+function showAddressFailure(){const placeholder=document.getElementById('qr-placeholder');if(!placeholder)return;placeholder.replaceChildren();placeholder.removeAttribute('role');placeholder.setAttribute('role','alert');const mark=document.createElement('span');mark.textContent='QR';const message=document.createElement('small');message.textContent='Could not generate the address. Try again.';placeholder.append(mark,message)}
+const initialQr=document.getElementById('qr-shared');if(initialQr)wireQr(initialQr);const retryQr=document.getElementById('retry-qr');if(retryQr)retryQr.onclick=rotateQrs;
+const relayPicker=document.getElementById('relay-picker');const quickAddress=document.getElementById('quick-address');function updateMode(){const selected=[...document.querySelectorAll('input[name=mode]')].find(input=>input.checked)?.value;relayPicker.classList.toggle('hidden',selected!=='relay');quickAddress.classList.toggle('hidden',selected!=='quick')}document.querySelectorAll('input[name=mode]').forEach(input=>input.onchange=()=>{updateMode();if(input.checked&&input.value==='quick')document.getElementById('endpoint-form').requestSubmit()});updateMode();
 async function loadDevices(){
   const response=await fetch('/pair/devices',{cache:'no-store'}); const payload=await response.json(); const list=payload.devices; devices.textContent='';
   if(!list.length){devices.textContent='No authorized devices yet.';return}
@@ -90,9 +100,9 @@ document.getElementById('endpoint-form').onsubmit=async event=>{
   const response=await fetch('/pair/endpoint',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
   const payload=await response.json();
   const stages={endpoint:'URL syntax',tls:'TLS/HTTP reachability',identity:'Host Identity',protocol:'protocol',capabilities:'capabilities',websocket:'WebSocket upgrade',relay:'Relay health'};
-  saveStatus.textContent=payload.ok?'Public Endpoint saved.':(stages[payload.stage]||payload.stage||'error')+': '+(payload.error||response.status);
-  if(payload.ok) setTimeout(()=>{ const placeholder=document.getElementById('qr-placeholder'); if(placeholder){ const image=document.createElement('img'); image.id='qr-shared'; image.alt='Pairing QR'; image.src='/pair?format=svg&_='+Date.now(); placeholder.replaceWith(image); } const button=document.getElementById('refresh-qr-button'); if(button) button.disabled=false; },250);
+  saveStatus.textContent=payload.ok?'Connection saved. Generating code…':(stages[payload.stage]||payload.stage||'error')+': '+(payload.error||response.status);
+  if(payload.ok&&payload.endpoint)setTimeout(activateQr,250);
 };
-setInterval(async()=>{try{const response=await fetch('/pair/status',{cache:'no-store'});const status=await response.json();document.getElementById('endpoint').textContent=status.endpoint?.url||'Not configured';document.getElementById('endpoint-kind').textContent=status.endpoint?.kind==='relay'?'Relay':status.endpoint?.kind==='custom'?'Saved Endpoint':status.endpoint?.kind==='temporary'?'Temporary Endpoint':'Not configured'}catch{}},5000);
+setInterval(async()=>{try{const response=await fetch('/pair/status',{cache:'no-store'});const status=await response.json();document.getElementById('endpoint').textContent=status.endpoint?.url||'Not ready';document.getElementById('endpoint-kind').textContent=status.endpoint?.kind==='temporary'?'Generated automatically':status.endpoint?'Entered address':'Not ready';if(status.endpoint&&!document.getElementById('qr-shared'))activateQr();else if(status.endpointState==='error')showAddressFailure()}catch{}},5000);
 </script></body></html>`
 }

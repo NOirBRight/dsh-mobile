@@ -13,7 +13,12 @@ import { startFakeDcHost } from './fake-dc-host.mjs'
 /** Pair a fake host with a tunnel client over a fresh DataChannel pair. */
 async function hostAndClient(opts = {}) {
   const [hostDc, clientDc] = FakeDataChannel.pair()
-  const host = startFakeDcHost(hostDc, { expectedCode: opts.expectedCode, state: opts.state })
+  const host = startFakeDcHost(hostDc, {
+    expectedCode: opts.expectedCode,
+    state: opts.state,
+    maxHttpBodyBytes: opts.maxHttpBodyBytes,
+    advertiseMaxHttpBodyBytes: opts.advertiseMaxHttpBodyBytes,
+  })
   const states = []
   const tokens = []
   const hostNames = []
@@ -37,9 +42,16 @@ test('openSession handshakes over a DataChannelTransport and issues a device tok
   const { client, states, tokens, hostNames } = await hostAndClient()
   assert.equal(client.state, 'open')
   assert.equal(client.deviceToken, 'tok-1')
+  assert.equal(client.maxHttpBodyBytes, 8 * 1024 * 1024)
   assert.deepEqual(tokens, ['tok-1'])
-  assert.deepEqual(hostNames, ['Noir Workstation'])
+  assert.deepEqual(hostNames, ['Noir PC'])
   assert.deepEqual(states, ['open'])
+  client.close()
+})
+
+test('an old Host ack without maxHttpBodyBytes keeps the safe 8 MiB client default', async () => {
+  const { client } = await hostAndClient({ advertiseMaxHttpBodyBytes: false })
+  assert.equal(client.maxHttpBodyBytes, 8 * 1024 * 1024)
   client.close()
 })
 
@@ -81,6 +93,37 @@ test('fetch assembles chunked http-data frames in order', async () => {
   const res = await client.fetch('/chunked')
   assert.equal(res.status, 200)
   assert.equal(await res.text(), 'chunk-1;chunk-2')
+  client.close()
+})
+
+test('advertised request limits reject an unknown-length body before any tunnel frames are sent', async () => {
+  const { client } = await hostAndClient({ maxHttpBodyBytes: 8 })
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array([1, 2, 3, 4, 5]))
+      controller.enqueue(new Uint8Array([6, 7, 8, 9, 10]))
+      controller.close()
+    },
+  })
+  await assert.rejects(client.fetch('/upload', { method: 'POST', body }), (error) => {
+    assert.equal(error.code, 'too-large')
+    assert.deepEqual(error.details, { direction: 'request', maxHttpBodyBytes: 8, actualHttpBodyBytes: 10 })
+    assert.match(error.message, /8 bytes/)
+    return true
+  })
+  const res = await client.fetch('/tiny')
+  assert.equal(res.status, 200, 'the rejected body did not consume a tunnel sequence number')
+  client.close()
+})
+
+test('chunked responses are bounded by the negotiated HTTP body limit', async () => {
+  const { client } = await hostAndClient({ maxHttpBodyBytes: 8 })
+  await assert.rejects(client.fetch('/oversized-chunked'), (error) => {
+    assert.equal(error.code, 'too-large')
+    assert.deepEqual(error.details, { direction: 'response', maxHttpBodyBytes: 8, actualHttpBodyBytes: 10 })
+    return true
+  })
+  assert.equal(client.state, 'open')
   client.close()
 })
 

@@ -9,7 +9,12 @@
  */
 import { connect, HeartbeatController, TunnelError } from '@dsh-mobile/e2e-tunnel'
 import type { ClientKeypair, ConnectionPolicy, ConnectionStatus, ConnectOptions, TunnelClient, TunnelState } from '@dsh-mobile/e2e-tunnel'
-import { extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, readCachedBootManifest, selectResponsiveBootManifest, selectSessionEnhancement, createLocalStoragePluginCache, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions, type SessionEnhancementPreference } from './manifest.ts'
+import { createLocalStoragePluginCache, extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, readCachedBootManifest, selectResponsiveBootManifest, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
+import { findConnectionBadgeAnchor, findSettingsTrigger, OFFICIAL_DRAWER, OWN_DRAWER_BRAND, OWN_TOPBAR, queryDrawerToggleSlot } from './anchors.ts'
+import type { EndpointKind } from './profiles.ts'
+import { endpointRefreshRequired } from './reconnect-recovery.ts'
+
+export { findConnectionBadgeAnchor } from './anchors.ts'
 
 /**
  * Fetch the boot manifest through the tunnel and install it as
@@ -19,19 +24,15 @@ import { extractBootManifestJson, localizePluginBundles, officialNarrowContractA
  */
 export async function injectBootManifestFromTunnel(
   client: TunnelClient,
-  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean; hostId?: string; sessionEnhancementPreference?: SessionEnhancementPreference } = { viewportWidth: window.innerWidth },
+  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean; hostId?: string } = { viewportWidth: window.innerWidth },
 ): Promise<ResponsiveBootSelection> {
   const res = await client.fetch('/')
   if (!res.ok) throw new Error('boot manifest fetch failed: HTTP ' + res.status)
   const hostManifest = extractBootManifestJson(await res.text(), 'boot manifest not found in tunneled index')
-  const enhancement = selectSessionEnhancement(hostManifest, {
-    preference: responsive.sessionEnhancementPreference ?? 'compatible',
-  })
-  const selection = selectResponsiveBootManifest(enhancement.manifest, {
+  const selection = selectResponsiveBootManifest(hostManifest, {
     ...responsive,
     narrowContractAvailable: responsive.narrowContractAvailable ?? officialNarrowContractAvailable(hostManifest),
   })
-  selection.enhancement = { status: enhancement.status, ...(enhancement.reason === undefined ? {} : { reason: enhancement.reason }), ...(enhancement.officialRuntimeRevision === undefined ? {} : { officialRuntimeRevision: enhancement.officialRuntimeRevision }) }
   if (typeof responsive.hostId === 'string') writeCachedBootManifest(responsive.hostId, hostManifest as Parameters<typeof writeCachedBootManifest>[1])
   if (responsive.localizePlugins === false) {
     ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = selection.manifest
@@ -68,20 +69,16 @@ function pluginBlobUrl(source: string, id: string): string {
  */
 export async function hydrateBootManifestFromCache(
   hostId: string,
-  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean; sessionEnhancementPreference?: SessionEnhancementPreference } = { viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth },
+  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean } = { viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth },
 ): Promise<ResponsiveBootSelection | null> {
   const cached = readCachedBootManifest(hostId) ?? readCachedBootManifest('last')
   if (cached === undefined) return null
   try {
-    const enhancement = selectSessionEnhancement(cached, {
-      preference: responsive.sessionEnhancementPreference ?? 'compatible',
-    })
-    const selection = selectResponsiveBootManifest(enhancement.manifest, {
+    const selection = selectResponsiveBootManifest(cached, {
       ...responsive,
       narrowContractAvailable: responsive.narrowContractAvailable ?? officialNarrowContractAvailable(cached),
     })
-    selection.enhancement = { status: enhancement.status, ...(enhancement.reason === undefined ? {} : { reason: enhancement.reason }), ...(enhancement.officialRuntimeRevision === undefined ? {} : { officialRuntimeRevision: enhancement.officialRuntimeRevision }) }
-    if (responsive.localizePlugins === false) {
+      if (responsive.localizePlugins === false) {
       ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = selection.manifest
       return selection
     }
@@ -127,6 +124,7 @@ export interface TunnelManagerOptions {
   clientType?: 'android' | 'browser'
   /** Wait for armHeartbeat() after Host UI boot; default starts probing immediately. */
   deferHeartbeat?: boolean
+  endpointKind?: EndpointKind
 }
 
 const TERMINAL_CONNECTION_ERRORS = new Set([
@@ -254,7 +252,8 @@ export class TunnelManager {
         this.setState('connecting')
         retryError = code === null ? failure.message : code + ': ' + failure.message
         this.options.onError?.(retryError)
-        if (code !== null && TERMINAL_CONNECTION_ERRORS.has(code)) {
+        const endpointDead = endpointRefreshRequired(this.options.endpointKind ?? 'custom', retryError)
+        if ((code !== null && TERMINAL_CONNECTION_ERRORS.has(code)) || endpointDead) {
           this.terminalError = failure
           this.options.onActivity?.({ phase: 'terminal', attempt, route: this.lastRoute, error: retryError })
           for (const waiter of this.waiters.splice(0)) waiter.reject(failure)
@@ -482,7 +481,7 @@ export function connectionRecoveryNotice(
   detail: string,
 ): ConnectionRecoveryNotice | null {
   if (recovery === 'endpoint') {
-    return { message: 'Host 的临时 Public Endpoint 可能已轮换。', detail, actionLabel: '刷新' }
+    return { message: '电脑连接地址已失效，请重新扫码。', detail, actionLabel: '重新扫码' }
   }
   if (recovery === 'credential') {
     return { message: '登录凭证已丢失，请重新扫码。', detail, actionLabel: '重新扫码' }
@@ -536,31 +535,27 @@ export function connectionIndicatorPresentation(
   const readiness = typeof liveDataReady === 'boolean' ? (liveDataReady ? 'ready' : 'pending') : liveDataReady
   const refreshFailed = state === 'open' && readiness === 'error'
   const refreshing = state === 'open' && readiness === 'pending'
-  const coreReady = state === 'open' && readiness === 'core-ready'
+  const connected = state === 'open' && (readiness === 'ready' || readiness === 'core-ready')
   const title = refreshFailed
-    ? '权威数据刷新失败'
+    ? '会话数据刷新失败'
     : refreshing
-      ? '正在刷新权威数据…'
-      : coreReady
-        ? '核心兼容模式不提供权威刷新确认'
-    : state === 'open'
-      ? '权威数据已刷新'
+      ? '正在刷新会话…'
+      : connected
+        ? '已连接'
       : state === 'connecting'
         ? reconnecting ? '正在重连…' : '隧道连接中…'
         : '隧道已断开，重连中'
   const color = state === 'closed' || refreshFailed
     ? 'var(--dsw-alias-state-error-primary, #ec1313)'
-    : state === 'open' && readiness === 'ready'
+    : connected
       ? 'var(--dsw-alias-state-success-primary, #22c55e)'
       : 'var(--dsw-alias-state-warn-primary, #f59e0b)'
   const text = refreshFailed
     ? '刷新失败'
     : refreshing
       ? '刷新中…'
-      : coreReady
-        ? '核心模式'
-    : state === 'open'
-      ? '已更新'
+      : connected
+        ? '已连接'
       : state === 'connecting'
         ? reconnecting ? '重连中…' : '连接中…'
         : '重连中…'
@@ -584,20 +579,54 @@ export interface ConnectionBadgeUpdater {
   dispose(): void
 }
 
-/** Keep the drawer dot and a non-blocking floating cached-shell connection hint in sync. */
+function scheduleOnFrame(run: () => void): () => void {
+  let token = 0
+  return () => {
+    if (token !== 0) return
+    token = requestAnimationFrame(() => {
+      token = 0
+      run()
+    })
+  }
+}
+
+function observeShellChrome(onChange: () => void): () => void {
+  const observed = new WeakSet<Element>()
+  const observer = new MutationObserver(scheduleOnFrame(() => {
+    watchKnownChrome()
+    onChange()
+  }))
+  const watch = (node: Element | null): void => {
+    if (node === null || observed.has(node)) return
+    observed.add(node)
+    observer.observe(node, { childList: true })
+  }
+  const watchKnownChrome = (): void => {
+    watch(document.getElementById('root'))
+    watch(document.body)
+    watch(document.querySelector(OWN_TOPBAR))
+    watch(document.querySelector(OWN_DRAWER_BRAND)?.parentElement ?? null)
+    watch(document.querySelector(OFFICIAL_DRAWER))
+  }
+  watchKnownChrome()
+  onChange()
+  return () => observer.disconnect()
+}
+
+/** Keep the topbar dot and a non-blocking floating cached-shell connection hint in sync. */
 export function installBadge(): ConnectionBadgeUpdater {
   const el = document.createElement('span')
   el.style.cssText =
-    'position:static;width:32px;height:32px;padding:9px;display:none;place-items:center;' +
-    'box-sizing:border-box;'
+    'position:static;width:18px;height:18px;padding:2px;display:none;place-items:center;' +
+    'box-sizing:border-box;flex:none;'
   el.setAttribute('role', 'status')
   el.setAttribute('aria-label', '连接状态')
   el.setAttribute('data-mobile-connection-status', '')
   const dot = document.createElement('span')
   dot.setAttribute('aria-hidden', 'true')
   dot.style.cssText =
-    'display:block;width:14px;height:14px;border:2px solid rgba(255,255,255,.92);' +
-    'border-radius:50%;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,.28);'
+    'display:block;width:10px;height:10px;border:2px solid rgba(255,255,255,.92);' +
+    'border-radius:50%;box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,.28);'
   el.append(dot)
 
   // Cached content remains fully interactive; this pill is display-only and
@@ -621,24 +650,23 @@ export function installBadge(): ConnectionBadgeUpdater {
   floating.append(floatingDot, floatingText)
 
   const place = (): void => {
-    // The dot lives permanently inside the drawer's brand row, right after
-    // the HARNESS wordmark. It has no navigation behavior; device switching
-    // is a separate action beside Settings.
-    const brand = document.querySelector(
-      'nav[aria-label="导航抽屉"] button[aria-label="New session"], nav[aria-label="导航抽屉"] button[aria-label="新建会话"], nav[aria-label="导航抽屉"] button[aria-label="新会话"]',
-    )
-    if (brand === null) {
+    const anchor = findConnectionBadgeAnchor()
+    if (anchor === null) {
       el.style.display = 'none'
       return
     }
-    if (el.previousElementSibling !== brand || el.parentElement !== brand.parentElement) {
-      brand.insertAdjacentElement('afterend', el)
+    const toggle = queryDrawerToggleSlot(anchor)
+    if (toggle !== null) {
+      if (el.nextElementSibling !== toggle || el.parentElement !== toggle.parentElement) {
+        toggle.insertAdjacentElement('beforebegin', el)
+      }
+    } else if (el.previousElementSibling !== anchor || el.parentElement !== anchor.parentElement) {
+      anchor.insertAdjacentElement('afterend', el)
     }
     el.style.display = 'grid'
   }
   document.body.append(el, floating)
-  const observer = new MutationObserver(place)
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-drawer-open'] })
+  const stop = observeShellChrome(place)
   place()
 
   const update: ConnectionBadgeUpdater = (state, route = '', shellMounted = true, liveDataReady = true) => {
@@ -653,7 +681,7 @@ export function installBadge(): ConnectionBadgeUpdater {
     floating.setAttribute('aria-label', view.label)
   }
   update.dispose = () => {
-    observer.disconnect()
+    stop()
     el.remove()
     floating.remove()
   }
@@ -669,7 +697,8 @@ export function installProfileAction(onActivate: () => void): () => void {
   action.title = '切换设备并重新扫码'
   action.style.cssText =
     'box-sizing:border-box;flex:1 1 0!important;min-width:0!important;width:auto!important;' +
-    'margin:0!important;'
+    'margin:0!important;background:transparent!important;' +
+    'border:none!important;box-shadow:none!important;appearance:none;-webkit-appearance:none;'
   const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   icon.setAttribute('width', '16')
   icon.setAttribute('height', '16')
@@ -689,15 +718,15 @@ export function installProfileAction(onActivate: () => void): () => void {
   action.addEventListener('click', onActivate)
 
   const place = (): void => {
-    const settings = [...document.querySelectorAll<HTMLButtonElement>('nav button')].find(button => {
-      const text = button.textContent?.trim()
-      return text === '设置' || text === 'Settings'
-    })
+    const settings = findSettingsTrigger()
     const area = settings?.parentElement?.parentElement
     if (settings === undefined || area === undefined || area === null) return
     // Reuse the official trigger class and its icon/label classes. Only the
     // flex sizing differs because two equal actions now share this footer row.
     action.className = settings.className
+    action.style.setProperty('background', 'transparent', 'important')
+    action.style.setProperty('border', 'none', 'important')
+    action.style.setProperty('box-shadow', 'none', 'important')
     const settingsIcon = settings.querySelector('svg')
     if (settingsIcon !== null) icon.setAttribute('class', settingsIcon.getAttribute('class') ?? '')
     const settingsLabel = settings.querySelector('span')
@@ -715,8 +744,7 @@ export function installProfileAction(onActivate: () => void): () => void {
     }
   }
   document.body.append(action)
-  const observer = new MutationObserver(place)
-  observer.observe(document.body, { childList: true, subtree: true })
+  const stop = observeShellChrome(place)
   place()
-  return () => { observer.disconnect(); action.remove() }
+  return () => { stop(); action.remove() }
 }

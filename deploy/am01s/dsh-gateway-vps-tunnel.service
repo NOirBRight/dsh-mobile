@@ -1,0 +1,13 @@
+[Unit]
+Description=Reverse SSH tunnel: VPS 172.18.0.1:31424 -> AM01S 127.0.0.1:43168 (pair mux)
+After=network-online.target dsh-pair-mux.service
+Wants=network-online.target dsh-pair-mux.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -N -T -o BatchMode=yes -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R 172.18.0.1:31424:127.0.0.1:43168 vps-aliyun
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -181,6 +181,31 @@
 .drawer :global([class*="logoRow"]) {
   position: relative;
   top: -12px;
+  justify-content: flex-start;
+}
+
+.drawer :global([class*="logoRow"]) > :global([class*="brand"]) {
+  flex: 0 1 auto;
+}
+
+.drawer :global([data-mobile-connection-status]) {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  margin: 0;
+  align-self: center;
+}
+
+.drawer :global([class*="logoRow"]) > :last-child {
+  margin-left: auto;
+}
+
+.drawer :global([data-mobile-profile-action]) {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  appearance: none;
 }
 
 .frame[data-drawer-open] .drawer {
@@ -609,7 +634,7 @@
 }
 
 .center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span[class*="count"]:lang(zh)::after) {
-  content: '命令';
+  content: '后台任务';
 }
 
 .center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span[class*="count"]:lang(en)::after) {
@@ -627,11 +652,21 @@
 }
 
 .center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span:not([data-state]):lang(zh)::after) {
-  content: '命令';
+  content: '后台任务';
 }
 
 .center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span:not([data-state]):lang(en)::after) {
   content: 'Jobs';
+}
+
+/* The compact labels replace the hidden count text. Make the replacement an
+   explicit 18px inline box so its baseline cannot pull Subs/Jobs upward inside
+   the 28px touch control. */
+.center :global(header:has(> [role="tablist"]) button[aria-haspopup="tree"] > span::after),
+.center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span::after) {
+  display: inline-block;
+  line-height: 18px;
+  vertical-align: middle;
 }
 
 /* Keep Log pinned at the right with compact chrome. */
@@ -815,34 +850,48 @@
    settings state or navigation path. */
 .frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button) {
   position: absolute;
-  top: 18px;
-  right: 18px;
+  top: 10px;
+  right: 10px;
   z-index: 4;
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
   margin: 0;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: 10px;
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-label-primary, CanvasText);
+  font: inherit;
   font-size: 18px;
   line-height: 24px;
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:hover),
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:active),
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:focus) {
-  background: transparent !important;
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:hover:not(:disabled)),
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:active:not(:disabled)) {
+  background: var(--dsw-alias-interactive-bg-hover, ButtonFace) !important;
   border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:focus:not(:focus-visible)) {
   box-shadow: none !important;
   outline: none;
 }
 
 .frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:focus-visible) {
-  outline: none;
+  box-shadow: none !important;
+  outline: 2px solid var(--dsw-alias-state-business-primary, Highlight);
+  outline-offset: 2px;
+}
+
+.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:disabled) {
+  cursor: default;
+  opacity: .6;
 }
 
 /* Theme cards are a three-choice control, not three full-width mobile pages. */
@@ -969,4 +1018,12 @@
 .frame:has(.drawer :global([role="dialog"][aria-modal="true"])) .overlayLayer :global(.dcs-col-handle) {
   visibility: hidden;
   pointer-events: none;
+}
+
+/* Official StatsLine is nowrap + ellipsis; TTFT sits late in the pipe so a
+   phone-width composer clips it. Allow the dock footer to wrap. */
+.center :global([data-composer-card]) ~ div {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
 }

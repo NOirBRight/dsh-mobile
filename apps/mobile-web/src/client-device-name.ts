@@ -1,3 +1,5 @@
+import { compactDisplayName } from '@dsh-mobile/e2e-tunnel'
+
 export interface NativeDeviceIdentityBridge {
   getName(): Promise<{ name: string }>
 }
@@ -11,10 +13,10 @@ export async function resolveClientDeviceName(bridge: NativeDeviceIdentityBridge
   if (bridge !== null) {
     try {
       const name = sanitize((await bridge.getName()).name)
-      if (name !== '') return name
+      if (name !== '') return compactDisplayName(name, 'Android')
     } catch {
       // A product label is safer than accidentally substituting Host or endpoint metadata.
     }
   }
-  return 'Android device'
+  return compactDisplayName('Android device', 'Android')
 }

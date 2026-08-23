@@ -18,6 +18,7 @@
  * is bad-token. Token reconnect does not move the device's room.
  */
 import nacl from 'tweetnacl'
+import { compactDisplayName } from '@dsh-mobile/e2e-tunnel'
 import type { DaemonKeypair } from './keys.ts'
 import type { PairingOfferManager } from './pairing.ts'
 import { DeviceLimitError, type DeviceClientType, type DeviceTokenStore } from './tokens.ts'
@@ -31,7 +32,7 @@ export interface HandshakeDeps {
   offers: PairingOfferManager
   devices: DeviceTokenStore
   /** Human-facing Host name returned inside every sealed acknowledgement. */
-  hostName: string
+  hostName?: string
   /** Room of the relay campaign this handshake arrived on; bound to newly issued device records. */
   room?: string
 }
@@ -97,9 +98,11 @@ export function hostHandshake(frame: Uint8Array, deps: HandshakeDeps): Handshake
     return fail('bad-hello')
   }
 
+  const hostName = compactDisplayName(deps.hostName ?? 'Host', 'Host')
+  const maxHttpBodyBytes = 8 * 1024 * 1024
   const ackJson = deviceToken !== null
-    ? { ok: true, deviceToken, hostName: deps.hostName }
-    : { ok: true, hostName: deps.hostName }
+    ? { ok: true, deviceToken, hostName, maxHttpBodyBytes }
+    : { ok: true, hostName, maxHttpBodyBytes }
   const ackNonce = nacl.randomBytes(nacl.box.nonceLength)
   const ack = nacl.box(encoder.encode(JSON.stringify(ackJson)), ackNonce, peerPub, deps.keypair.secretKeyRaw)
   const ackFrame = new Uint8Array(nacl.box.nonceLength + ack.length)

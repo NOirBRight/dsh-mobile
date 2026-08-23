@@ -38,11 +38,31 @@ test('loopback Gateway exposes bounded HTTP and signaling/tunnel WebSockets', as
   tunnelWhileSignal.close(); await once(tunnelWhileSignal, 'close')
   signal.close(); await once(signal, 'close')
   const tunnel = new WebSocket('ws://127.0.0.1:' + port + '/tunnel/' + room)
-  await once(tunnel, 'open'); tunnel.send(Buffer.from([1, 2, 3])); assert.deepEqual(Buffer.from((await once(tunnel, 'message'))[0]), Buffer.from([1, 2, 3])); tunnel.close(); await once(tunnel, 'close')
+  await once(tunnel, 'open'); tunnel.send(Buffer.from([1, 2, 3])); assert.deepEqual(Buffer.from((await once(tunnel, 'message'))[0]), Buffer.from([1, 2, 3]));   tunnel.close(); await once(tunnel, 'close')
   const persistent = new WebSocket('ws://127.0.0.1:' + port + '/tunnel/' + 'b'.repeat(32))
   await once(persistent, 'open'); persistent.close()
   const unknown = new WebSocket('ws://127.0.0.1:' + port + '/tunnel/not-a-room')
   await assert.rejects(once(unknown, 'open'), /401/)
+})
+
+test('one Gateway keeps independent rooms open for two Client Instances at once', async (t) => {
+  const gateway = createHostGateway({
+    bind: '127.0.0.1', port: 0, hostIdentity: 'host-key',
+    onSignal() {},
+    onTunnel(socket, room) { socket.on('message', data => socket.send(room + ':' + data)) },
+  })
+  const port = await gateway.listen(); t.after(() => gateway.close())
+  const phoneA = 'a'.repeat(32)
+  const phoneB = 'b'.repeat(32)
+  gateway.authorizeRoom(phoneA)
+  gateway.authorizeRoom(phoneB)
+  const first = new WebSocket('ws://127.0.0.1:' + port + '/tunnel/' + phoneA)
+  const second = new WebSocket('ws://127.0.0.1:' + port + '/tunnel/' + phoneB)
+  await Promise.all([once(first, 'open'), once(second, 'open')])
+  first.send('one'); second.send('two')
+  assert.equal(String((await once(first, 'message'))[0]), phoneA + ':one')
+  assert.equal(String((await once(second, 'message'))[0]), phoneB + ':two')
+  first.close(); second.close()
 })
 
 test('Gateway does not serve Host plugin bundles or generic DSH paths', async (t) => {

@@ -49,7 +49,8 @@ export async function applyPublicEndpointSelection(
   }
   const check = await (options.check ?? checkCustomEndpoint)(selection.customEndpointUrl as string, options.adapters)
   if (!check.ok) return check
-  if (check.hostIdentity !== options.hostIdentity) {
+  const known = new Set([check.hostIdentity, ...check.hostIdentities])
+  if (!known.has(options.hostIdentity)) {
     return { ok: false, stage: 'identity', error: 'endpoint Host Identity does not match this Host' }
   }
   return { ok: true, endpointMode: 'custom', endpoint: { url: validateCustomEndpoint(selection.customEndpointUrl as string), kind: 'custom' }, check }

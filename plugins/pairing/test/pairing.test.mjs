@@ -139,13 +139,14 @@ test('public endpoint offer carries Host-owned rendezvous and fallback capabilit
   const offers = new PairingOfferManager(300_000)
   const offer = offers.mintPublic({
     endpoint: 'https://host.example', endpointKind: 'temporary', room: 'b'.repeat(32), pubkey: 'A'.repeat(43),
-    ice: ['stun:stun.example.com:3478'],
+    hostName: 'Noirbright Workstation', ice: ['stun:stun.example.com:3478'],
   })
   assert.equal(offer.v, 4)
   assert.equal(offer.mode, 'public')
   assert.equal(offer.protocol, 1)
   assert.equal(offer.endpoint, 'https://host.example')
   assert.equal(offer.endpointKind, 'temporary')
+  assert.equal(offer.hostName, 'Noirbright PC')
   assert.deepEqual(offer.capabilities, { browser: false, direct: true, tunnel: true, endpointRefresh: true })
   const forced = new PairingOfferManager(300_000).mintPublic({
     endpoint: 'https://host.example', endpointKind: 'custom', room: 'd'.repeat(32), pubkey: 'A'.repeat(43),
@@ -161,13 +162,14 @@ test('public endpoint offer carries Host-owned rendezvous and fallback capabilit
 test('compact public QR stays shorter than the previously working v3 scanner payload', () => {
   const offer = new PairingOfferManager(300_000).mintPublic({
     endpoint: 'https://warren-cayman-born-categories.trycloudflare.com', endpointKind: 'temporary',
-    room: 'c'.repeat(32), pubkey: 'A'.repeat(43), ice: ['stun:stun.cloudflare.com:3478'],
+    room: 'c'.repeat(32), pubkey: 'A'.repeat(43), hostName: 'Noirbright Workstation', ice: ['stun:stun.cloudflare.com:3478'],
   })
   const url = buildCompactPublicOfferUrl('dsh-mobile://pair', offer)
   assert.ok(url.length < 377, 'compact QR grew to ' + url.length + ' characters')
   const payload = JSON.parse(Buffer.from(url.split('#offer=')[1], 'base64url').toString())
   assert.equal(payload[0], 4)
   assert.equal(payload[7], 14)
+  assert.equal(payload[9], 'Noirbright PC')
 })
 
 test('public endpoint offers reject insecure endpoints and TURN', () => {

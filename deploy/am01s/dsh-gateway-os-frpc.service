@@ -1,0 +1,13 @@
+[Unit]
+Description=frpc: pair-os.noirbright.top -> AM01S 127.0.0.1:43168 (pair mux)
+After=network-online.target dsh-pair-mux.service
+Wants=network-online.target dsh-pair-mux.service
+
+[Service]
+Type=simple
+ExecStart=/home/noirbright/.local/bin/frpc -c /home/noirbright/.dsh-lab/mobile/frpc-pair-os.toml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
