@@ -1,1 +1,40 @@
-# Host Display Name release workflow\n\nThis workflow keeps the production profile read-only while evolving the two independent published packages.\n\n## Release order\n\n1. **@dsh-mobile/e2e-tunnel**: add compactDisplayName and offer/ack metadata; run `npm test` and `npm run build`; publish/tag v0.1.1 first.\n2. **@dsh-mobile/pairing**: bump only the published dependency to `github:NOirBRight/dsh-e2e-tunnel#v0.1.1`; run the full `tsc && tsdown` build, tests, and the import/export contract test; publish/tag v0.1.3 only after v0.1.1 resolves.\n3. **Lab validation**: keep `~/.dsh-lab/profiles/web` on `link:/home/noirbright/Workstation/dsh-mobile/plugins/pairing` while iterating. For release validation, switch only the lab profile to the two GitHub tags and restart 3082.\n\nNo build output is copied into `~/.dsh`; production changes only through an explicit promote operation.\n\n## Production import/export contract\n\nAt runtime: `imports(@dsh-mobile/pairing Host lib) ⊆ exports(@dsh-mobile/e2e-tunnel published tag)`.\n\nThe test is `test/published-e2e-contract.test.mjs` in the published pairing checkout. It parses built Host imports and the selected published `e2e-tunnel/lib/index.js` exports without executing dependencies.\n\nOld-tag audit:\n\n`DSH_E2E_TUNNEL_MODULE=/path/to/v0.1.0/lib/index.js node --test test/published-e2e-contract.test.mjs`\n\nThat command must fail while the Host imports a symbol absent from v0.1.0; the same command pointed at the v0.1.1 build must pass.\n\n## Source of truth and synchronization\n\n- `/home/noirbright/Workstation/dsh-mobile-pairing` is the release source of truth for the published Host package. Its v0.1.2 `client/nav-icon.ts` observer fix is preserved; future Host edits must not replace it or copy an unrelated client bundle over it.\n- `/home/noirbright/Workstation/dsh-mobile/plugins/pairing` is the monorepo lab/integration mirror. It may contain lab-only integration, but every released Host Display Name change must be mirrored into the release checkout `src/` before tagging.\n- Build both repositories from their own source with the full build command. Never synchronize by copying `lib/`; that combines a new Host with an old dependency.\n- Before a pairing tag, compare `src/pairing.ts`, `src/index.ts`, `src/config.ts`, and `src/handshake.ts`, then run the contract test against the declared dependency tag.\n\n## 3082 acceptance\n\n- Cold-start `DSH_HOME=~/.dsh-lab dsh web --port 3082` without a compactDisplayName import error.\n- Settings → Remote retains the v0.1.2 `recordsTouchSettingsNav` + rAF + `takeRecords()` observer behavior.\n- `/pair` carries compact Host Display Name metadata; the sealed handshake carries the same presentation name. Endpoint, Room, and Host key remain independent.\n\n3080 and `~/.dsh` are read-only unless the user explicitly requests a production promote.\n
+# Pairing / e2e-tunnel release workflow
+
+This workflow keeps the production profile read-only while evolving the two independent published packages.
+
+## Release order
+
+1. **@dsh-mobile/e2e-tunnel**: run `npm test` and `npm run build` in `/home/noirbright/Workstation/dsh-e2e-tunnel`; publish/tag (current: **v0.1.2**).
+2. **@dsh-mobile/pairing**: bump the published dependency to `github:NOirBRight/dsh-e2e-tunnel#v0.1.2`; run full `tsc && tsdown`, tests, and `test/published-e2e-contract.test.mjs`; publish/tag (current: **v0.1.4**).
+3. **Lab validation**: keep `~/.dsh-lab/profiles/web` on `link:` to the monorepo checkout while iterating. For release validation, switch only the lab profile to the two GitHub tags and restart **3082**.
+
+No build output is copied into `~/.dsh`; production changes only through an explicit promote operation.
+
+## Production import/export contract
+
+At runtime: `imports(@dsh-mobile/pairing Host lib) ⊆ exports(@dsh-mobile/e2e-tunnel published tag)`.
+
+The test is `test/published-e2e-contract.test.mjs` in the published pairing checkout (mirrored in the monorepo lab tree). It parses built Host imports and the selected published `e2e-tunnel/lib/index.js` exports without executing dependencies.
+
+Old-tag audit:
+
+```sh
+DSH_E2E_TUNNEL_MODULE=/path/to/v0.1.0/lib/index.js node --test test/published-e2e-contract.test.mjs
+```
+
+That command must fail while the Host imports a symbol absent from v0.1.0; the same command pointed at the v0.1.2 build must pass.
+
+## Source of truth and synchronization
+
+- `/home/noirbright/Workstation/dsh-mobile-pairing` is the release source of truth for the published Host package.
+- `/home/noirbright/Workstation/dsh-mobile/plugins/pairing` is the monorepo lab/integration mirror. Every released Host change must be mirrored into the release checkout `src/` before tagging.
+- Build both repositories from their own source with the full build command. Never synchronize by copying `lib/`.
+- Before a pairing tag, compare `src/` trees, then run the contract test against the declared dependency tag.
+
+## 3082 acceptance
+
+- Cold-start `DSH_HOME=~/.dsh-lab dsh web --port 3082` without import errors.
+- Settings → Remote shows Relay mode UI, QR rotation, and device list.
+- `/pair` carries Host Display Name metadata; sealed handshake carries the same presentation name.
+
+3080 and `~/.dsh` are read-only unless the user explicitly requests a production promote.

@@ -7,7 +7,7 @@ Android-first 的 Capacitor 本地应用壳。运行 origin 为 https://localhos
 1. 没有已配对设备时，App 自动调用 @capacitor/barcode-scanner 的后置摄像头扫描 QR。
 2. 产品默认 QR/Deep Link 为 `dsh-mobile://pair#offer=<base64url(JSON)>`。若运维方部署了独立浏览器 shell，可显式配置 Host `appUrl`（离线检查脚本使用 `DSH_MOBILE_APP_URL`）生成 `https://mobile.example.com/#offer=...`。
 3. v4 offer 包含 Host-owned HTTPS Public Endpoint、房间、Host 公钥、短期 code、能力位和仅 STUN 的 ICE 列表。TURN 会被拒绝。
-4. 默认 Automatic：先建立 RTCDataChannel，直连传输失败后走同一 Endpoint 上的加密 Tunnel Fallback。NaCl hello/ack 和 DSH 流量只走已认证会话。deviceToken 保存在 App 私有 vault，用于后续自动重连。
+4. 默认 Automatic：优先走加密 Tunnel；同网 Direct 只在短宽限内可以抢赢，迟到的 Direct 不得抢走已打开的 Tunnel。NaCl hello/ack 和 DSH 流量只走已认证会话。deviceToken 保存在 App 私有 vault，用于后续自动重连。
 
 用户取消或扫码失败时显示“重新扫码”；运行中的 Deep Link 由 Capacitor App listener 接收，并在现有 HostSession 内完成切换，不重载 WebView。
 
