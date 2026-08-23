@@ -1,5 +1,5 @@
 /** In-shell Host session: reconnect and remount without reloading the WebView. */
-import type { TunnelClient } from '@dsh-mobile/e2e-tunnel'
+import { TunnelError, type TunnelClient } from '@dsh-mobile/e2e-tunnel'
 import type { ResponsiveBootSelection } from './manifest.ts'
 import type { PreparedProfileConnection } from './profile-connection.ts'
 import type { TunnelManagerSlot } from './tunnel.ts'
@@ -78,12 +78,21 @@ export class HostSession {
     manager.start()
     const cached = await this.deps.hydrateBoot?.(prepared) ?? null
     if (cached !== null && generation === this.generation) await this.paint(cached, prepared.profile.hostId)
-    const client = await manager.current()
-    const selection = await this.deps.injectBoot(client, prepared)
-    if (generation !== this.generation) return selection
-    manager.armHeartbeat()
-    await this.paint(selection, prepared.profile.hostId)
-    return selection
+    for (;;) {
+      if (generation !== this.generation) throw new TunnelError('closed', HOST_SESSION_STOPPED_MESSAGE)
+      const client = await manager.current()
+      try {
+        const selection = await this.deps.injectBoot(client, prepared)
+        if (generation !== this.generation) return selection
+        manager.armHeartbeat()
+        await this.paint(selection, prepared.profile.hostId)
+        return selection
+      } catch (error) {
+        if (generation !== this.generation) throw error
+        if (!isTransientTunnelBootError(error)) throw error
+        if (client.state === 'open') client.close()
+      }
+    }
   }
 
   async remount(): Promise<ResponsiveBootSelection | null> {
@@ -113,6 +122,12 @@ export class HostSession {
     this.manager = null
   }
 
+  /** Forget the last painted roster so the next connect remounts after the shell DOM was torn down. */
+  forgetPaint(): void {
+    this.lastSelection = null
+    this.lastHostId = null
+  }
+
   private async paint(selection: ResponsiveBootSelection, nextHostId: string): Promise<void> {
     if (!shellNeedsPaint(this.lastSelection, selection, { previousHostId: this.lastHostId, nextHostId })) {
       this.lastSelection = selection
@@ -122,4 +137,22 @@ export class HostSession {
     this.lastHostId = nextHostId
     await this.deps.mount(selection, nextHostId)
   }
+}
+
+export const HOST_SESSION_STOPPED_MESSAGE = 'Active Host connection stopped'
+
+/** A superseded connect was cancelled by stop() or a newer connect(); it is not a transport failure. */
+export function isHostSessionStoppedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  if (message !== HOST_SESSION_STOPPED_MESSAGE) return false
+  return !(error instanceof TunnelError) || error.code === 'closed'
+}
+
+/** Boot fetch failed because the just-opened tunnel dropped or stalled; wait for the next live client. */
+export function isTransientTunnelBootError(error: unknown): boolean {
+  if (isHostSessionStoppedError(error)) return false
+  if (error instanceof TunnelError) return error.code === 'closed' || error.code === 'handshake' || error.code === 'timeout'
+  if (error instanceof Error && error.name === 'AbortError') return true
+  const message = error instanceof Error ? error.message : String(error)
+  return /tunnel is closed|connection closed|timed out|aborted/i.test(message)
 }

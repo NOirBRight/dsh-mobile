@@ -144,27 +144,32 @@ async function attemptPublicEndpoint(offer: PublicEndpointOffer, hostPub: Uint8A
   const coordinator = new ConnectionCoordinator({
     policy: options.connectionPolicy ?? 'automatic',
     capabilities: { direct: offer.capabilities.direct, tunnel: offer.capabilities.tunnel },
-    connectDirect: () => attemptPublicDirect(offer, hostPub, options),
-    connectTunnel: () => attemptPublicTunnel(offer, hostPub, options),
+    connectDirect: signal => attemptPublicDirect(offer, hostPub, options, signal),
+    connectTunnel: signal => attemptPublicTunnel(offer, hostPub, options, signal),
     onState: options.onConnectionStatus,
   })
   return coordinator.connect()
 }
 
-async function attemptPublicTunnel(offer: PublicEndpointOffer, hostPub: Uint8Array, options: ConnectOptions): Promise<TunnelClient> {
+async function attemptPublicTunnel(offer: PublicEndpointOffer, hostPub: Uint8Array, options: ConnectOptions, signal?: AbortSignal): Promise<TunnelClient> {
   const ws = new WebSocket(publicEndpointSocketUrl(offer.endpoint, 'tunnel', offer.room))
   ws.binaryType = 'arraybuffer'
   const transport = new WsFrameTransport(ws)
+  const onAbort = (): void => { try { transport.close(1000) } catch { /* already gone */ } }
+  signal?.addEventListener('abort', onAbort, { once: true })
   try {
-    await onceOpen(ws)
+    if (signal?.aborted) throw new TunnelError('closed', 'connection aborted')
+    await onceOpen(ws, 10_000, signal)
     return await openSession(transport, hostPub, { ...options, code: offer.code })
   } catch (error) {
     try { transport.close(1000) } catch { /* already gone */ }
     throw error
+  } finally {
+    signal?.removeEventListener('abort', onAbort)
   }
 }
 
-async function attemptPublicDirect(offer: PublicEndpointOffer, hostPub: Uint8Array, options: ConnectOptions): Promise<TunnelClient> {
+async function attemptPublicDirect(offer: PublicEndpointOffer, hostPub: Uint8Array, options: ConnectOptions, signal?: AbortSignal): Promise<TunnelClient> {
   const ws = new WebSocket(publicEndpointSocketUrl(offer.endpoint, 'signal', offer.room))
   ws.binaryType = 'arraybuffer'
   let negotiated: NegotiatedChannel | null = null
@@ -172,8 +177,11 @@ async function attemptPublicDirect(offer: PublicEndpointOffer, hostPub: Uint8Arr
     negotiated?.closePeer()
     try { ws.close(1000) } catch { /* already gone */ }
   }
+  const onAbort = (): void => { teardown() }
+  signal?.addEventListener('abort', onAbort, { once: true })
   try {
-    await onceOpen(ws)
+    if (signal?.aborted) throw new TunnelError('closed', 'connection aborted')
+    await onceOpen(ws, 10_000, signal)
     negotiated = await negotiateDirectChannel(ws, { ice: offer.ice, timeoutMs: options.handshakeTimeoutMs })
     const onStateChange = options.onStateChange
     return await openSession(new DataChannelTransport(negotiated.channel), hostPub, {
@@ -187,6 +195,8 @@ async function attemptPublicDirect(offer: PublicEndpointOffer, hostPub: Uint8Arr
   } catch (error) {
     teardown()
     throw error
+  } finally {
+    signal?.removeEventListener('abort', onAbort)
   }
 }
 
@@ -493,7 +503,7 @@ export class TunnelSession implements TunnelClient {
   }
 }
 
-function onceOpen(ws: WebSocket, timeoutMs = 10_000): Promise<void> {
+function onceOpen(ws: WebSocket, timeoutMs = 10_000, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     let settled = false
     const timer = setTimeout(() => finish(new TunnelError('timeout', 'endpoint WebSocket connection timed out')), timeoutMs)
@@ -501,9 +511,19 @@ function onceOpen(ws: WebSocket, timeoutMs = 10_000): Promise<void> {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
       if (error === undefined) resolve()
       else reject(error)
     }
+    const onAbort = (): void => {
+      try { ws.close() } catch { /* already gone */ }
+      finish(new TunnelError('closed', 'connection aborted'))
+    }
+    if (signal?.aborted) {
+      onAbort()
+      return
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
     ws.addEventListener('open', () => finish(), { once: true })
     ws.addEventListener('error', () => finish(new TunnelError('handshake', 'endpoint WebSocket connection failed')), { once: true })
     ws.addEventListener('close', () => finish(new TunnelError('handshake', 'endpoint WebSocket connection failed')), { once: true })

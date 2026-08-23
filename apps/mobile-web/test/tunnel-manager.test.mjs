@@ -179,30 +179,27 @@ test('TunnelManager loads and disposes private credentials and surfaces active r
   assert.equal(closed, true)
 })
 
-test('an unreachable temporary endpoint stops retrying with the handshake error', async () => {
+test('temporary endpoint handshake WebSocket failures keep retrying instead of dying after one flake', async () => {
   let attempts = 0
-  let waits = 0
   const activities = []
+  const client = { state: 'open', deviceToken: 'token', fetch() {}, openWebSocket() {}, probe: async () => {}, close() {} }
   const manager = new TunnelManager({
-    offerUrl: 'offer', connectionPolicy: 'automatic', endpointKind: 'temporary',
+    offerUrl: 'offer', connectionPolicy: 'automatic', endpointKind: 'temporary', random: () => 0.5,
     loadCredentials: async () => ({ clientKeypair: keypair, deviceToken: 'token', onDeviceToken: async () => {}, dispose() {} }),
     connect: async () => {
       attempts += 1
-      throw new TunnelError('handshake', 'endpoint WebSocket connection failed')
+      if (attempts === 1) throw new TunnelError('handshake', 'endpoint WebSocket connection failed')
+      return client
     },
-    wait: async () => { waits += 1 },
+    wait: async () => {},
     onState: () => {},
     onActivity: activity => activities.push(activity),
   })
   manager.start()
-  await assert.rejects(manager.current(), error => (
-    error instanceof TunnelError
-    && error.code === 'handshake'
-    && error.message === 'endpoint WebSocket connection failed'
-  ))
-  assert.equal(attempts, 1)
-  assert.equal(waits, 0)
-  assert.equal(activities.at(-1)?.phase, 'terminal')
+  assert.equal(await manager.current(), client)
+  assert.equal(attempts, 2)
+  assert.equal(activities.some(activity => activity.phase === 'retry-wait'), true)
+  assert.equal(activities.some(activity => activity.phase === 'terminal'), false)
   manager.stop()
 })
 

@@ -8,7 +8,7 @@ import { resolveClientDeviceName } from './client-device-name.ts'
 import { createBackgroundConnectionControl, readBackgroundConnectionPreference, writeBackgroundConnectionPreference } from './background-connection.ts'
 import { BrowserCredentialVault, NativeCredentialVault, purgeLegacyAndroidWebCredentials, type NativeCredentialVaultBridge, type ReadableCredentialVault } from './credential-vault.ts'
 import { claimShellNativeBridges, concealShellNativeBridges, installSystemBarThemeSync } from './native-bridges.ts'
-import { installCompatibilityNotice, loadSameOriginMobileBootManifest, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, readViewportWidth, selectResponsiveBootManifest, setProtectedCacheScope, setSameOriginHostBridgeCapability, type BootManifest, type ResponsiveBootSelection } from './manifest.ts'
+import { COLD_BOOT_PLUGIN_CONCURRENCY, installCompatibilityNotice, loadSameOriginMobileBootManifest, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, readViewportWidth, selectResponsiveBootManifest, setProtectedCacheScope, setSameOriginHostBridgeCapability, type BootManifest, type ResponsiveBootSelection } from './manifest.ts'
 import { scanPairingQr } from './pairing-scanner.ts'
 import { prepareProfileConnection, type PreparedProfileConnection } from './profile-connection.ts'
 import { activateHostProfile, completeProfileOnboarding, removeHostProfile } from './profile-lifecycle.ts'
@@ -16,7 +16,8 @@ import { connectionRecoveryDecision, endpointRefreshRequired } from './reconnect
 import { BrowserProfileStorage, ProfileRepository } from './profiles.ts'
 import { prepareDshClientBoot } from './dsh-boot.ts'
 import { connectionRecoveryNotice, connectionRouteLabel, coreLiveDataReadiness, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, isPassiveConnectionRetry, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type LiveDataReadiness, type TunnelManagerActivity } from './tunnel.ts'
-import { HostSession } from './host-session.ts'
+import { HostSession, isHostSessionStoppedError } from './host-session.ts'
+import { mountProgressScreen } from './progress-screen.ts'
 import { mountFirstRunScreen } from './first-run-screen.ts'
 import { mountHostProfileMenu, type DeviceConnectionSummary } from './host-profile-menu.ts'
 import { inspectChromeAnchors } from './anchors.ts'
@@ -66,7 +67,19 @@ function installMobileActionStyles(): void {
   ;(document.head ?? document.documentElement).append(style)
 }
 
+/**
+ * Depth of in-flight Host shell paints. AppWebEntry mounts into the shell root
+ * across many awaits, so any concurrent progress screen would replaceChildren()
+ * a half-built shell and leave a spinner over a dead document.
+ */
+let shellPaintDepth = 0
+
+export function shellRootIsPainting(): boolean {
+  return shellPaintDepth > 0
+}
+
 async function bootDshShell(selection: ResponsiveBootSelection | null): Promise<ResponsiveBootSelection | null> {
+  shellPaintDepth += 1
   try {
     await webEntry?.dispose()
     webEntry = null
@@ -85,6 +98,8 @@ async function bootDshShell(selection: ResponsiveBootSelection | null): Promise<
       return bootDshShell(selection.fallbackOfficial)
     }
     throw error
+  } finally {
+    shellPaintDepth -= 1
   }
 }
 
@@ -94,15 +109,18 @@ function validOfferUrl(value: string): string | null {
 
 async function waitForScanRetry(message: string): Promise<void> {
   installMobileActionStyles()
-  el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">' +
-    message + '<br/><button id="scan-pairing" data-mobile-shell-action style="margin-top:1.5em">重新扫码</button></div>'
-  await new Promise<void>(resolve => document.getElementById('scan-pairing')?.addEventListener('click', () => resolve(), { once: true }))
+  const retry = document.createElement('button')
+  retry.id = 'scan-pairing'
+  retry.dataset.mobileShellAction = ''
+  retry.textContent = '重新扫码'
+  mountProgressScreen(el, { title: message, spinning: false, action: retry })
+  await new Promise<void>(resolve => retry.addEventListener('click', () => resolve(), { once: true }))
 }
 
 const rootScanSurface: ScanSurface = {
   show(message, retryLabel) {
     if (retryLabel === undefined) {
-      el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">' + message + '</div>'
+      mountProgressScreen(el, { title: message, spinning: true })
       return
     }
     return waitForScanRetry(message)
@@ -241,7 +259,8 @@ void (async () => {
         sameOriginBoot = true
       }
     } catch (error) {
-      el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">无法加载 Custom Endpoint Host bridge</div>'
+      el.innerHTML = ''
+      mountProgressScreen(el, { title: '无法加载 Custom Endpoint Host bridge', spinning: false })
       throw error
     }
   }
@@ -263,7 +282,7 @@ void (async () => {
       } catch (error) {
         const reason = error instanceof Error ? error.message : 'unknown error'
         if (!native) {
-          el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">配对失败：' + reason + '</div>'
+          mountProgressScreen(el, { title: '配对失败', detail: reason, spinning: false })
           return
         }
         initialOnboardingError = '配对失败：' + reason + '。请检查二维码后重试'
@@ -275,7 +294,7 @@ void (async () => {
         prepared = await prepareProfileConnection({ repository, vault })
       } catch (error) {
         if (!native) {
-          el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">请用 DSH Mobile 应用扫描 Host 配对二维码</div>'
+          mountProgressScreen(el, { title: '请用 DSH Mobile 应用扫描 Host 配对二维码', spinning: false })
           return
         }
         const firstRun = mountFirstRunScreen(el)
@@ -304,6 +323,8 @@ void (async () => {
     await webEntry?.dispose()
   })
   let shellMounted = false
+  /** Cold-pairing plugin download progress; null once the shell paints. */
+  let bootProgress: { loaded: number; total: number } | null = null
 
   if (prepared !== null) {
     let activeConnection = prepared
@@ -386,6 +407,10 @@ void (async () => {
       }
     }
     const render = (): void => {
+      // AppWebEntry owns the shell root while it boots. A status repaint here
+      // would replaceChildren() a half-mounted shell, so the spinner would
+      // survive over a document that can never finish booting.
+      if (shellRootIsPainting()) return
       const recoveryKind = endpointRefreshAvailable
         ? 'endpoint'
         : connectionRecoveryDecision(activeConnection.profile.endpoint.kind, activity.phase, lastError)
@@ -412,7 +437,10 @@ void (async () => {
               const button = document.querySelector<HTMLButtonElement>('[data-mobile-topbar-notice-action]')
               if (button !== null) button.disabled = true
               session?.stop()
+              session?.forgetPaint()
               shellMounted = false
+              lastError = ''
+              endpointRefreshAvailable = false
               void (async () => {
                 const offerUrl = await scanUntilPaired()
                 try {
@@ -421,6 +449,7 @@ void (async () => {
                   await session?.connect(activeConnection)
                   markTransportReady()
                 } catch (error) {
+                  if (isHostSessionStoppedError(error)) return
                   lastError = error instanceof Error ? error.message : 'unknown error'
                   endpointRefreshAvailable ||= endpointRefreshRequired(activeConnection.profile.endpoint.kind, lastError)
                   render()
@@ -435,46 +464,51 @@ void (async () => {
         return
       }
       setTopbarNotice(null)
-      if (state === 'open' && !needsRecovery) return
-      const wrap = document.createElement('div')
-      wrap.style.cssText = 'padding:2em;text-align:center;font-family:sans-serif'
-      const title = document.createElement('div')
-      title.textContent = '正在连接 ' + activeConnection.profile.displayName + '…'
-      wrap.append(title)
-      if (route !== '') {
-        const routeLine = document.createElement('div')
-        routeLine.style.marginTop = '.5em'
-        routeLine.textContent = '当前路径：' + route
-        wrap.append(routeLine)
+      if (state === 'open' && !needsRecovery) {
+        if (shellMounted) return
+        const progress = bootProgress === null
+          ? '正在拉取 Host 界面…'
+          : '正在拉取 Host 界面 ' + bootProgress.loaded + '/' + bootProgress.total + '…'
+        const lines = [route === '' ? progress : '当前路径：' + route + '\n' + progress]
+        if (bootProgress === null) lines.push('首次配对需要下载全部插件，请稍候')
+        mountProgressScreen(el, {
+          title: '正在加载 ' + activeConnection.profile.displayName,
+          detail: lines.join('\n'),
+          spinning: true,
+        })
+        return
       }
-      if (lastError !== '' && !isPassiveConnectionRetry(activity)) {
-        const diagnostic = document.createElement('pre')
-        diagnostic.style.cssText = 'white-space:pre-wrap;color:#b91c1c'
-        diagnostic.textContent = /credential is missing/i.test(lastError)
-          ? '登录凭证已丢失，请重新扫描 Host 二维码配对。'
-          : lastError
-        wrap.append(diagnostic)
-      } else if (isPassiveConnectionRetry(activity)) {
-        const retry = document.createElement('div')
-        retry.style.cssText = 'margin-top:.75em;opacity:.75'
-        retry.textContent = '连接中断，正在自动重试…'
-        wrap.append(retry)
-      }
+      const retrying = isPassiveConnectionRetry(activity)
+        || (activity.phase === 'connecting' && activity.reconnecting)
+        || activity.phase === 'retry-wait'
+      const showError = lastError !== '' && !retrying
+      const details: string[] = []
+      if (route !== '') details.push('当前路径：' + route)
+      if (retrying) details.push('连接中断，正在自动重试…')
+      if (endpointRefreshAvailable) details.push('电脑连接地址已失效，请重新扫码。')
+      let refresh: HTMLButtonElement | undefined
       if (endpointRefreshAvailable) {
-        const box = document.createElement('div')
-        box.style.marginTop = '1.5em'
-        const hint = document.createElement('div')
-        hint.textContent = '电脑连接地址已失效，请重新扫码。'
         installMobileActionStyles()
-        const refresh = document.createElement('button')
+        refresh = document.createElement('button')
         refresh.id = 'endpoint-refresh'
         refresh.setAttribute('data-mobile-shell-action', '')
-        refresh.style.marginTop = '.8em'
         refresh.textContent = '重新扫码'
-        box.append(hint, refresh)
-        wrap.append(box)
       }
-      el.replaceChildren(wrap)
+      mountProgressScreen(el, {
+        title: retrying
+          ? '正在重连 ' + activeConnection.profile.displayName
+          : '正在连接 ' + activeConnection.profile.displayName,
+        ...details.length === 0 ? {} : { detail: details.join('\n') },
+        ...showError
+          ? {
+            error: /credential is missing/i.test(lastError)
+              ? '登录凭证已丢失，请重新扫描 Host 二维码配对。'
+              : lastError,
+          }
+          : {},
+        spinning: activity.phase !== 'terminal',
+        ...refresh === undefined ? {} : { action: refresh },
+      })
       document.getElementById('endpoint-refresh')?.addEventListener('click', async event => {
         const button = event.currentTarget as HTMLButtonElement
         button.disabled = true
@@ -482,13 +516,14 @@ void (async () => {
         endpointRefreshAvailable = false
         lastError = ''
         const offerUrl = await scanUntilPaired()
-        el.innerHTML = '<div style="padding:2em;text-align:center;font-family:sans-serif">正在更新临时 Endpoint…</div>'
+        mountProgressScreen(el, { title: '正在更新临时 Endpoint…', spinning: true })
         try {
           activeConnection = await prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange })
           setProtectedCacheScope(activeConnection.profile.hostId)
           await session?.connect(activeConnection)
           markTransportReady()
         } catch (error) {
+          if (isHostSessionStoppedError(error)) return
           lastError = error instanceof Error ? error.message : 'unknown error'
           endpointRefreshAvailable ||= endpointRefreshRequired(activeConnection.profile.endpoint.kind, lastError)
           render()
@@ -514,6 +549,7 @@ void (async () => {
       session?.stop()
       await webEntry?.dispose()
       webEntry = null
+      session?.forgetPaint()
       shellMounted = false
       transportReady = false
       liveDataReady = 'pending'
@@ -552,6 +588,7 @@ void (async () => {
         await session?.connect(next)
         markTransportReady()
       } catch (error) {
+        if (isHostSessionStoppedError(error)) return
         lastError = error instanceof Error ? error.message : String(error)
         if (lastError === 'no Active Host Profile') {
           await enterOnboardingAfterRemoval()
@@ -594,7 +631,7 @@ void (async () => {
             else if (!supportsLiveDataReadiness(document.documentElement.dataset)) {
               liveDataReady = coreLiveDataReadiness(transportReady, shellMounted)
             }
-            if (nextActivity.phase === 'open') {
+            if (nextActivity.phase === 'open' || (nextActivity.phase === 'connecting' && !nextActivity.reconnecting)) {
               lastError = ''
               endpointRefreshAvailable = false
             } else if ('error' in nextActivity && typeof nextActivity.error === 'string') {
@@ -621,6 +658,12 @@ void (async () => {
           localizePlugins: native,
           hostId: next.profile.hostId,
           sessionEnhancementPreference,
+          ...shellMounted ? {} : { pluginConcurrency: COLD_BOOT_PLUGIN_CONCURRENCY },
+          onPluginProgress(loaded, total) {
+            if (shellMounted) return
+            bootProgress = { loaded, total }
+            render()
+          },
         })
         if (selection.officialLayoutRevision !== expectedOfficialLayoutRevision) {
           const latest = await repository.getActive() ?? next.profile
@@ -649,6 +692,10 @@ void (async () => {
       },
       async mount(selection, _hostId) {
         const booted = await bootDshShell(selection)
+        // Claim the shell root before any further await: a status repaint
+        // between here and the last await would wipe the shell just painted.
+        shellMounted = true
+        bootProgress = null
         responsiveSelection = booted
         if (booted?.compatibility === 'layout-load-failed') {
           const latest = await repository.getActive() ?? activeConnection.profile
@@ -658,7 +705,6 @@ void (async () => {
             updatedAt: new Date().toISOString(),
           })
         }
-        shellMounted = true
         if (!supportsLiveDataReadiness(document.documentElement.dataset)) {
           liveDataReady = coreLiveDataReadiness(transportReady, shellMounted)
         }
@@ -670,6 +716,7 @@ void (async () => {
     })
     own(backgroundConnection.subscribeWake(() => { void session?.probeNow() }))
     runtimeOfferHandler = offerUrl => { void connectPairingOffer(offerUrl).catch(error => {
+      if (isHostSessionStoppedError(error)) return
       lastError = error instanceof Error ? error.message : String(error)
       render()
     }) }
@@ -691,6 +738,7 @@ void (async () => {
       await session.connect(activeConnection)
       markTransportReady()
     } catch (error) {
+      if (isHostSessionStoppedError(error)) return
       lastError = error instanceof Error ? error.message : String(error)
       endpointRefreshAvailable ||= endpointRefreshRequired(activeConnection.profile.endpoint.kind, lastError)
       render()

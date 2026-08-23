@@ -19,8 +19,8 @@ export interface ConnectionStatus {
 export interface ConnectionCoordinatorOptions {
   policy: ConnectionPolicy
   capabilities: RouteCapabilities
-  connectDirect: () => Promise<TunnelClient>
-  connectTunnel: () => Promise<TunnelClient>
+  connectDirect: (signal?: AbortSignal) => Promise<TunnelClient>
+  connectTunnel: (signal?: AbortSignal) => Promise<TunnelClient>
   onState?: (status: ConnectionStatus) => void
   /**
    * Automatic only: Direct may win only if it finishes within this window.
@@ -66,8 +66,8 @@ export class ConnectionCoordinator {
     return this.connectAutomatic(attempts)
   }
 
-  private startRoute(route: ConnectionRoute): Promise<TunnelClient> {
-    return route === 'direct' ? this.options.connectDirect() : this.options.connectTunnel()
+  private startRoute(route: ConnectionRoute, signal?: AbortSignal): Promise<TunnelClient> {
+    return route === 'direct' ? this.options.connectDirect(signal) : this.options.connectTunnel(signal)
   }
 
   private async connectOne(route: ConnectionRoute): Promise<TunnelClient> {
@@ -97,7 +97,17 @@ export class ConnectionCoordinator {
       let graceOpen = true
       let lastError: Error | null = null
       const discarded: TunnelClient[] = []
-      const graceTimer = setTimeout(() => { graceOpen = false }, graceMs)
+      const abortByRoute = new Map<ConnectionRoute, AbortController>()
+      for (const route of attempts) abortByRoute.set(route, new AbortController())
+      const abortOthers = (winner: ConnectionRoute): void => {
+        for (const [route, controller] of abortByRoute) {
+          if (route !== winner) controller.abort()
+        }
+      }
+      const graceTimer = setTimeout(() => {
+        graceOpen = false
+        abortByRoute.get('direct')?.abort()
+      }, graceMs)
 
       const discard = (client: TunnelClient): void => {
         discarded.push(client)
@@ -133,6 +143,7 @@ export class ConnectionCoordinator {
         }
         settled = true
         clearTimeout(graceTimer)
+        abortOthers(route)
         dropDiscarded()
         resolve(this.accept(route, client))
       }
@@ -144,6 +155,7 @@ export class ConnectionCoordinator {
         if (terminal || pending === 0) {
           settled = true
           clearTimeout(graceTimer)
+          for (const controller of abortByRoute.values()) controller.abort()
           dropDiscarded()
           this.emit('offline', null, error.message)
           reject(error)
@@ -151,7 +163,7 @@ export class ConnectionCoordinator {
       }
 
       for (const route of attempts) {
-        void this.startRoute(route).then(
+        void this.startRoute(route, abortByRoute.get(route)?.signal).then(
           client => finishOk(route, client),
           error => {
             const failure = error instanceof Error ? error : new TunnelError('offline', String(error))

@@ -125,3 +125,39 @@ test('Automatic loser close does not emit closed for the winning session', async
   assert.equal(coordinator.activeClient?.state, 'open')
   assert.equal(states.includes('closed'), false)
 })
+
+test('Automatic aborts Direct once Tunnel wins', async () => {
+  let directSignal
+  const coordinator = new ConnectionCoordinator({
+    policy: 'automatic', capabilities: { direct: true, tunnel: true },
+    connectDirect: async (signal) => {
+      directSignal = signal
+      await new Promise((_, reject) => {
+        signal?.addEventListener('abort', () => reject(new TunnelError('closed', 'connection aborted')))
+      })
+    },
+    connectTunnel: async () => fakeClient(),
+  })
+  await coordinator.connect()
+  assert.equal(coordinator.activeRoute, 'tunnel')
+  assert.equal(directSignal?.aborted, true)
+})
+
+test('Automatic aborts Direct when the grace window elapses', async () => {
+  let directSignal
+  const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+  const coordinator = new ConnectionCoordinator({
+    policy: 'automatic', capabilities: { direct: true, tunnel: true },
+    directGraceMs: 20,
+    connectDirect: async (signal) => {
+      directSignal = signal
+      await new Promise((_, reject) => {
+        signal?.addEventListener('abort', () => reject(new TunnelError('closed', 'connection aborted')))
+      })
+    },
+    connectTunnel: async () => { await wait(50); return fakeClient() },
+  })
+  await coordinator.connect()
+  assert.equal(coordinator.activeRoute, 'tunnel')
+  assert.equal(directSignal?.aborted, true)
+})

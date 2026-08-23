@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { HostSession, shellNeedsPaint } from '../src/host-session.ts'
+import { TunnelError } from '@dsh-mobile/e2e-tunnel'
+import { HostSession, isHostSessionStoppedError, isTransientTunnelBootError, shellNeedsPaint } from '../src/host-session.ts'
 
 function selection(rev, extra = {}) {
   return {
@@ -20,7 +21,7 @@ function prepared(hostId = 'host-a') {
 }
 
 function fakeManager() {
-  const client = { fetch: async () => new Response('ok') }
+  const client = { state: 'open', fetch: async () => new Response('ok') }
   let started = 0
   let stopped = 0
   let armed = 0
@@ -171,6 +172,21 @@ test('a live roster revision change remounts after the cached shell', async () =
   assert.deepEqual(mounts, ['r1', 'r2'])
 })
 
+test('forgetting paint after tearing down the shell remounts the same Host roster', async () => {
+  const mounts = []
+  const session = new HostSession({
+    slot: { attach() {}, async current() { return fakeManager().current() } },
+    createManager() { return fakeManager() },
+    async injectBoot() { return selection('r1') },
+    mount(next) { mounts.push(next.manifest.rev) },
+  })
+  await session.connect(prepared('host-a'))
+  session.stop()
+  session.forgetPaint()
+  await session.connect(prepared('host-a'))
+  assert.deepEqual(mounts, ['r1', 'r1'])
+})
+
 test('reconnecting the same Host rebuilds the tunnel without repainting the shell', async () => {
   const mounts = []
   const managers = []
@@ -191,4 +207,95 @@ test('reconnecting the same Host rebuilds the tunnel without repainting the shel
   assert.equal(managers[0].stats().stopped, 1)
   assert.equal(managers[1].stats().started, 1)
   assert.equal(managers[1].stats().armed, 1)
+})
+
+test('a closed tunnel during boot waits for the next live client instead of failing connect', async () => {
+  const closed = { state: 'closed', fetch: async () => { throw new TunnelError('closed', 'tunnel is closed') } }
+  const live = { state: 'open', fetch: async () => new Response('ok') }
+  const clients = [closed, live]
+  const manager = {
+    start() {},
+    stop() {},
+    async current() { return clients.shift() ?? live },
+    armHeartbeat() {},
+    async probeNow() {},
+  }
+  let injects = 0
+  const session = new HostSession({
+    slot: { attach() {}, async current() { return live } },
+    createManager() { return manager },
+    async injectBoot(client) {
+      injects += 1
+      if (client.state !== 'open') throw new TunnelError('closed', 'tunnel is closed')
+      return selection('r1')
+    },
+    mount() {},
+  })
+  await session.connect(prepared('host-a'))
+  assert.equal(injects, 2)
+})
+
+test('a hung boot fetch on a still-open tunnel closes the client and waits for the next one', async () => {
+  const hung = {
+    state: 'open',
+    close() { this.state = 'closed' },
+  }
+  const live = { state: 'open', close() {} }
+  const clients = [hung, live]
+  const manager = {
+    start() {},
+    stop() {},
+    async current() { return clients.shift() ?? live },
+    armHeartbeat() {},
+    async probeNow() {},
+  }
+  let injects = 0
+  const session = new HostSession({
+    slot: { attach() {}, async current() { return live } },
+    createManager() { return manager },
+    async injectBoot(client) {
+      injects += 1
+      if (client === hung) throw new TunnelError('timeout', 'boot fetch timed out: /')
+      return selection('r1')
+    },
+    mount() {},
+  })
+  await session.connect(prepared('host-a'))
+  assert.equal(injects, 2)
+  assert.equal(hung.state, 'closed')
+})
+
+test('isTransientTunnelBootError recognizes a dropped or stalled tunnel during boot', () => {
+  assert.equal(isTransientTunnelBootError(new TunnelError('closed', 'tunnel is closed')), true)
+  assert.equal(isTransientTunnelBootError(new TunnelError('handshake', 'endpoint WebSocket connection failed')), true)
+  assert.equal(isTransientTunnelBootError(new TunnelError('timeout', 'boot fetch timed out: /')), true)
+  assert.equal(isTransientTunnelBootError(new Error('boot manifest fetch failed: HTTP 500')), false)
+  assert.equal(isTransientTunnelBootError(new TunnelError('closed', 'Active Host connection stopped')), false)
+})
+
+test('isHostSessionStoppedError only matches a cancelled Host session', () => {
+  assert.equal(isHostSessionStoppedError(new TunnelError('closed', 'Active Host connection stopped')), true)
+  assert.equal(isHostSessionStoppedError(new Error('Active Host connection stopped')), true)
+  assert.equal(isHostSessionStoppedError(new TunnelError('closed', 'tunnel is closed')), false)
+  assert.equal(isHostSessionStoppedError(new TunnelError('handshake', 'endpoint WebSocket connection failed')), false)
+})
+
+test('stop during an in-flight connect rejects as a cancelled Host session, not a transport failure', async () => {
+  let rejectCurrent
+  const pending = new Promise((_, reject) => { rejectCurrent = reject })
+  const manager = fakeManager()
+  manager.current = () => pending
+  manager.stop = () => {
+    rejectCurrent(new TunnelError('closed', 'Active Host connection stopped'))
+  }
+  const session = new HostSession({
+    slot: { attach() {}, async current() { return manager.client } },
+    createManager() { return manager },
+    async injectBoot() { return selection('r1') },
+    mount() {},
+  })
+  const connecting = session.connect(prepared('host-a'))
+  await new Promise(resolve => setTimeout(resolve, 0))
+  session.stop()
+  await assert.rejects(connecting, error => isHostSessionStoppedError(error))
 })

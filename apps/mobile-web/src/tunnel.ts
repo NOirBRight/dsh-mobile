@@ -9,12 +9,43 @@
  */
 import { connect, HeartbeatController, TunnelError } from '@dsh-mobile/e2e-tunnel'
 import type { ClientKeypair, ConnectionPolicy, ConnectionStatus, ConnectOptions, TunnelClient, TunnelState } from '@dsh-mobile/e2e-tunnel'
-import { createLocalStoragePluginCache, extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, readCachedBootManifest, selectResponsiveBootManifest, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
+import { createLocalStoragePluginCache, extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readCachedBootManifest, selectResponsiveBootManifest, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
 import { findConnectionBadgeAnchor, findSettingsTrigger, OFFICIAL_DRAWER, OWN_DRAWER_BRAND, OWN_TOPBAR, queryDrawerToggleSlot } from './anchors.ts'
 import type { EndpointKind } from './profiles.ts'
-import { endpointRefreshRequired } from './reconnect-recovery.ts'
 
 export { findConnectionBadgeAnchor } from './anchors.ts'
+
+/** Give up on a silent Cloudflare tunnel instead of spinning on GET / forever. */
+export const BOOT_FETCH_TIMEOUT_MS = 20_000
+
+function abortAfter(ms: number): { signal: AbortSignal; cancel: () => void } {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+  return {
+    signal: controller.signal,
+    cancel() { clearTimeout(timer) },
+  }
+}
+
+async function fetchThroughTunnel(client: TunnelClient, url: string, timeoutMs: number): Promise<Response> {
+  const timeout = abortAfter(timeoutMs)
+  try {
+    return await new Promise<Response>((resolve, reject) => {
+      const onAbort = () => reject(new TunnelError('timeout', 'boot fetch timed out: ' + url))
+      timeout.signal.addEventListener('abort', onAbort, { once: true })
+      if (timeout.signal.aborted) {
+        onAbort()
+        return
+      }
+      client.fetch(url, { signal: timeout.signal }).then(resolve, error => {
+        if (timeout.signal.aborted) onAbort()
+        else reject(error)
+      })
+    })
+  } finally {
+    timeout.cancel()
+  }
+}
 
 /**
  * Fetch the boot manifest through the tunnel and install it as
@@ -24,9 +55,17 @@ export { findConnectionBadgeAnchor } from './anchors.ts'
  */
 export async function injectBootManifestFromTunnel(
   client: TunnelClient,
-  responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean; hostId?: string } = { viewportWidth: window.innerWidth },
+  responsive: ResponsiveBootSelectionOptions & {
+    localizePlugins?: boolean
+    hostId?: string
+    fetchTimeoutMs?: number
+    /** In-flight plugin loads; cold pairings need the wide pipe to not read as a hang. */
+    pluginConcurrency?: number
+    onPluginProgress?: (loaded: number, total: number) => void
+  } = { viewportWidth: window.innerWidth },
 ): Promise<ResponsiveBootSelection> {
-  const res = await client.fetch('/')
+  const timeoutMs = responsive.fetchTimeoutMs ?? BOOT_FETCH_TIMEOUT_MS
+  const res = await fetchThroughTunnel(client, '/', timeoutMs)
   if (!res.ok) throw new Error('boot manifest fetch failed: HTTP ' + res.status)
   const hostManifest = extractBootManifestJson(await res.text(), 'boot manifest not found in tunneled index')
   const selection = selectResponsiveBootManifest(hostManifest, {
@@ -42,7 +81,7 @@ export async function injectBootManifestFromTunnel(
     load: async (url) => {
       let last = 'failed to load host plugin ' + url
       for (let attempt = 1; attempt <= 3; attempt++) {
-        const response = await client.fetch(url)
+        const response = await fetchThroughTunnel(client, url, timeoutMs)
         if (response.ok) return response.text()
         last = 'failed to load host plugin ' + url + ': HTTP ' + response.status
         if (response.status !== 502 && response.status !== 503) break
@@ -52,6 +91,8 @@ export async function injectBootManifestFromTunnel(
     },
     createUrl: pluginBlobUrl,
     cache: createLocalStoragePluginCache(undefined, responsive.hostId ?? ''),
+    concurrency: responsive.pluginConcurrency ?? PLUGIN_LOAD_CONCURRENCY,
+    ...responsive.onPluginProgress === undefined ? {} : { onProgress: responsive.onPluginProgress },
   })
   ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = localizedManifest
   return { ...selection, manifest: localizedManifest }
@@ -252,8 +293,9 @@ export class TunnelManager {
         this.setState('connecting')
         retryError = code === null ? failure.message : code + ': ' + failure.message
         this.options.onError?.(retryError)
-        const endpointDead = endpointRefreshRequired(this.options.endpointKind ?? 'custom', retryError)
-        if ((code !== null && TERMINAL_CONNECTION_ERRORS.has(code)) || endpointDead) {
+        // Temporary Quick Tunnel WebSocket failures are often carrier/CF flakes,
+        // not a dead hostname. Keep retrying; the UI may still offer a rescan.
+        if (code !== null && TERMINAL_CONNECTION_ERRORS.has(code)) {
           this.terminalError = failure
           this.options.onActivity?.({ phase: 'terminal', attempt, route: this.lastRoute, error: retryError })
           for (const waiter of this.waiters.splice(0)) waiter.reject(failure)

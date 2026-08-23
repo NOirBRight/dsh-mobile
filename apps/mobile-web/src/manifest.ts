@@ -84,6 +84,10 @@ export interface PluginLocalizationOptions {
   cache?: PluginBundleCache
   /** When true, a cache miss fails instead of calling load — used for offline hydrate. */
   cacheOnly?: boolean
+  /** In-flight tunnel loads; defaults to PLUGIN_LOAD_CONCURRENCY. */
+  concurrency?: number
+  /** Report localization progress so a cold pairing can show a moving count. */
+  onProgress?(loaded: number, total: number): void
 }
 
 export interface PluginBundleCache {
@@ -200,29 +204,50 @@ export function createLocalStoragePluginCache(storage?: Pick<Storage, 'getItem' 
  * Replace host plugin URLs with local executable URLs. The mobile root layout
  * ships inside the Android application and is intentionally left alone.
  */
-/** Host plugin scripts share one ordered tunnel; a full parallel stampede stalls heartbeat pongs. */
+/**
+ * In-flight tunnel loads while the Host session is live: plugin scripts share
+ * one ordered tunnel with heartbeat pongs, so a full parallel stampede stalls
+ * liveness probes.
+ */
 export const PLUGIN_LOAD_CONCURRENCY = 2
+
+/**
+ * In-flight tunnel loads before the shell has painted. A cold pairing must pull
+ * every host plugin over the tunnel, and each fetch costs a round trip (~0.5-2s
+ * measured on 5G) regardless of size, so a serialized pull reads as a hang.
+ * The heartbeat is still deferred here, so nothing competes for the tunnel.
+ */
+export const COLD_BOOT_PLUGIN_CONCURRENCY = 8
 
 export async function localizePluginBundles(
   manifest: BootManifest,
   options: PluginLocalizationOptions,
 ): Promise<BootManifest> {
-  const entries = await mapPool(manifest.entries, PLUGIN_LOAD_CONCURRENCY, async (entry) => {
-    if (entry.id === MOBILE_LAYOUT_ID || entry.id === MOBILE_HYDRATION_ID) return { ...entry }
-    if (entry.id === RUNTIME_ID && entry.url.startsWith('/plugins/@dsh-mobile/session-hydration/')) return { ...entry }
-    if (entry.id === CONNECTION_ID && entry.url.startsWith('/plugins/@dsh-mobile/ui-layout-mobile/connection.js')) return { ...entry }
-    if (!entry.url.startsWith('/plugins/')) {
-      throw new Error('host plugin URL must stay under /plugins/: ' + entry.id)
-    }
-    let source = await options.cache?.read(entry.id, entry.rev)
-    if (source === undefined) {
-      if (options.cacheOnly === true) throw new Error('plugin cache miss: ' + entry.id)
-      source = await options.load(entry.url)
-      await options.cache?.write(entry.id, entry.rev, source)
-    }
-    return { ...entry, url: options.createUrl(source, entry.id) }
+  const total = manifest.entries.length
+  let loaded = 0
+  const entries = await mapPool(manifest.entries, options.concurrency ?? PLUGIN_LOAD_CONCURRENCY, async (entry) => {
+    const localized = await localizeEntry(entry, options)
+    loaded += 1
+    options.onProgress?.(loaded, total)
+    return localized
   })
   return { ...manifest, entries }
+}
+
+async function localizeEntry(entry: BootEntry, options: PluginLocalizationOptions): Promise<BootEntry> {
+  if (entry.id === MOBILE_LAYOUT_ID || entry.id === MOBILE_HYDRATION_ID) return { ...entry }
+  if (entry.id === RUNTIME_ID && entry.url.startsWith('/plugins/@dsh-mobile/session-hydration/')) return { ...entry }
+  if (entry.id === CONNECTION_ID && entry.url.startsWith('/plugins/@dsh-mobile/ui-layout-mobile/connection.js')) return { ...entry }
+  if (!entry.url.startsWith('/plugins/')) {
+    throw new Error('host plugin URL must stay under /plugins/: ' + entry.id)
+  }
+  let source = await options.cache?.read(entry.id, entry.rev)
+  if (source === undefined) {
+    if (options.cacheOnly === true) throw new Error('plugin cache miss: ' + entry.id)
+    source = await options.load(entry.url)
+    await options.cache?.write(entry.id, entry.rev, source)
+  }
+  return { ...entry, url: options.createUrl(source, entry.id) }
 }
 
 async function mapPool<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {

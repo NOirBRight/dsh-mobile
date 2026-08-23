@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { adaptBootManifestForMobile, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, MOBILE_HYDRATION_ID, RUNTIME_ID, selectSessionEnhancement, SUPPORTED_OFFICIAL_RUNTIME_REVISIONS } from '../src/manifest.ts'
+import { adaptBootManifestForMobile, COLD_BOOT_PLUGIN_CONCURRENCY, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, MOBILE_HYDRATION_ID, RUNTIME_ID, selectSessionEnhancement, SUPPORTED_OFFICIAL_RUNTIME_REVISIONS } from '../src/manifest.ts'
 
 test('extracts the boot graph from every historical host embedding form', () => {
   const graph = { rev: 'rev-1', entries: [{ id: 'x', url: '/plugins/x.js', rev: 'a' }] }
@@ -207,25 +207,60 @@ test('cached host plugins are not fetched again until revision changes', async (
   ])
 })
 
-test('localizes host plugins with bounded in-flight tunnel loads', async () => {
-  let inFlight = 0
-  let maxInFlight = 0
-  const manifest = {
-    rev: 'r',
-    entries: [1, 2, 3, 4].map(i => ({ id: 'p' + i, url: '/plugins/p' + i + '.js', rev: '1', inject: [] })),
-  }
-  await localizePluginBundles(manifest, {
-    load: async url => {
-      inFlight += 1
-      maxInFlight = Math.max(maxInFlight, inFlight)
+function countingLoader() {
+  const state = { inFlight: 0, maxInFlight: 0 }
+  return {
+    state,
+    async load(url) {
+      state.inFlight += 1
+      state.maxInFlight = Math.max(state.maxInFlight, state.inFlight)
       await new Promise(resolve => setTimeout(resolve, 20))
-      inFlight -= 1
+      state.inFlight -= 1
       return '// ' + url
     },
+  }
+}
+
+function pluginManifest(count) {
+  return {
+    rev: 'r',
+    entries: Array.from({ length: count }, (_unused, i) => ({ id: 'p' + i, url: '/plugins/p' + i + '.js', rev: '1', inject: [] })),
+  }
+}
+
+test('a live Host session keeps plugin loads narrow so heartbeat pongs are not starved', async () => {
+  const loader = countingLoader()
+  await localizePluginBundles(pluginManifest(PLUGIN_LOAD_CONCURRENCY * 3), {
+    load: loader.load,
     createUrl: (_source, id) => id,
   })
-  assert.ok(maxInFlight <= PLUGIN_LOAD_CONCURRENCY)
-  assert.equal(maxInFlight, PLUGIN_LOAD_CONCURRENCY)
+  assert.equal(loader.state.maxInFlight, PLUGIN_LOAD_CONCURRENCY)
+})
+
+test('a cold pairing widens the plugin pipe because every fetch costs a tunnel round trip', async () => {
+  const loader = countingLoader()
+  await localizePluginBundles(pluginManifest(COLD_BOOT_PLUGIN_CONCURRENCY * 3), {
+    load: loader.load,
+    createUrl: (_source, id) => id,
+    concurrency: COLD_BOOT_PLUGIN_CONCURRENCY,
+  })
+  assert.ok(COLD_BOOT_PLUGIN_CONCURRENCY > PLUGIN_LOAD_CONCURRENCY)
+  assert.equal(loader.state.maxInFlight, COLD_BOOT_PLUGIN_CONCURRENCY)
+})
+
+test('localization reports a monotonic progress count so a cold pairing is not a blank spinner', async () => {
+  const loader = countingLoader()
+  const seen = []
+  const total = 10
+  await localizePluginBundles(pluginManifest(total), {
+    load: loader.load,
+    createUrl: (_source, id) => id,
+    concurrency: 4,
+    onProgress: (loaded, reportedTotal) => seen.push([loaded, reportedTotal]),
+  })
+  assert.equal(seen.length, total)
+  assert.deepEqual(seen.map(row => row[0]), Array.from({ length: total }, (_unused, i) => i + 1))
+  assert.deepEqual(seen.at(-1), [total, total])
 })
 
 test('loads a validated raw same-origin manifest before responsive root selection', async () => {
