@@ -1,5 +1,7 @@
 import type { ConnectionPolicy, HostProfile } from './profiles.ts'
 import type { ScanSurface } from './scan-surface.ts'
+import { runHostProfileSwitch } from './profile-lifecycle.ts'
+import { mountProgressScreen } from './progress-screen.ts'
 
 const STYLE_ID = 'dsh-mobile-profile-menu-style'
 const POLICY_OPTIONS: readonly [ConnectionPolicy, string][] = [
@@ -258,12 +260,13 @@ const STYLE = `
 
 [data-dsh-profile-menu] [data-profile-device] {
   display: grid;
-  gap: 6px;
-  margin-top: 6px;
-  padding: 9px 10px;
+  gap: 9px;
+  margin-top: 8px;
+  padding: 13px 14px;
   border: 1px solid var(--dsw-alias-border-l1, rgb(127 143 169 / 22%));
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--dsw-alias-bg-layer-1, rgb(127 143 169 / 7%));
+  transition: border-color 160ms ease, background-color 160ms ease;
 }
 
 [data-dsh-profile-menu] [data-profile-device][data-active] {
@@ -275,11 +278,21 @@ const STYLE = `
   cursor: pointer;
 }
 
+[data-dsh-profile-menu] [data-profile-device]:not([data-active]):hover,
+[data-dsh-profile-menu] [data-profile-device]:not([data-active]):active {
+  border-color: var(--dsw-alias-border-l2, rgb(127 143 169 / 35%));
+  background: var(--dsw-alias-bg-layer-2, Canvas);
+}
+
 [data-dsh-profile-menu] [data-profile-device-head] {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 9px;
   min-width: 0;
+}
+
+[data-dsh-profile-menu] [data-profile-device-head] [data-profile-status-dot] {
+  margin-top: 7px;
 }
 
 [data-dsh-profile-menu] [data-profile-remove] {
@@ -305,33 +318,42 @@ const STYLE = `
 }
 
 [data-dsh-profile-menu] [data-profile-device-name] {
+  flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  line-height: 18px;
-  font-weight: 600;
+  color: var(--dsw-alias-label-primary, CanvasText);
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 [data-dsh-profile-menu] [data-profile-current] {
   flex: none;
-  padding: 2px 7px;
+  margin-top: 1px;
+  padding: 2px 8px;
   border-radius: 999px;
   background: var(--dsw-alias-state-business-tertiary, #e8efff);
   color: var(--dsw-alias-label-primary-bluish, #4165a8);
-  font-size: 9px;
-  line-height: 14px;
+  font-size: 11px;
+  line-height: 16px;
   font-weight: 600;
 }
 
 [data-dsh-profile-menu] [data-profile-device-endpoint] {
   overflow: hidden;
-  color: var(--dsw-alias-label-tertiary, #718096);
-  font-size: 10px;
-  line-height: 15px;
+  color: var(--dsw-alias-label-secondary, #4b5563);
+  font-size: 12px;
+  line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+[data-dsh-profile-menu] [data-profile-device-connection] {
+  color: var(--dsw-alias-label-tertiary, #718096);
+  font-size: 11px;
+  line-height: 17px;
 }
 
 [data-dsh-profile-menu] [data-profile-policy] {
@@ -381,6 +403,18 @@ const STYLE = `
   color: var(--dsw-alias-label-tertiary, #718096);
   font-size: 13px;
   text-align: center;
+}
+
+[data-dsh-profile-menu] [data-profile-switch-back] {
+  box-sizing: border-box;
+  min-height: 40px;
+  padding: 8px 18px;
+  border: 1px solid var(--dsw-alias-border-l1, ButtonBorder);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2, Canvas);
+  color: var(--dsw-alias-label-primary, CanvasText);
+  font: inherit;
+  cursor: pointer;
 }
 `
 
@@ -550,6 +584,7 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
   let closed = false
   let retryResolver: (() => void) | null = null
   let scanning = false
+  let switching = false
   const close = (): void => {
     if (closed) return
     closed = true
@@ -565,6 +600,32 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     scanStatus.hidden = false
     scanStatus.dataset.error = ''
     scanStatus.textContent = message
+  }
+  const showSwitchConnecting = (displayName: string): void => {
+    switching = true
+    const progress = mountProgressScreen(overlay, {
+      title: '正在连接 ' + displayName,
+      detail: '正在切换 Host，请稍候…',
+      spinning: true,
+    })
+    progress.dataset.profileSwitchProgress = ''
+    progress.setAttribute('role', 'status')
+    progress.setAttribute('aria-live', 'polite')
+    progress.setAttribute('aria-busy', 'true')
+  }
+  const showSwitchError = (displayName: string, message: string): void => {
+    const back = button('返回', 'data-profile-switch-back')
+    back.setAttribute('data-mobile-shell-action', '')
+    back.addEventListener('click', close)
+    const progress = mountProgressScreen(overlay, {
+      title: '无法连接 ' + displayName,
+      detail: 'Host 切换未完成',
+      error: message,
+      spinning: false,
+      action: back,
+    })
+    progress.dataset.profileSwitchProgress = ''
+    progress.setAttribute('role', 'alert')
   }
   const showScanState = (message: string, retryLabel?: string): void | Promise<void> => {
     scanStatus.hidden = false
@@ -620,6 +681,7 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     const name = document.createElement('div')
     name.dataset.profileDeviceName = ''
     name.textContent = profile.displayName
+    name.title = profile.displayName
     deviceHead.append(name)
     if (active) {
       const current = document.createElement('span')
@@ -629,9 +691,13 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     }
     const endpoint = document.createElement('div')
     endpoint.dataset.profileDeviceEndpoint = ''
-    endpoint.textContent = active
+    endpoint.textContent = endpointLabel(profile)
+    endpoint.title = profile.endpoint.url
+    const connection = document.createElement('div')
+    connection.dataset.profileDeviceConnection = ''
+    connection.textContent = active
       ? stateLabel(options.connection.state) + ' · ' + routeLabel(options.connection.route)
-      : endpointLabel(profile)
+      : '点击卡片切换到此 Host'
     const policy = document.createElement('label')
     policy.dataset.profilePolicy = ''
     const policyText = document.createElement('span')
@@ -666,16 +732,17 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     deviceHead.append(remove)
     if (!active) {
       device.setAttribute('aria-label', '切换到' + profile.displayName)
-      device.addEventListener('click', async event => {
-        if (isInteractiveControl(event.target)) return
+      device.addEventListener('click', event => {
+        if (switching || isInteractiveControl(event.target)) return
         device.setAttribute('aria-busy', 'true')
-        try { await options.onActivate(profile.hostId); close() } catch (error) {
-          device.removeAttribute('aria-busy')
-          setPanelError(error instanceof Error ? error.message : '切换设备失败')
-        }
+        void runHostProfileSwitch(profile, options.onActivate, {
+          showConnecting: showSwitchConnecting,
+          showError: message => { showSwitchError(profile.displayName, message) },
+          close,
+        })
       })
     }
-    device.append(deviceHead, endpoint, policy)
+    device.append(deviceHead, endpoint, connection, policy)
     deviceList.append(device)
   }
   if (options.profiles.length === 0) {

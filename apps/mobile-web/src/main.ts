@@ -165,7 +165,7 @@ function routeRuntimeOffer(offerUrl: string): void {
 
 async function showProfileMenu(
   repository: ProfileRepository,
-  onActiveHostChanged: () => Promise<void>,
+  onActiveHostChanged: (propagateError?: boolean) => Promise<void>,
   onProfilesEmpty: () => Promise<void>,
   onBackgroundConnectionChange: (enabled: boolean) => Promise<void>,
   onPairOffer: (offerUrl: string) => Promise<void>,
@@ -183,7 +183,7 @@ async function showProfileMenu(
     chromeHealth: inspectChromeAnchors(),
     onActivate: hostId => activateHostProfile(hostId, {
       setActive: id => repository.setActiveHost(id),
-      reconnect: onActiveHostChanged,
+      reconnect: () => onActiveHostChanged(true),
     }),
     onPolicyChange: async (profile, policy) => {
       await repository.upsert({ ...profile, connectionPolicy: policy, updatedAt: new Date().toISOString() })
@@ -578,7 +578,7 @@ void (async () => {
       markTransportReady()
     }
 
-    async function reconnectActiveHost(): Promise<void> {
+    async function reconnectActiveHost(propagateError = false): Promise<void> {
       session?.stop()
       document.getElementById('endpoint-refresh-banner')?.remove()
       try {
@@ -595,6 +595,7 @@ void (async () => {
           return
         }
         render()
+        if (propagateError) throw error
       }
     }
     session = new HostSession({

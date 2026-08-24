@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { activateHostProfile, completeProfileOnboarding, profileRemovalTransition, removeHostProfile } from '../src/profile-lifecycle.ts'
+import { activateHostProfile, completeProfileOnboarding, profileRemovalTransition, removeHostProfile, runHostProfileSwitch } from '../src/profile-lifecycle.ts'
 
 test('removing the final profile transfers directly to formal onboarding', async () => {
   const calls = []
@@ -28,6 +28,41 @@ test('device activation persists first and resolves only after reconnect succeed
     reconnect: async () => { failed.push('reconnect') },
   }), /save failed/)
   assert.deepEqual(failed, ['active'])
+})
+
+test('Host switching keeps a connecting surface visible until activation settles', async () => {
+  const pending = Promise.withResolvers()
+  const events = []
+  const switching = runHostProfileSwitch(
+    { hostId: 'host-lab', displayName: '3082 · Lab' },
+    async hostId => { events.push('activate:' + hostId); await pending.promise },
+    {
+      showConnecting: name => { events.push('show:' + name) },
+      showError: message => { events.push('error:' + message) },
+      close: () => { events.push('close') },
+    },
+  )
+
+  assert.deepEqual(events, ['show:3082 · Lab', 'activate:host-lab'])
+  pending.resolve()
+  assert.equal(await switching, true)
+  assert.deepEqual(events, ['show:3082 · Lab', 'activate:host-lab', 'close'])
+})
+
+test('Host switching keeps the progress surface open and reports activation failures', async () => {
+  const events = []
+  const switched = await runHostProfileSwitch(
+    { hostId: 'host-lab', displayName: '3082 · Lab' },
+    async () => { throw new Error('Lab unreachable') },
+    {
+      showConnecting: name => { events.push('show:' + name) },
+      showError: message => { events.push('error:' + message) },
+      close: () => { events.push('close') },
+    },
+  )
+
+  assert.equal(switched, false)
+  assert.deepEqual(events, ['show:3082 · Lab', 'error:Lab unreachable'])
 })
 
 test('formal onboarding absorbs a failed launch offer without a legacy retry page', async () => {

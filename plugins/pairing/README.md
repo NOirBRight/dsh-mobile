@@ -40,10 +40,11 @@ pnpm add github:NOirBRight/dsh-mobile-pairing#v0.1.6
     gatewayPort: 0
 ~~~
 
-lab profile 使用 `:3082` 时，将该 profile 的配置覆盖为 `dshPort: 3082` 和独立的 `gatewayPort`。产品默认是一台 Host 一个 Gateway（`gatewayPort: 0`）；手机只连接二维码里的 Public Endpoint，不会连到维护者机器。可选的 `dsh-pair-mux` 只跑在操作者自己的 Host 上回环，后端端口必须由环境变量显式给出。
+lab profile 使用 `:3082` 时，将该 profile 的配置覆盖为 `dshPort: 3082` 和独立的 `gatewayPort`。如果用户给实例配置了 `hostName`，手机优先显示该名称；DSH 目前没有向插件暴露 profile 名称的稳定接口，因此未配置时使用 `dshPort · 系统主机名` 自动区分同机实例。产品默认是一台 Host 一个 Gateway（`gatewayPort: 0`）；手机只连接二维码里的 Public Endpoint，不会连到维护者机器。可选的 `dsh-pair-mux` 只跑在操作者自己的 Host 上回环，后端端口必须由环境变量显式给出。
 
 | 键 | 默认 | 说明 |
 |---|---|---|
+| hostName | 未设置 | 用户设置的 Host 实例名称；未设置时显示 `dshPort · 系统主机名`，例如 `3082 · noir-pc` |
 | appUrl | dsh-mobile://pair | Android QR / Deep Link 入口 |
 | endpointMode | quick | GUI 只显示 quick（临时地址）和 relay（Relay）；custom 仅作为旧配置兼容模式保留 |
 | customEndpointUrl | 无 | 旧 operator overlay 兼容字段；不在当前 GUI 选项中显示 |

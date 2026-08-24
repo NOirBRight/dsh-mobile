@@ -9,6 +9,34 @@ export async function activateHostProfile<T>(hostId: T, activation: HostProfileA
   await activation.reconnect()
 }
 
+export interface HostProfileSwitchTarget<T> {
+  hostId: T
+  displayName: string
+}
+
+export interface HostProfileSwitchSurface {
+  showConnecting(displayName: string): void
+  showError(message: string): void
+  close(): void
+}
+
+/** Keep visible switch feedback mounted until the selected Host has connected and painted. */
+export async function runHostProfileSwitch<T>(
+  target: HostProfileSwitchTarget<T>,
+  activate: (hostId: T) => Promise<void>,
+  surface: HostProfileSwitchSurface,
+): Promise<boolean> {
+  surface.showConnecting(target.displayName)
+  try {
+    await activate(target.hostId)
+    surface.close()
+    return true
+  } catch (error) {
+    surface.showError(error instanceof Error ? error.message : String(error))
+    return false
+  }
+}
+
 export interface ProfileOnboardingSurface {
   waitForScan(): Promise<void>
   show(message: string): void | Promise<void>

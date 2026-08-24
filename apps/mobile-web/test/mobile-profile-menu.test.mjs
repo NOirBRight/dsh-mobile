@@ -14,6 +14,13 @@ test('expired Host codes ask the user to wait for a fresh QR', async () => {
   assert.match(main, /二维码已过期，请等电脑画面更新后再扫/)
 })
 
+test('Host switch reconnect failures stay on the switch progress surface', async () => {
+  const main = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
+  assert.ok(main.includes('reconnect: () => onActiveHostChanged(true)'))
+  assert.ok(main.includes('async function reconnectActiveHost(propagateError = false)'))
+  assert.ok(main.includes('if (propagateError) throw error'))
+})
+
 test('device panel puts scan in the header, scrolls the device list, and sinks settings', async () => {
   const source = await readFile(sourceUrl, 'utf8')
   assert.ok(source.includes('--dsh-profile-top-clearance: max(40px, calc(env(safe-area-inset-top) + 12px))'))
@@ -58,8 +65,15 @@ test('device panel puts scan in the header, scrolls the device list, and sinks s
   assert.ok(source.includes('系统仍可能终止进程'))
   assert.ok(source.includes('还没有已保存设备'))
   assert.ok(!source.includes('点右上角扫码添加'))
-  assert.ok(source.includes('onActivate(profile.hostId)'))
+  assert.ok(source.includes('runHostProfileSwitch(profile, options.onActivate'))
   assert.ok(source.includes('当前连接'))
+  assert.ok(source.includes('正在切换 Host'))
+  assert.ok(source.includes('runHostProfileSwitch'))
+  const nameStyleStart = source.indexOf('[data-profile-device-name]')
+  const nameStyle = source.slice(nameStyleStart, source.indexOf('}', nameStyleStart))
+  assert.ok(nameStyle.includes('font-size: 16px;'))
+  assert.ok(nameStyle.includes('white-space: normal;'))
+  assert.ok(source.includes('endpoint.textContent = endpointLabel(profile)'))
   assert.ok(source.includes('data-profile-chrome-health'))
   assert.ok(source.includes('部分界面增强不可用') === false)
   assert.ok(source.includes('chromeHealth'))
