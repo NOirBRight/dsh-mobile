@@ -7,17 +7,13 @@
 
 export const DESKTOP_LAYOUT_ID = '@deepseek-ai/dsh-client-ui-layout'
 export const MOBILE_LAYOUT_ID = '@dsh-mobile/ui-layout-mobile'
+export const INTERACTION_OPERATIONS_ID = '@dsh-mobile/interaction-operations'
 export const CONNECTION_ID = '@deepseek-ai/dsh-client-connection'
 export const RUNTIME_ID = '@deepseek-ai/dsh-client-runtime'
-export const MOBILE_HYDRATION_ID = '@dsh-mobile/session-hydration'
-export const SUPPORTED_OFFICIAL_RUNTIME_REVISIONS = ['5a9e129c42ae'] as const
-const MOBILE_HYDRATION_REV = '0.1.0'
-const MOBILE_RUNTIME_REV = '335f15577a33'
-const MOBILE_HYDRATION_URL = '/plugins/@dsh-mobile/session-hydration/client.js?rev=' + MOBILE_HYDRATION_REV
-const MOBILE_RUNTIME_URL = '/plugins/@dsh-mobile/session-hydration/runtime.js?rev=' + MOBILE_RUNTIME_REV
 export const DSH_HOST_BRIDGE_CAPABILITY = '__DSH_HOST_BRIDGE__'
 const CLIENT_HMR_ID = '@deepseek-ai/dsh-client-hmr'
-const MOBILE_LAYOUT_REV = '0.1.23'
+const MOBILE_LAYOUT_REV = '0.1.30'
+const INTERACTION_OPERATIONS_REV = '0.1.6'
 const MOBILE_CONNECTION_REV = '0.1.23'
 const MOBILE_CONNECTION_URL = '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=' + MOBILE_CONNECTION_REV
 
@@ -235,8 +231,7 @@ export async function localizePluginBundles(
 }
 
 async function localizeEntry(entry: BootEntry, options: PluginLocalizationOptions): Promise<BootEntry> {
-  if (entry.id === MOBILE_LAYOUT_ID || entry.id === MOBILE_HYDRATION_ID) return { ...entry }
-  if (entry.id === RUNTIME_ID && entry.url.startsWith('/plugins/@dsh-mobile/session-hydration/')) return { ...entry }
+  if (entry.id === MOBILE_LAYOUT_ID || entry.id === INTERACTION_OPERATIONS_ID) return { ...entry }
   if (entry.id === CONNECTION_ID && entry.url.startsWith('/plugins/@dsh-mobile/ui-layout-mobile/connection.js')) return { ...entry }
   if (!entry.url.startsWith('/plugins/')) {
     throw new Error('host plugin URL must stay under /plugins/: ' + entry.id)
@@ -317,8 +312,6 @@ export interface ResponsiveBootSelectionOptions {
   narrowContractAvailable?: boolean
   /** Official layout rev that previously crashed the mobile layout; skip retry until Host rev changes. */
   failedMobileLayoutRevision?: string
-  /** Optional explicit opt-in to the exact-verified session enhancement. */
-  sessionEnhancementPreference?: SessionEnhancementPreference
 }
 
 export interface ResponsiveBootSelection {
@@ -326,7 +319,6 @@ export interface ResponsiveBootSelection {
   layout: ResponsiveRoot
   compatibility: LayoutCompatibility
   officialLayoutRevision: string
-  enhancement?: Omit<SessionEnhancementSelection, 'manifest'>
   /** Official-root selection used when the narrow adapter fails to load. */
   fallbackOfficial?: ResponsiveBootSelection
 }
@@ -489,11 +481,18 @@ export function selectResponsiveBootManifest(
   value: unknown,
   options: ResponsiveBootSelectionOptions,
 ): ResponsiveBootSelection {
-  const { manifest, ...enhancement } = selectSessionEnhancement(value, {
-    preference: options.sessionEnhancementPreference ?? 'compatible',
-  })
+  const manifest = validateBootManifest(value)
   const official = manifest.entries.find(entry => entry.id === DESKTOP_LAYOUT_ID)!
-  const hostEntries = manifest.entries.filter(entry => entry.id !== CLIENT_HMR_ID)
+  const hostEntries = manifest.entries.filter(entry => entry.id !== CLIENT_HMR_ID && entry.id !== INTERACTION_OPERATIONS_ID)
+  const interactionOperations: BootEntry = {
+    id: INTERACTION_OPERATIONS_ID,
+    url: '/plugins/@dsh-mobile/interaction-operations/client.js?rev=' + INTERACTION_OPERATIONS_REV,
+    rev: INTERACTION_OPERATIONS_REV,
+    inject: ['@deepseek-ai/dsh-client-runtime'],
+  }
+  const runtimeIndex = hostEntries.findIndex(entry => entry.id === RUNTIME_ID)
+  const mobileEntries = [...hostEntries]
+  mobileEntries.splice(runtimeIndex < 0 ? mobileEntries.length : runtimeIndex + 1, 0, interactionOperations)
   const wantsNarrow = options.viewportWidth < NARROW_LAYOUT_BREAKPOINT
   const contractAvailable = options.narrowContractAvailable !== false
   const layoutLoadFailed = options.failedMobileLayoutRevision !== undefined &&
@@ -503,13 +502,12 @@ export function selectResponsiveBootManifest(
 
   if (!wantsNarrow || !contractAvailable || layoutLoadFailed) {
     return {
-      manifest: { ...manifest, entries: hostEntries },
+      manifest: { ...manifest, rev: manifest.rev + '+mobile-interactions-' + INTERACTION_OPERATIONS_REV, entries: mobileEntries },
       layout: 'official',
       compatibility: wantsNarrow && layoutLoadFailed
         ? 'layout-load-failed'
         : wantsNarrow && !contractAvailable ? 'missing-contract' : 'compatible',
       officialLayoutRevision: official.rev,
-      enhancement,
     }
   }
 
@@ -522,8 +520,8 @@ export function selectResponsiveBootManifest(
   return {
     manifest: {
       ...manifest,
-      rev: manifest.rev + '+mobile-layout-' + MOBILE_LAYOUT_REV,
-      entries: hostEntries.map(entry => {
+      rev: manifest.rev + '+mobile-layout-' + MOBILE_LAYOUT_REV + '+mobile-interactions-' + INTERACTION_OPERATIONS_REV,
+      entries: mobileEntries.map(entry => {
         if (entry.id === DESKTOP_LAYOUT_ID) return mobileLayout
         if (entry.id === CONNECTION_ID) return { ...entry, url: MOBILE_CONNECTION_URL, rev: MOBILE_CONNECTION_REV }
         return { ...entry }
@@ -532,67 +530,11 @@ export function selectResponsiveBootManifest(
     layout: 'narrow',
     compatibility: revisionMismatch ? 'revision-mismatch' : 'compatible',
     officialLayoutRevision: official.rev,
-    enhancement,
     fallbackOfficial: {
-      manifest: { ...manifest, entries: hostEntries },
+      manifest: { ...manifest, rev: manifest.rev + '+mobile-interactions-' + INTERACTION_OPERATIONS_REV, entries: mobileEntries },
       layout: 'official',
       compatibility: 'layout-load-failed',
       officialLayoutRevision: official.rev,
-      enhancement,
-    },
-  }
-}
-
-export type SessionEnhancementPreference = 'compatible' | 'enhanced'
-export type SessionEnhancementSelection = {
-  manifest: BootManifest
-  status: 'core' | 'enabled' | 'incompatible'
-  officialRuntimeRevision?: string
-  reason?: 'runtime-missing' | 'runtime-revision'
-}
-
-/**
- * Keep Core on the untouched official runtime by default. The optional adapter
- * and downstream-compatible runtime are inserted only for an exact verified
- * official bundle revision; unknown upgrades fail closed to Core.
- */
-export function selectSessionEnhancement(
-  value: unknown,
-  options: { preference: SessionEnhancementPreference },
-): SessionEnhancementSelection {
-  const manifest = validateBootManifest(value)
-  const runtime = manifest.entries.find(entry => entry.id === RUNTIME_ID)
-  if (options.preference === 'compatible') {
-    return { manifest, status: 'core', ...(runtime === undefined ? {} : { officialRuntimeRevision: runtime.rev }) }
-  }
-  if (runtime === undefined) return { manifest, status: 'incompatible', reason: 'runtime-missing' }
-  if (!(SUPPORTED_OFFICIAL_RUNTIME_REVISIONS as readonly string[]).includes(runtime.rev)) {
-    return {
-      manifest, status: 'incompatible', reason: 'runtime-revision',
-      officialRuntimeRevision: runtime.rev,
-    }
-  }
-  const provider: BootEntry = {
-    id: MOBILE_HYDRATION_ID,
-    url: MOBILE_HYDRATION_URL,
-    rev: MOBILE_HYDRATION_REV,
-    inject: [],
-    immediately: true,
-  }
-  return {
-    status: 'enabled',
-    officialRuntimeRevision: runtime.rev,
-    manifest: {
-      ...manifest,
-      rev: manifest.rev + '+session-hydration-' + MOBILE_HYDRATION_REV,
-      entries: manifest.entries.flatMap(entry => entry.id === RUNTIME_ID
-        ? [provider, {
-            ...entry,
-            url: MOBILE_RUNTIME_URL,
-            rev: MOBILE_RUNTIME_REV,
-            inject: [...entry.inject.filter(id => id !== MOBILE_HYDRATION_ID), MOBILE_HYDRATION_ID],
-          }]
-        : [{ ...entry }]),
     },
   }
 }

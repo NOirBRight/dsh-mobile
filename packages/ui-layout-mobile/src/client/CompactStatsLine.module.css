@@ -1,0 +1,17 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 2px 0 6px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.main {
+  max-width: 100%;
+  color: inherit;
+  font: 11px/18px system-ui, sans-serif;
+  letter-spacing: -0.1px;
+  text-align: left;
+  white-space: nowrap;
+}

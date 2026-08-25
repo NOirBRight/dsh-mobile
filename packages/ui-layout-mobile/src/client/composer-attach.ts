@@ -42,6 +42,7 @@ export function isComposerPlusButton(target: EventTarget | null): HTMLButtonElem
 /** Identify any official composer toolbar button without touching its feature behavior. */
 export function composerControlButton(target: EventTarget | null): HTMLButtonElement | null {
   if (!(target instanceof Element)) return null
+  if (target.closest('[role="menu"], [role="listbox"], [role="dialog"]') !== null) return null
   const button = target.closest('button')
   if (!(button instanceof HTMLButtonElement)) return null
   if (button.closest('[data-composer-card]') === null) return null

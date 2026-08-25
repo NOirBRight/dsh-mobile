@@ -1,7 +1,7 @@
 // Config schema + resolve step: defaults, derivation, and fail-loud rejection.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Config, resolveConfig } from '../src/config.ts'
+import { Config, deviceHostName, resolveConfig } from '../src/config.ts'
 
 test('schema fills defaults', () => {
   const c = Config({})
@@ -32,6 +32,13 @@ test('schema rejects out-of-range values at load', () => {
   assert.throws(() => Config({ port: 70000 }))
   assert.throws(() => Config({ dshPort: -1 }))
   assert.throws(() => Config({ codeTtlMs: '5min' }))
+})
+
+test('Host Display Name removes the login prefix from the device hostname', () => {
+  assert.equal(deviceHostName('noirbright-AM01S', 'noirbright'), 'AM01S')
+  assert.equal(deviceHostName('NoirBright_AM01S', 'noirbright'), 'AM01S')
+  assert.equal(deviceHostName('AM01S', 'noirbright'), 'AM01S')
+  assert.equal(deviceHostName('noirbright', 'noirbright'), 'noirbright')
 })
 
 test('Host Display Name prefers user configuration and otherwise identifies the DSH port', () => {

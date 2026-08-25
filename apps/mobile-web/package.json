@@ -12,14 +12,15 @@
     "dist"
   ],
   "scripts": {
-    "build": "node scripts/build-local-host-bridge.mjs && npm run build --workspace @dsh-mobile/ui-layout-mobile && npm run build --workspace @dsh-mobile/session-hydration && vite build && node scripts/verify-shell-module-boundary.mjs && node scripts/package-local-shell.mjs",
+    "build": "node scripts/build-local-host-bridge.mjs && npm run build --workspace @dsh-mobile/interaction-operations && npm run build --workspace @dsh-mobile/ui-layout-mobile && vite build && node scripts/verify-shell-module-boundary.mjs && node scripts/package-local-shell.mjs",
     "test": "node --test test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "watch": "vite build --watch",
     "android:copy": "npm run build && cap copy android && node scripts/package-android-layout.mjs",
     "android:sync": "npm run build && cap sync android && node scripts/package-android-layout.mjs",
     "android:debug": "bash android/build-debug.sh",
-    "android:release": "bash android/build-release.sh"
+    "android:release": "bash android/build-release.sh",
+    "android:acceptance": "node scripts/run-physical-acceptance.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

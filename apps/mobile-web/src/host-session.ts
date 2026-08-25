@@ -37,10 +37,6 @@ export function shellNeedsPaint(
   return previous.layout !== next.layout
     || previous.manifest.rev !== next.manifest.rev
     || previous.officialLayoutRevision !== next.officialLayoutRevision
-    || previous.enhancement?.status !== next.enhancement?.status
-    || (previous.enhancement?.status === 'incompatible'
-      && next.enhancement?.status === 'incompatible'
-      && previous.enhancement.reason !== next.enhancement.reason)
 }
 
 /** Owns one Active Host tunnel and remounts Host UI in the existing shell. */

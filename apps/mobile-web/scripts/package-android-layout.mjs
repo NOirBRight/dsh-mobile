@@ -6,8 +6,7 @@ const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const artifacts = [
   ['ui-layout-mobile/client.js', 'mobile layout'],
   ['ui-layout-mobile/connection.js', 'Host bridge connection'],
-  ['session-hydration/client.js', 'session hydration provider'],
-  ['session-hydration/runtime.js', 'verified enhancement Runtime'],
+  ['interaction-operations/client.js', 'interaction operations'],
 ]
 
 for (const [relativePath, label] of artifacts) {

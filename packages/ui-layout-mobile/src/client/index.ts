@@ -11,10 +11,16 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type { PanelActions } from './service.ts'
 import { MobileFrame } from './MobileFrame.tsx'
+import type { MobileInteractionOperations } from './MobileFrame.tsx'
 import { createMobileLayoutStore } from './stores.ts'
 import { MobileLayoutController } from './service.ts'
 import { ThemePresenter } from './theme-presenter.ts'
 import { ComposerAttach } from './ComposerAttach.tsx'
+import { CompactStatsLine } from './CompactStatsLine.tsx'
+import { installHistoryContinuityAdapter } from './history-continuity.ts'
+import { installTurnTailPresenter } from './turn-tail-presenter.ts'
+import { installModelPickerPresenter } from './model-picker-presenter.ts'
+import { installPermissionLabelPresenter } from './permission-label-presenter.ts'
 import type { DraftConversation } from './composer-attach.ts'
 
 // Contract exports only. IMobileLayout: the ctx.layout face consumers and test
@@ -62,6 +68,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'shell.overlay': { kind: 'list'; scope: 'root' }
     /** Occupied by this package's plus-button attach control. Declared by ui-conversation. */
     'conversation.input.left': { kind: 'list'; scope: 'session'; owner: object }
+    /** Occupied by this package's compact StatsLine. Declared by ui-conversation. */
+    'conversation.composer.dock': { kind: 'list'; scope: 'session'; owner: object }
   }
 }
 
@@ -81,6 +89,15 @@ export interface DetailsOwnerProps {}
 
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme', 'sessions']
+
+function interactionOperationsFrom(ctx: ClientContext): MobileInteractionOperations | undefined {
+  const holder = ctx as ClientContext & { get?(name: string, strict?: boolean): unknown; interactionOperations?: unknown }
+  let value: unknown
+  try { value = holder.get?.('interactionOperations', false) ?? holder.interactionOperations } catch { return undefined }
+  if (value === null || typeof value !== 'object') return undefined
+  const candidate = value as Partial<MobileInteractionOperations>
+  return typeof candidate.registerSurface === 'function' ? candidate as MobileInteractionOperations : undefined
+}
 
 /**
  * Client plugin body: provide ctx.layout, then one register() call —
@@ -106,7 +123,7 @@ export function apply(ctx: ClientContext): void {
       store: createMobileLayoutStore,
       inject: (actions: PanelActions) => {
         layout.attachPanels(actions)
-        return {}
+        return { interactionOperations: interactionOperationsFrom(ctx) }
       },
     }, MobileFrame)
     return () => {
@@ -127,6 +144,11 @@ export function apply(ctx: ClientContext): void {
       presenter.dispose()
     }
   }, 'ui-layout-mobile: theme presenter')
+
+  ctx.effect(() => installHistoryContinuityAdapter(ctx), 'ui-layout-mobile: expanded history continuity')
+  ctx.effect(() => installTurnTailPresenter(), 'ui-layout-mobile: compact turn tail')
+  ctx.effect(() => installModelPickerPresenter(), 'ui-layout-mobile: compact model details')
+  ctx.effect(() => installPermissionLabelPresenter(), 'ui-layout-mobile: compact permission labels')
 
   ctx.effect(() => {
     let disposeAttach: (() => void) | undefined
@@ -152,6 +174,33 @@ export function apply(ctx: ClientContext): void {
       disposeAttach?.()
     }
   }, 'ui-layout-mobile: composer attach')
+
+  ctx.effect(() => {
+    let disposeStats: (() => void) | undefined
+    const mountStats = (): void => {
+      if (disposeStats !== undefined) return
+      try {
+        disposeStats = ctx.slots.register({
+          name: 'conversation.composer.dock',
+          id: 'stats',
+          order: 0,
+          // Same occupant identity as the official StatsLine, at a lower cell
+          // priority so this compact mobile face shadows instead of colliding.
+          priority: -1,
+        }, CompactStatsLine)
+      } catch {
+        // ui-conversation declares this slot; retry when that roster lands.
+      }
+    }
+    mountStats()
+    const off = ctx.on('slots/changed', (key: string) => {
+      if (key === 'conversation' || key === 'conversation.composer.dock') mountStats()
+    })
+    return () => {
+      off()
+      disposeStats?.()
+    }
+  }, 'ui-layout-mobile: compact stats')
 }
 
 function draftImageInject(ctx: ClientContext): {

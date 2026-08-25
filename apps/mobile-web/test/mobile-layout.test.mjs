@@ -13,10 +13,17 @@ test('mobile layout does not paginate older history during session changes', asy
   assert.doesNotMatch(source, /history-prefetch|loadOlder/, 'session changes must not start background history pagination')
 })
 
-test('narrow composer stats wrap so TTFT remains visible', async () => {
+test('narrow layout replaces composer dock stats and does not wrap the official line', async () => {
+  const source = await readFile(resolve(import.meta.dirname, '../../../packages/ui-layout-mobile/src/client/index.ts'), 'utf8')
+  const statsRegistration = source.match(/name: 'conversation\.composer\.dock',[\s\S]*?\}, CompactStatsLine/)?.[0]
+  assert.ok(statsRegistration, 'mobile compact stats registration is missing')
+  assert.match(statsRegistration, /id: 'stats'/)
+  assert.match(statsRegistration, /order: 0/)
+  assert.match(statsRegistration, /priority: -1/, 'mobile stats must shadow official stats at priority 0 instead of duplicating its identity and priority')
   const css = await readFile(resolve(import.meta.dirname, '../../../packages/ui-layout-mobile/src/client/MobileFrame.module.css'), 'utf8')
-  assert.match(css, /\[data-composer-card\]\) ~ div/)
-  assert.match(css, /white-space:\s*normal/)
+  assert.doesNotMatch(css, /\[data-composer-card\]\) ~ div/)
+  assert.match(css, /\[data-turn-tail\] \[class\*="timeEnd"\]/)
+  assert.doesNotMatch(css, /max-width: min\(52vw/, 'turn-tail metrics must not be silently ellipsized on mobile')
 })
 
 test('mobile drawer closes on navigation and reports its constrained rendered width', async () => {
@@ -78,6 +85,20 @@ test('mobile drawer closes on navigation and reports its constrained rendered wi
     assert.match(capture('trace-copy-en') ?? '', /Trace/)
     assert.match(capture('log-copy') ?? '', /Log/)
     assert.equal(capture('chat-padding'), '16px')
+    assert.equal(capture('command-option-owned'), 'true', 'mobile composer focus adapter must not claim listbox options')
+    assert.equal(capture('compact-stats-text'), 'TTFT 9.9s · 68 tok/s · 缓存命中率 80% · ↑120K ↓9.2K')
+    assert.equal(capture('compact-stats-fits'), 'true', 'all approved stats values must remain visible at 320px')
+    assert.equal(capture('permission-compact-label'), 'Workspace', 'Workspace Write should use the untruncated mobile label Workspace')
+    assert.equal(capture('plan-control-gap'), '4', 'Plan control should move left beside the add control')
+    assert.ok(Number(capture('model-control-width')) <= 88, 'model trigger should reserve space for context on 320px phones')
+    assert.ok(Number(capture('model-context-gap')) >= 4, 'model and context controls need a visible gap')
+    assert.equal(capture('composer-controls-fit'), 'true', 'Plan, model, and context controls must not overlap')
+    assert.equal(capture('turn-tail-summary'), '23:41 · 15s · 72 tok/s', 'turn tail must omit TTFT and verbose duration copy')
+    assert.equal(capture('model-search-fits'), 'true', 'search field must not clip its card controls')
+    assert.equal(capture('model-detail'), '272K', 'mobile model rows must omit redundant Standard copy')
+    assert.equal(capture('question-footer-fits'), 'true', 'question footer controls must fit at 320px')
+    assert.equal(capture('question-action-equal'), 'true', 'Skip and Next must use equal mobile columns')
+    assert.equal(capture('question-matrix'), 'phone320:true,official:true,phone390:true,phone412:true', 'question footer matrix must cover 320/360/390/412 with visible zh/en feedback')
     assert.equal(capture('subagent-menu-position'), 'fixed')
     assert.equal(capture('job-menu-position'), 'fixed')
     assert.equal(capture('header-fits'), 'true', 'header bounds: ' + capture('header-widths'))

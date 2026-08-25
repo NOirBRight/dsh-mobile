@@ -55,6 +55,7 @@ npm i github:NOirBRight/dsh-e2e-tunnel#v0.1.3
 - **Scan to pair** — First launch is a camera screen. You can also open `dsh-mobile://pair#offer=…`. Scanning the same Host Identity updates that profile instead of duplicating it.
 - **Encrypted tunnel first** — Automatic opens a sealed Tunnel immediately. Same-network WebRTC Direct may win only in a short race. Quick Tunnel and Relay see ciphertext frames; the Host Gateway never publishes the DSH web port.
 - **Official features, phone composition** — Narrow width becomes a top bar, a single conversation column, a navigation drawer, and a details surface. Wide width keeps the official desktop layout.
+- **Phone interaction layer** — An independent plugin maps Android Back, drawer swipes, long-press session menus, and hover-only controls back to official UI actions. Plain Enter inserts a newline; the Send button sends.
 - **Cold start without a blank page** — Shell, fonts, and the mobile layout ship in the APK. Host plugin bundles cache by content hash. Reconnect stays inside the current document.
 - **Several Hosts, revocable devices** — Switch Host Profiles in the app. Revoke a device from the Host; deleting a local profile is not revocation.
 - **Background connection protection (experimental, off by default)** — Reduces WebView pauses in the background. It is not a guaranteed push channel.
@@ -112,7 +113,7 @@ flowchart TB
 - Every route still does a NaCl hello/ack anchored on the QR Host public key. Endpoint operators are untrusted pipes.
 - Automatic is tunnel-first. Direct Only and Tunnel Only remain available. There is no TURN.
 - Removing a profile in the app is local. Revoke the device on the Host to invalidate the token.
-- Compatibility mode is the default: pairing, devices, Tunnel/Relay, and official UI keep working without patching Runtime. Optional session-cache enhancement enables only when the official Runtime revision matches a pinned allowlist; unknown versions fall back automatically.
+- Compatibility mode is the default: pairing, devices, Tunnel/Relay, and official UI keep working without patching Runtime. Boot always uses the official Runtime.
 
 Build from source (Java 21 JDK and an Android SDK):
 

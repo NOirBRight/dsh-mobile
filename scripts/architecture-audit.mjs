@@ -3,7 +3,7 @@ import { extname, join, relative } from 'node:path'
 import process from 'node:process'
 
 const root = new URL('..', import.meta.url).pathname
-const roots = ['apps/mobile-web/src', 'packages/e2e-tunnel/src', 'packages/ui-layout-mobile/src', 'plugins/pairing/src']
+const roots = ['apps/mobile-web/src', 'packages/e2e-tunnel/src', 'packages/interaction-operations/src', 'packages/ui-layout-mobile/src', 'plugins/pairing/src']
 const sourceExts = new Set(['.ts', '.tsx', '.js', '.mjs', '.json'])
 const forbidden = [
   // Official Relay hosts are product infrastructure; personal Host endpoints remain forbidden.
@@ -14,7 +14,7 @@ const forbidden = [
   { name: 'browser-shell package', pattern: /browser-shell|package-browser-shell/ },
   { name: 'full document reload', pattern: /location\.reload\(/ },
 ]
-const hostUiRoots = ['packages/ui-layout-mobile/src', 'plugins/pairing/src/client']
+const hostUiRoots = ['packages/interaction-operations/src', 'packages/ui-layout-mobile/src', 'plugins/pairing/src/client']
 const hostUiForbidden = [
   { name: 'native Capacitor bridge', pattern: /@capacitor\// },
   { name: 'credential vault', pattern: /credential-vault|DshSecureVault/ },

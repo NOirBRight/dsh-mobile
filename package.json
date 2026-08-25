@@ -12,9 +12,9 @@
     "relay"
   ],
   "scripts": {
-    "build": "npm run build -w @dsh-mobile/e2e-tunnel && npm run build -w @dsh-mobile/pairing && npm run build -w @dsh-mobile/ui-layout-mobile && npm run build -w @dsh-mobile/session-hydration && npm run build -w @dsh-mobile/mobile-web",
-    "test": "npm test -w @dsh-mobile/e2e-tunnel && npm test -w @dsh-mobile/pairing && npm test -w @dsh-mobile/mobile-web && npm test -w relay && npm run audit:architecture",
-    "typecheck": "npm run typecheck -w @dsh-mobile/e2e-tunnel && npm run typecheck -w @dsh-mobile/pairing && npm run typecheck -w @dsh-mobile/ui-layout-mobile && npm run typecheck -w @dsh-mobile/session-hydration && npm run typecheck -w @dsh-mobile/mobile-web",
+    "build": "npm run build -w @dsh-mobile/e2e-tunnel && npm run build -w @dsh-mobile/pairing && npm run build -w @dsh-mobile/interaction-operations && npm run build -w @dsh-mobile/ui-layout-mobile && npm run build -w @dsh-mobile/mobile-web",
+    "test": "npm test -w @dsh-mobile/e2e-tunnel && npm test -w @dsh-mobile/pairing && npm test -w @dsh-mobile/interaction-operations && npm test -w @dsh-mobile/mobile-web && npm test -w relay && npm run audit:architecture",
+    "typecheck": "npm run typecheck -w @dsh-mobile/e2e-tunnel && npm run typecheck -w @dsh-mobile/pairing && npm run typecheck -w @dsh-mobile/interaction-operations && npm run typecheck -w @dsh-mobile/ui-layout-mobile && npm run typecheck -w @dsh-mobile/mobile-web",
     "audit:architecture": "node scripts/architecture-audit.mjs",
     "verify:compatibility": "node scripts/verify-two-tier-compatibility.mjs",
     "verify:cold-start": "node --test apps/mobile-web/test/cold-start-verification.test.mjs"

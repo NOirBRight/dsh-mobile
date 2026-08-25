@@ -38,11 +38,20 @@ export function shouldCloseDrawerForTarget(target: EventTarget | null): boolean 
   return isOfficialNewSessionLabel(label)
 }
 
+export interface MobileInteractionOperations {
+  registerSurface(surface: {
+    id: string
+    kind: 'details' | 'navigation'
+    dismiss(source: { kind: string; detail?: string }): void
+  }): () => void
+}
+
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type MobileFrameProps =
   & PropsRuntime<'root'>
   & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay'>
   & PropsStore<ReturnType<typeof createMobileLayoutStore>>
+  & { interactionOperations?: MobileInteractionOperations }
 
 /** The mobile shell frame (see module doc). */
 export function MobileFrame({
@@ -50,11 +59,28 @@ export function MobileFrame({
   useSessions,
   actions,
   renderSlot,
+  interactionOperations,
 }: MobileFrameProps) {
   const panels = useStore(s => s)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const drawerRef = useRef<HTMLElement | null>(null)
   const [drawerWidth, setDrawerWidth] = useState(OFFICIAL_DRAWER_WIDTH)
+  useLayoutEffect(() => {
+    if (!panels.detailsOpen || interactionOperations === undefined) return
+    return interactionOperations.registerSurface({
+      id: 'mobile-details',
+      kind: 'details',
+      dismiss: () => { actions.closeDetails() },
+    })
+  }, [actions, interactionOperations, panels.detailsOpen])
+  useLayoutEffect(() => {
+    if (!panels.drawerOpen || interactionOperations === undefined) return
+    return interactionOperations.registerSurface({
+      id: 'mobile-navigation-drawer',
+      kind: 'navigation',
+      dismiss: () => { actions.closeDrawer() },
+    })
+  }, [actions, interactionOperations, panels.drawerOpen])
   const drawerWidthRef = useRef(drawerWidth)
   drawerWidthRef.current = drawerWidth
   const detailsSession = useSessions((s) => {

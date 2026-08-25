@@ -178,6 +178,7 @@ export class TunnelManager {
   private heartbeat: HeartbeatController | null = null
   private waiters: Array<{ resolve: (client: TunnelClient) => void; reject: (error: Error) => void }> = []
   private closeWaiter: (() => void) | null = null
+  private connectWake: (() => void) | null = null
   private retryWake: (() => void) | null = null
   private stopped = false
   private started = false
@@ -204,6 +205,8 @@ export class TunnelManager {
     this.client = null
     this.closeWaiter?.()
     this.closeWaiter = null
+    this.connectWake?.()
+    this.connectWake = null
     this.retryWake?.()
     this.retryWake = null
     const stopped = new TunnelError('closed', 'Active Host connection stopped')
@@ -212,6 +215,7 @@ export class TunnelManager {
 
   async probeNow(): Promise<void> {
     if (this.heartbeat === null) {
+      this.connectWake?.()
       this.retryWake?.()
       return
     }
@@ -248,16 +252,30 @@ export class TunnelManager {
         if (this.stopped) { lease.dispose(); return }
         const policy = this.preferTunnelOnce && this.options.connectionPolicy === 'automatic' ? 'tunnel-only' : this.options.connectionPolicy
         this.preferTunnelOnce = false
-        const client = await connector(this.options.offerUrl, {
+        let acceptAttemptCallbacks = true
+        const pendingClient = connector(this.options.offerUrl, {
           clientKeypair: lease.clientKeypair, deviceToken: lease.deviceToken, onDeviceToken: lease.onDeviceToken,
           connectionPolicy: policy, onConnectionStatus: status => {
-            if (this.stopped) return
+            if (this.stopped || !acceptAttemptCallbacks) return
             if (status.route === 'direct' || status.route === 'tunnel') this.lastRoute = status.route
             this.options.onConnectionStatus?.(status)
           },
           deviceLabel: this.options.deviceLabel, clientType: this.options.clientType, onHostMetadata: this.options.onHostMetadata,
-          onStateChange: state => this.setState(state),
+          onStateChange: state => { if (acceptAttemptCallbacks) this.setState(state) },
         })
+        let wakeConnect!: () => void
+        const interrupted = new Promise<null>(resolve => { wakeConnect = () => { resolve(null) } })
+        this.connectWake = wakeConnect
+        let client: TunnelClient | null
+        try { client = await Promise.race([pendingClient, interrupted]) } finally {
+          if (this.connectWake === wakeConnect) this.connectWake = null
+        }
+        if (client === null) {
+          acceptAttemptCallbacks = false
+          lease.dispose(); lease = null
+          void pendingClient.then(lateClient => { lateClient.close() }, () => {})
+          continue
+        }
         if (this.stopped) {
           lease.dispose()
           client.close()
@@ -566,9 +584,9 @@ export function connectionIndicatorPresentation(
     const title = '连接中断，后台自动重试'
     return {
       visible: shellMounted,
-      text: '离线',
+      text: '重连中…',
       label: route === '' ? title : route + ' · ' + title,
-      color: 'var(--dsw-alias-state-error-primary, #ec1313)',
+      color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
     }
   }
   const state: TunnelState = typeof status === 'string'

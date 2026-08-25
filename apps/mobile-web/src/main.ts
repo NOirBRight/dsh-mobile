@@ -10,6 +10,7 @@ import { BrowserCredentialVault, NativeCredentialVault, purgeLegacyAndroidWebCre
 import { claimShellNativeBridges, concealShellNativeBridges, installSystemBarThemeSync } from './native-bridges.ts'
 import { COLD_BOOT_PLUGIN_CONCURRENCY, installCompatibilityNotice, loadSameOriginMobileBootManifest, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, readViewportWidth, selectResponsiveBootManifest, setProtectedCacheScope, setSameOriginHostBridgeCapability, type BootManifest, type ResponsiveBootSelection } from './manifest.ts'
 import { scanPairingQr } from './pairing-scanner.ts'
+import { routePlatformBack } from './platform-back.ts'
 import { prepareProfileConnection, type PreparedProfileConnection } from './profile-connection.ts'
 import { activateHostProfile, completeProfileOnboarding, removeHostProfile } from './profile-lifecycle.ts'
 import { connectionRecoveryDecision, endpointRefreshRequired } from './reconnect-recovery.ts'
@@ -229,6 +230,15 @@ void (async () => {
   own(() => appUrlListener.remove())
 
   const native = Capacitor.isNativePlatform()
+  if (native) {
+    const backButtonListener = await App.addListener('backButton', ({ canGoBack }) => {
+      routePlatformBack(document, canGoBack, {
+        historyBack: () => history.back(),
+        exitApp: () => App.exitApp(),
+      })
+    })
+    own(() => backButtonListener.remove())
+  }
   const viewportWidth = (): number => readViewportWidth(native ? { preferNarrow: true } : undefined)
   if (native) purgeLegacyAndroidWebCredentials(localStorage)
   const bridges = claimShellNativeBridges(native)
@@ -238,7 +248,6 @@ void (async () => {
   let backgroundConnectionEnabled = native && readBackgroundConnectionPreference(localStorage)
   const vault = createVault(native, bridges.vault)
   const repository = new ProfileRepository(new BrowserProfileStorage(), vault)
-  const sessionEnhancementPreference = 'compatible' as const
   let scannedOffer = offerFromCurrentHash()
   let sameOriginBoot = false
   setSameOriginHostBridgeCapability(false)
@@ -658,7 +667,6 @@ void (async () => {
           failedMobileLayoutRevision,
           localizePlugins: native,
           hostId: next.profile.hostId,
-          sessionEnhancementPreference,
           ...shellMounted ? {} : { pluginConcurrency: COLD_BOOT_PLUGIN_CONCURRENCY },
           onPluginProgress(loaded, total) {
             if (shellMounted) return
@@ -687,7 +695,6 @@ void (async () => {
         return hydrateBootManifestFromCache(next.profile.hostId, {
           viewportWidth: viewportWidth(),
           localizePlugins: native,
-          sessionEnhancementPreference,
           failedMobileLayoutRevision,
         })
       },

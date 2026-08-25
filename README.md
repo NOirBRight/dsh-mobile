@@ -55,6 +55,7 @@ npm i github:NOirBRight/dsh-e2e-tunnel#v0.1.3
 - **扫码配对** — 首次启动只有相机页。也可以打开 `dsh-mobile://pair#offer=…`。同一 Host Identity 会更新已有档案，不会复制设备。
 - **加密隧道优先** — Automatic 立刻走密封 Tunnel。同网 WebRTC Direct 只在短窗口里可以抢赢。Quick Tunnel 和 Relay 只看见密文帧；Host Gateway 不会公布 DSH 网页端口。
 - **官方功能、手机构图** — 窄屏变成顶栏、会话单栏、导航抽屉和 details 面。宽屏仍用官方桌面布局。
+- **手机操作层** — 独立插件把 Android 返回、抽屉滑动、长按会话菜单和 hover-only 操作转成官方界面动作；输入框普通回车换行，发送仍点发送按钮。
 - **冷启动不白屏** — 壳、字体和窄屏布局打进 APK。Host 插件按内容哈希缓存。重连留在当前文档里，不整页刷新。
 - **多 Host、可撤销** — 在应用里切换 Host Profile。在 Host 上撤销设备；本地删档案不等于吊销。
 - **后台连接保护（实验，默认关）** — 减少 WebView 在后台被暂停。不是可靠的系统推送。
@@ -112,7 +113,7 @@ flowchart TB
 - 任何路径仍会做以 QR Host 公钥为锚的 NaCl hello/ack。端点运营方只是不可信管道。
 - Automatic 隧道优先。Direct Only 与 Tunnel Only 仍可选。无 TURN。
 - 应用里删除档案是本地操作。要作废凭证，请在 Host 上撤销设备。
-- 默认兼容模式：配对、设备、Tunnel/Relay 和官方 UI 不修改 Runtime 也能工作。可选会话缓存增强只在官方 Runtime revision 命中白名单时启用；未知版本自动回退。
+- 默认兼容模式：配对、设备、Tunnel/Relay 和官方 UI 不修改 Runtime 也能工作。boot 永远走官方 Runtime。
 
 从源码构建（Java 21 JDK 和 Android SDK）：
 

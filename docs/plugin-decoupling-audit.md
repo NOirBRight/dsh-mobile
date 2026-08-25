@@ -69,7 +69,6 @@
 |---|---|
 | sidebar `data-tool` 工具统计 | 官方 transcript 属性；官方 e2e 同用，相对稳 |
 | `data-chat-flow-*` 批注芯片 | 同上，装饰器挂官方消息行 |
-| 会话增强 boot 管线 | `compatible` 常量与 hydration 适配器仍在；只删了设备页 UI |
 | `MobileFrame.module.css` 的 `[class*="headerActions"]` 等 | 另立计划（StatsLine / 顶栏自组装） |
 | 模型 Picker / plan-review 自组装 | 已论证可行，不在本轮 |
 

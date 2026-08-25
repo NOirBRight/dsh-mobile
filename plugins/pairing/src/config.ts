@@ -4,7 +4,7 @@
  * resolve step — no hidden `?? default` inside run paths.
  */
 import { join } from 'node:path'
-import { homedir, hostname } from 'node:os'
+import { homedir, hostname, userInfo } from 'node:os'
 import z from '@deepseek-ai/schemastery'
 
 /** Plugin config as parsed from cordis.yml (defaults already applied). */
@@ -83,6 +83,21 @@ export const Config: z<Config> = z.object({
   enableDirect: z.boolean().default(true),
 })
 
+
+/** Keep the machine name while removing a login-name prefix such as user-AM01S. */
+export function deviceHostName(systemHostname: string, username: string): string {
+  const cleanHost = systemHostname.replace(/[\u0000-\u001f\u007f]/g, '').trim()
+  const cleanUser = username.replace(/[\u0000-\u001f\u007f]/g, '').trim()
+  if (cleanHost === '' || cleanUser === '') return cleanHost
+  const lowerHost = cleanHost.toLocaleLowerCase()
+  const lowerUser = cleanUser.toLocaleLowerCase()
+  for (const separator of ['-', '_', '.']) {
+    const prefix = lowerUser + separator
+    if (lowerHost.startsWith(prefix) && cleanHost.length > prefix.length) return cleanHost.slice(prefix.length)
+  }
+  return cleanHost
+}
+
 /** The config after the resolve step: every derivable field is concrete and checked. */
 export interface ResolvedConfig extends Config {
   hostName: string
@@ -100,7 +115,9 @@ export function resolveConfig(config: Config): ResolvedConfig {
   // DSH does not currently expose its user-chosen profile name to plugins. An
   // explicit hostName therefore wins; otherwise keep instances on the same
   // machine distinguishable by putting the configured upstream port first.
-  const fallbackHostName = `${config.dshPort} · ${hostname()}`
+  let username = ''
+  try { username = userInfo().username } catch { /* unavailable user metadata leaves the hostname intact */ }
+  const fallbackHostName = `${config.dshPort} · ${deviceHostName(hostname(), username)}`
   const hostName = (config.hostName ?? fallbackHostName).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 64)
   if (hostName === '') throw new Error('dsh-mobile-pairing: hostName must not be empty')
   if (config.advertiseUrl !== undefined && !/^(https?|wss?):\/\//.test(config.advertiseUrl)) {

@@ -1,0 +1,22 @@
+{
+  "name": "@dsh-mobile/interaction-operations",
+  "version": "0.1.6",
+  "type": "module",
+  "description": "Modality-independent mobile interaction intents and compatibility adapters for DSH",
+  "main": "lib/index.js",
+  "exports": {
+    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
+    "./client": { "types": "./lib/types/client/index.d.ts", "default": "./lib/client.js" },
+    "./package.json": "./package.json"
+  },
+  "files": ["lib"],
+  "dsh": { "client": { "inject": ["@deepseek-ai/dsh-client-runtime"], "platform": "web" } },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsdown",
+    "bundle": "tsdown",
+    "test": "node --test test/*.test.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": { "@deepseek-ai/cordis": "^4.0.1" },
+  "devDependencies": { "typescript": "^6.0.3", "tsdown": "^0.22.2" }
+}

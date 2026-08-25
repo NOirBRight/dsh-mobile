@@ -40,25 +40,25 @@ test('an active reconnect attempt is distinct from the first connection', () => 
   })
 })
 
-test('later automatic attempts stay passive while retry continues in the background', () => {
+test('later automatic attempts remain visibly reconnecting after device unlock', () => {
   assert.deepEqual(connectionIndicatorPresentation({
     phase: 'connecting', attempt: 3, reconnecting: true, route: 'tunnel',
   }, 'Tunnel', true, false), {
     visible: true,
-    text: '离线',
+    text: '重连中…',
     label: 'Tunnel · 连接中断，后台自动重试',
-    color: 'var(--dsw-alias-state-error-primary, #ec1313)',
+    color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
   })
 })
 
-test('retry backoff is a passive offline status instead of endless active refresh', () => {
+test('retry backoff remains visibly reconnecting after device unlock', () => {
   assert.deepEqual(connectionIndicatorPresentation({
     phase: 'retry-wait', attempt: 4, retryInMs: 8000, route: 'tunnel', error: 'network unavailable',
   }, 'Tunnel', true, false), {
     visible: true,
-    text: '离线',
+    text: '重连中…',
     label: 'Tunnel · 连接中断，后台自动重试',
-    color: 'var(--dsw-alias-state-error-primary, #ec1313)',
+    color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
   })
 })
 
@@ -309,6 +309,39 @@ test('network recovery wakes a passive retry immediately', async () => {
   manager.stop()
   releaseWait?.()
   assert.equal(result, client)
+})
+
+
+test('device unlock restarts an in-flight connect orphaned while Android was suspended', async () => {
+  let attempts = 0
+  let releaseFirst
+  let markFirstStarted
+  const firstStarted = new Promise(resolve => { markFirstStarted = resolve })
+  const firstHold = new Promise(resolve => { releaseFirst = resolve })
+  let staleClosed = 0
+  const staleClient = { state: 'open', deviceToken: 'token', fetch() {}, openWebSocket() {}, probe: async () => {}, close() { staleClosed += 1 } }
+  const freshClient = { state: 'open', deviceToken: 'token', fetch() {}, openWebSocket() {}, probe: async () => {}, close() {} }
+  const manager = new TunnelManager({
+    offerUrl: 'offer', connectionPolicy: 'tunnel-only',
+    loadCredentials: async () => ({ clientKeypair: keypair, deviceToken: 'token', onDeviceToken: async () => {}, dispose() {} }),
+    connect: async () => {
+      attempts += 1
+      if (attempts === 1) { markFirstStarted(); await firstHold; return staleClient }
+      return freshClient
+    },
+    onState: () => {},
+  })
+  manager.start()
+  const pending = manager.current()
+  await firstStarted
+  await manager.probeNow()
+  const result = await Promise.race([pending, new Promise(resolve => setTimeout(() => resolve('timeout'), 25))])
+  releaseFirst()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  manager.stop()
+  assert.equal(result, freshClient)
+  assert.equal(attempts, 2)
+  assert.equal(staleClosed, 1)
 })
 
 test('TunnelManager.stop cancels an in-flight connect, closes the late client, and rejects waiters', async () => {

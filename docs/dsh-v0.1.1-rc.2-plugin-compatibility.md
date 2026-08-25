@@ -4,7 +4,7 @@ Date: 2026-08-22
 
 ## Scope and source boundary
 
-This note compares the repository's pinned baseline, [`dsh-v0.1.1-rc.1` at `528c682e…`](https://github.com/deepseek-ai/deepseek-harness/tree/528c682e061696f5a160f363f236ecbf53cbd006), with the official [`dsh-v0.1.1-rc.2` tag at `b150a551…`](https://github.com/deepseek-ai/deepseek-harness/tree/b150a551b8d465e31e418e1b2eaf5e79bbb7d28e). The evidence is the official [tag-to-tag diff](https://github.com/deepseek-ai/deepseek-harness/compare/dsh-v0.1.1-rc.1...dsh-v0.1.1-rc.2), [rc.2 release commit](https://github.com/deepseek-ai/deepseek-harness/commit/aa6c361a972c8369148dea7380bb5c21c24e07ec), and tagged first-party source, manifests, and docs only. The local baseline is independently recorded in [`patches/dsh-runtime-session-hydration.json`](../patches/dsh-runtime-session-hydration.json).
+This note compares the repository's pinned baseline, [`dsh-v0.1.1-rc.1` at `528c682e…`](https://github.com/deepseek-ai/deepseek-harness/tree/528c682e061696f5a160f363f236ecbf53cbd006), with the official [`dsh-v0.1.1-rc.2` tag at `b150a551…`](https://github.com/deepseek-ai/deepseek-harness/tree/b150a551b8d465e31e418e1b2eaf5e79bbb7d28e). The evidence is the official [tag-to-tag diff](https://github.com/deepseek-ai/deepseek-harness/compare/dsh-v0.1.1-rc.1...dsh-v0.1.1-rc.2), [rc.2 release commit](https://github.com/deepseek-ai/deepseek-harness/commit/aa6c361a972c8369148dea7380bb5c21c24e07ec), and tagged first-party source, manifests, and docs only. Session-hydration allowlist metadata is archived at [`docs/archived/session-hydration/patches/dsh-runtime-session-hydration.json`](archived/session-hydration/patches/dsh-runtime-session-hydration.json).
 
 ## Compatibility verdict
 
@@ -55,4 +55,4 @@ Run the same plugin artifact against two **fresh, isolated** homes/profiles—on
 
 ## dsh-mobile consequence
 
-The optional session-hydration enhancement is deliberately allowlisted to rc.1 commit `528c682e…` and runtime revision `5a9e129c42ae`. Keep that enhancement disabled on rc.2 until its patch/revision and two-tier tests are explicitly updated; the repository policy already falls back to the unmodified compatible Core plugin for an unknown runtime ([local compatibility metadata](../patches/dsh-runtime-session-hydration.json)).
+The session-hydration enhancement was allowlisted to rc.1 and is now archived; boot always uses the unmodified official Runtime.

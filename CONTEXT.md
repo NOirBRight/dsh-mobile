@@ -33,6 +33,15 @@ An official DSH UI capability supplied by the Host. It owns feature content and 
 ## Mobile Layout
 A narrow-width recomposition of Upstream UI Modules. It owns phone placement, navigation structure, and compact information presentation, but not replacement feature content or an independent visual design system. Wide surfaces retain the upstream official layout.
 
+## Interaction Intent
+A modality-independent request to change presentation, such as dismissing the top surface, opening navigation, or revealing contextual actions. An Interaction Intent never performs a Host feature mutation such as renaming, archiving, deleting, or sending; it hands control to the Upstream UI Module that owns that behavior.
+
+## Interaction Surface
+A currently active presentation layer that can consume Back by moving exactly one level toward its parent. Interaction Surfaces include modal, takeover, popup, details, and navigation layers; they never perform a Host feature mutation.
+
+## Expanded History Boundary
+The earliest point in one session that the current Product Client has explicitly expanded to during this app lifetime. A live repair may restore that user-expanded client window, but the boundary never authorizes generic history prefetch and is not durable across a cold app restart.
+
 ## Personal Recovery Surface
 A maintainer-only direct web entry to the maintainer's own DSH. It is an operational fallback, not Product Client infrastructure and not a public product dependency. `dshweb` is the frozen official-layout entry on the daily Host; `dshapp` is the same Host with a static Mobile Layout shell. Iterating `dshapp` must not restart the Host process that serves `dshweb`.
 

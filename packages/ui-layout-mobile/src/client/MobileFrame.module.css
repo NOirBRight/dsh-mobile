@@ -350,21 +350,39 @@
 /* Narrow composer: this plugin only loads on the mobile root. Hide the
    effort caption on the official model trigger (effort stays in its menu),
    keep a bounded model trigger, and keep the official toolbar on one row. */
-:global([data-composer-card] button[aria-haspopup="menu"] > span:nth-of-type(2)) {
+:global([data-composer-card] > div:last-child > div:last-child button[aria-haspopup="menu"] > span:nth-of-type(2)) {
   display: none;
 }
 
-:global([data-composer-card] button[aria-haspopup="menu"]) {
-  box-sizing: border-box;
-  width: 8rem;
+/* Keep the official permission name for React and accessibility, but render the
+   approved compact copy in the fixed-width mobile chip. */
+:global([data-mobile-permission-label]) {
+  display: inline !important;
+  flex: 1 1 auto;
   min-width: 0;
-  max-width: 8rem;
-  flex: 0 1 8rem;
+  overflow: hidden;
+  font-size: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+:global([data-mobile-permission-label])::after {
+  content: attr(data-mobile-permission-label);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+:global([data-composer-card] > div:last-child > div:last-child button[aria-haspopup="menu"]) {
+  box-sizing: border-box;
+  width: 5.5rem;
+  min-width: 0;
+  max-width: 5.5rem;
+  flex: 0 1 5.5rem;
   justify-content: flex-end;
   text-align: right;
 }
 
-:global([data-composer-card] button[aria-haspopup="menu"] > span:first-of-type) {
+:global([data-composer-card] > div:last-child > div:last-child button[aria-haspopup="menu"] > span:first-of-type) {
   flex: 1 1 auto;
   min-width: 0;
   text-align: right;
@@ -375,7 +393,10 @@
   gap: 8px;
 }
 
-:global([data-composer-card] > div:last-child > div:first-child),
+:global([data-composer-card] > div:last-child > div:first-child) {
+  gap: 4px;
+}
+
 :global([data-composer-card] > div:last-child > div:last-child) {
   gap: 8px;
 }
@@ -387,10 +408,10 @@
 }
 
 @media (max-width: 380px) {
-  :global([data-composer-card] button[aria-haspopup="menu"]) {
-    width: 7rem;
-    max-width: 7rem;
-    flex-basis: 7rem;
+  :global([data-composer-card] > div:last-child > div:last-child button[aria-haspopup="menu"]) {
+    width: 5.5rem;
+    max-width: 5.5rem;
+    flex-basis: 5.5rem;
   }
 }
 
@@ -1020,10 +1041,112 @@
   pointer-events: none;
 }
 
-/* Official StatsLine is nowrap + ellipsis; TTFT sits late in the pipe so a
-   phone-width composer clips it. Allow the dock footer to wrap. */
-.center :global([data-composer-card]) ~ div {
-  white-space: normal !important;
-  overflow: visible !important;
-  text-overflow: unset !important;
+/* Official turn footer: clock · Ran for 15s · TTFT · tok/s. Compress to a
+   single compact line on the phone-width transcript. */
+.center :global([data-turn-tail] [class*="timeEnd"]),
+.center :global([data-time-hover-root] [class*="timeEnd"]),
+.center :global([data-turn-tail] [class*="timeStart"]),
+.center :global([data-time-hover-root] [class*="timeStart"]) {
+  font-size: 12px;
+  line-height: 16px;
+  padding-left: 0;
+  padding-right: 0;
+  max-width: 100%;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  opacity: 1;
+}
+
+.center :global([data-turn-tail] [class*="runTimeDot"]),
+.center :global([data-time-hover-root] [class*="runTimeDot"]) {
+  margin: 0 4px;
+}
+
+/* User-question takeover: reclaim the desktop frame clearance first, then
+   keep pager, feedback, and actions on stable mobile rows. */
+.center :global([data-question-key]) {
+  box-sizing: border-box;
+  width: 100%;
+  padding-inline: 8px !important;
+}
+
+.center :global([data-question-scroll] + footer) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 0 4px;
+}
+
+.center :global([data-question-scroll] + footer > :first-child) {
+  grid-row: 1;
+  justify-self: start;
+}
+
+.center :global([data-question-scroll] + footer > [role="status"]) {
+  grid-row: 2;
+  width: 100%;
+  min-height: 0;
+  text-align: left;
+}
+
+.center :global([data-question-scroll] + footer > [role="status"]:empty) {
+  display: none;
+}
+
+.center :global([data-question-scroll] + footer > :last-child) {
+  grid-row: 3;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+.center :global([data-question-scroll] + footer > :last-child > button) {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding-inline: 8px;
+  white-space: nowrap;
+}
+
+/* Preserve React-owned metrics for updates, but present only the mobile
+   acceptance summary: clock · duration · throughput. */
+.center :global([data-mobile-turn-summary]) {
+  max-width: 100%;
+  overflow: visible;
+  font-size: 0 !important;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.center :global([data-mobile-turn-summary])::after {
+  content: attr(data-mobile-turn-summary);
+  color: var(--dsw-alias-label-tertiary);
+  font: 12px/16px system-ui, sans-serif !important;
+}
+
+.center :global([data-mobile-turn-summary] [class*="runTimeDot"]) {
+  display: none;
+}
+
+/* Searchable /model cards own their search field and list viewport as one
+   surface. Keep the input inside the card beside WebView clear affordances. */
+.center :global([data-dsh-mobile-popup="rich"]:has(> input):has(> [role="listbox"]) > input) {
+  box-sizing: border-box;
+  width: calc(100% - 4px) !important;
+  min-width: 0;
+  max-width: calc(100% - 4px);
+}
+
+.center :global([data-mobile-model-detail]) {
+  font-size: 0 !important;
+}
+
+.center :global([data-mobile-model-detail])::after {
+  content: attr(data-mobile-model-detail);
+  color: inherit;
+  font: 12px/18px system-ui, sans-serif !important;
 }

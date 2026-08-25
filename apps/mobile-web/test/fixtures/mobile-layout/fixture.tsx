@@ -1,12 +1,21 @@
 import React, { useMemo } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MobileFrame } from '../../../../../packages/ui-layout-mobile/src/client/MobileFrame.tsx'
+import { composerControlButton } from '../../../../../packages/ui-layout-mobile/src/client/composer-attach.ts'
+import { CompactStatsLine } from '../../../../../packages/ui-layout-mobile/src/client/CompactStatsLine.tsx'
+import { installTurnTailPresenter } from '../../../../../packages/ui-layout-mobile/src/client/turn-tail-presenter.ts'
+import { installModelPickerPresenter } from '../../../../../packages/ui-layout-mobile/src/client/model-picker-presenter.ts'
+import { installPermissionLabelPresenter } from '../../../../../packages/ui-layout-mobile/src/client/permission-label-presenter.ts'
 
 const sessions = { current: 'session-a', byId: { 'session-a': { blank: false, displayTitle: 'Mobile UI Session' } } }
 const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)
+const statsProjections: Record<string, unknown> = {
+  sessionStats: { turns: 4, steps: 8, llmMs: 20_000, toolMs: 0, ttftMs: 9_900, ttftSteps: 1, decodeMs: 1_000, decodeTokens: 68 },
+  tokenUsage: { uncachedInputTokens: 24_000, cacheReadTokens: 96_000, cacheWriteTokens: 0, outputTokens: 9_200 },
+}
 let closeCount = 0
 
-function FrameHarness({ id, width, laggyCodex = false }: { id: string; width: number; laggyCodex?: boolean }) {
+function FrameHarness({ id, width, laggyCodex = false, english = false, feedback = false }: { id: string; width: number; laggyCodex?: boolean; english?: boolean; feedback?: boolean }) {
   const panels = { drawerOpen: true, detailsOpen: laggyCodex }
   const useStore = (select: (state: typeof panels) => unknown) => select(panels)
   const actions = useMemo(() => ({
@@ -48,7 +57,30 @@ function FrameHarness({ id, width, laggyCodex = false }: { id: string; width: nu
         </div>
         <div role="tablist"><button role="tab">对话</button><button role="tab">轨迹</button></div>
       </header>
-      <div data-chat-scroll><div data-chat-flow>Conversation</div></div>
+      <div data-chat-scroll><div data-chat-flow>Conversation<div data-turn-tail><span className="fixture_timeEnd">23:41 <span className="fixture_runTimeDot">·</span> Ran for 15s <span className="fixture_runTimeDot">·</span> TTFT 1.2s <span className="fixture_runTimeDot">·</span> 72 tok/s</span></div></div></div>
+      <div data-composer-card>
+        <CompactStatsLine useProjection={key => statsProjections[key]} />
+        <textarea aria-label="Prompt" />
+        <div role="listbox"><button type="button" data-command-option>/plan</button></div>
+        <div className="fixtureComposerToolbar">
+          <div className="fixtureComposerTools"><button data-add-control>+</button><div><button data-plan-control aria-label="Workspace Write" aria-haspopup="menu"><span>Workspace Write</span></button></div></div>
+          <div className="fixtureComposerTrailing"><div><button aria-haspopup="menu"><span>GPT-5.6 SOL</span><span>High</span></button></div><button aria-haspopup="dialog" data-context-control>272K</button><button data-send-control>↑</button></div>
+        </div>
+      </div>
+      <div data-dsh-mobile-popup="rich" className="fixtureModelCard">
+        <input aria-label="Search models" style={{ width: 400 }} />
+        <div role="listbox"><div role="option"><span className="fixture_detail">Standard · 272K</span></div></div>
+      </div>
+      <section data-question-key={id} className="fixtureQuestionFrame">
+        <div data-question-card className="fixtureQuestionCard">
+          <div data-question-scroll>Question options</div>
+          <footer className="fixtureQuestionFooter">
+            <div className="fixtureQuestionPager"><button>‹</button><span>1 / 3</span><button>›</button></div>
+            <div role="status">{feedback ? (english ? 'Please choose one option' : '请选择一个选项') : null}</div>
+            <div className="fixtureQuestionActions"><button>{english ? 'Skip question' : '跳过本题'}</button><button>{english ? 'Submit answer' : '下一题'}</button></div>
+          </footer>
+        </div>
+      </section>
     </div>
     return null
   }
@@ -64,6 +96,9 @@ function FrameHarness({ id, width, laggyCodex = false }: { id: string; width: nu
 
 function App() {
   React.useEffect(() => {
+    const disposeTurnTail = installTurnTailPresenter()
+    const disposeModelPicker = installModelPickerPresenter()
+    const disposePermissionLabel = installPermissionLabelPresenter()
     const timer = window.setTimeout(() => {
       const laggySheet = document.querySelector<HTMLElement>('#laggy section[aria-label="详情面板"]')!
       document.body.dataset.laggySheetVisibility = getComputedStyle(laggySheet).visibility
@@ -199,15 +234,65 @@ function App() {
       document.body.dataset.subagentMenuPosition = getComputedStyle(header.querySelector<HTMLElement>('[data-subagent-menu]')!).position
       document.body.dataset.jobMenuPosition = getComputedStyle(header.querySelector<HTMLElement>('[data-job-menu]')!).position
       document.body.dataset.chatPadding = getComputedStyle(document.querySelector<HTMLElement>('#official [data-chat-scroll]')!).paddingLeft
+      const commandOption = document.querySelector<HTMLElement>('#phone320 [data-command-option]')!
+      document.body.dataset.commandOptionOwned = String(composerControlButton(commandOption) === null)
+      const composerCard = document.querySelector<HTMLElement>('#phone320 [data-composer-card]')!
+      const statsLine = composerCard.querySelector<HTMLElement>('span')!
+      const statsRect = statsLine.getBoundingClientRect()
+      const composerRect = composerCard.getBoundingClientRect()
+      document.body.dataset.compactStatsText = statsLine.textContent ?? ''
+      document.body.dataset.compactStatsFits = String(statsRect.left >= composerRect.left - 1 && statsRect.right <= composerRect.right + 1)
+      const toolbar = document.querySelector<HTMLElement>('#phone320 .fixtureComposerToolbar')!
+      const addControl = toolbar.querySelector<HTMLElement>('[data-add-control]')!
+      const planControl = toolbar.querySelector<HTMLElement>('[data-plan-control]')!
+      const modelControl = toolbar.querySelector<HTMLElement>('.fixtureComposerTrailing button[aria-haspopup="menu"]')!
+      const contextControl = toolbar.querySelector<HTMLElement>('[data-context-control]')!
+      const addRect = addControl.getBoundingClientRect()
+      const planRect = planControl.getBoundingClientRect()
+      const modelRect = modelControl.getBoundingClientRect()
+      const contextRect = contextControl.getBoundingClientRect()
+      document.body.dataset.permissionCompactLabel = planControl.querySelector<HTMLElement>('span')?.dataset.mobilePermissionLabel ?? ''
+      document.body.dataset.planControlGap = String(Math.round(planRect.left - addRect.right))
+      document.body.dataset.modelControlWidth = String(Math.round(modelRect.width))
+      document.body.dataset.modelContextGap = String(Math.round(contextRect.left - modelRect.right))
+      document.body.dataset.composerControlsFit = String(planRect.right <= modelRect.left && modelRect.right <= contextRect.left)
+      document.body.dataset.turnTailSummary = document.querySelector<HTMLElement>('#phone320 [data-mobile-turn-summary]')?.dataset.mobileTurnSummary ?? ''
+      const modelCard = document.querySelector<HTMLElement>('#phone320 .fixtureModelCard')!
+      const modelSearch = modelCard.querySelector<HTMLElement>('input')!
+      const modelCardRect = modelCard.getBoundingClientRect()
+      const modelSearchRect = modelSearch.getBoundingClientRect()
+      document.body.dataset.modelSearchFits = String(modelSearchRect.left >= modelCardRect.left && modelSearchRect.right <= modelCardRect.right)
+      document.body.dataset.modelDetail = modelCard.querySelector<HTMLElement>('[data-mobile-model-detail]')?.dataset.mobileModelDetail ?? ''
+      const matrixIds = ['phone320', 'official', 'phone390', 'phone412']
+      const matrixResults = matrixIds.map(id => {
+        const questionFooter = document.querySelector<HTMLElement>('#' + id + ' .fixtureQuestionFooter')!
+        const footerRect = questionFooter.getBoundingClientRect()
+        const questionParts = Array.from(questionFooter.children)
+          .filter(node => (node as HTMLElement).getClientRects().length > 0)
+          .map(node => (node as HTMLElement).getBoundingClientRect())
+        const questionButtons = Array.from(questionFooter.querySelectorAll<HTMLElement>('.fixtureQuestionActions button'))
+        const questionFrame = questionFooter.closest<HTMLElement>('[data-question-key]')!
+        return questionParts.every(rect => rect.left >= footerRect.left - 1 && rect.right <= footerRect.right + 1)
+          && Math.abs(questionButtons[0]!.getBoundingClientRect().width - questionButtons[1]!.getBoundingClientRect().width) < 1
+          && questionButtons.every(button => button.getBoundingClientRect().height <= 42)
+          && Number.parseFloat(getComputedStyle(questionFrame).paddingLeft) <= 8
+      })
+      document.body.dataset.questionFooterFits = String(matrixResults.every(Boolean))
+      document.body.dataset.questionActionEqual = String(matrixResults.every(Boolean))
+      document.body.dataset.questionMatrix = matrixIds.map((id, index) => id + ':' + matrixResults[index]).join(',')
       document.body.dataset.ready = 'true'
     }, 100)
-    return () => { window.clearTimeout(timer) }
+    return () => { window.clearTimeout(timer); disposeTurnTail(); disposeModelPicker(); disposePermissionLabel() }
   }, [])
   return <>
     <style>{`:root { --dsw-alias-bg-base: #ffffff; --dsw-alias-bg-layer-1: #f3f4f6; }
-      .dcs-overlay { position: absolute; inset: 0; } .dcs-toggle { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; } .dcs-root { border-left: 1px solid; border-bottom: 1px solid; background: var(--dsw-alias-bg-layer-1); } .dcs-tabbar { border-bottom: 1px solid; }`}</style>
+      .dcs-overlay { position: absolute; inset: 0; } .dcs-toggle { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; } .dcs-root { border-left: 1px solid; border-bottom: 1px solid; background: var(--dsw-alias-bg-layer-1); } .dcs-tabbar { border-bottom: 1px solid; }
+      .fixtureComposerToolbar, .fixtureComposerTools, .fixtureComposerTrailing { display: flex; align-items: center; } .fixtureComposerToolbar { box-sizing: border-box; justify-content: space-between; width: 100%; } .fixtureComposerTools, .fixtureComposerTrailing { min-width: 0; } .fixtureComposerToolbar button { min-width: 28px; height: 28px; } .fixtureModelCard { box-sizing: border-box; display: flex; flex-direction: column; width: 260px; padding: 4px; } .fixtureQuestionFrame { box-sizing: border-box; width: 100%; padding: 6px 32px 10px; } [data-question-card] { width: 100%; } .fixtureQuestionFooter { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 0 10px; } .fixtureQuestionPager, .fixtureQuestionActions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; } .fixtureQuestionFooter button { min-height: 40px; padding: 0 16px; white-space: nowrap; } .fixtureQuestionFooter [role=status] { flex: 1; }`}</style>
     <FrameHarness id="official" width={360} />
     <FrameHarness id="constrained" width={240} />
+    <FrameHarness id="phone320" width={320} english feedback />
+    <FrameHarness id="phone390" width={390} english feedback />
+    <FrameHarness id="phone412" width={412} feedback />
     {/* Host applies the expand intent after the tap; until Codex mounts its
         content the open drawer must stay parked instead of sliding out blank. */}
     <FrameHarness id="laggy" width={360} laggyCodex />

@@ -17,9 +17,7 @@ Android-first 的 Capacitor 本地应用壳。运行 origin 为 https://localhos
 
 ## 本地插件资产
 
-npm run build 会构建 @dsh-mobile/ui-layout-mobile 与 @dsh-mobile/session-hydration。移动布局始终作为窄屏 Core 资产；hydration provider 与 downstream-compatible Runtime 也会打包进 APK，但只有用户选择增强模式且官方 Runtime revision 精确匹配白名单时才进入 boot graph。默认兼容模式保留 Host 官方 Runtime 原条目。Host 其余插件 bundle 经 tunnel fetch，转为本地 Blob URL 后交给 DSH ModuleLoader。没有静态镜像步骤。
-
-会话缓存使用 Host Identity 分区的 IndexedDB v2；旧 v1 localStorage 只在本机恰有一个 Host Profile 时迁移。官方更新不匹配时增强自动停用，界面解释原因，Core 配对、Tunnel/Relay 与官方 UI 保持可用。
+npm run build 会构建 @dsh-mobile/interaction-operations 与 @dsh-mobile/ui-layout-mobile。操作插件在宽/窄两种 Product Client root 都加载；移动布局只替换窄屏 root，boot 永远走官方 Runtime。Host 其余插件 bundle 经 tunnel fetch，转为本地 Blob URL 后交给 DSH ModuleLoader。没有静态镜像步骤。
 
 ## 后台连接保护
 

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { adaptBootManifestForMobile, COLD_BOOT_PLUGIN_CONCURRENCY, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, MOBILE_HYDRATION_ID, RUNTIME_ID, selectSessionEnhancement, SUPPORTED_OFFICIAL_RUNTIME_REVISIONS } from '../src/manifest.ts'
+import { adaptBootManifestForMobile, COLD_BOOT_PLUGIN_CONCURRENCY, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, INTERACTION_OPERATIONS_ID, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, RUNTIME_ID } from '../src/manifest.ts'
 
 test('extracts the boot graph from every historical host embedding form', () => {
   const graph = { rev: 'rev-1', entries: [{ id: 'x', url: '/plugins/x.js', rev: 'a' }] }
@@ -36,12 +36,12 @@ test('replaces desktop layout and drops browser HMR without mutating host manife
   const mobile = adaptBootManifestForMobile(host)
 
   assert.deepEqual(host, snapshot)
-  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.23')
-  assert.deepEqual(mobile.entries.map(entry => entry.id), ['before', MOBILE_LAYOUT_ID, 'after'])
+  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.30+mobile-interactions-0.1.6')
+  assert.deepEqual(mobile.entries.map(entry => entry.id), ['before', MOBILE_LAYOUT_ID, 'after', INTERACTION_OPERATIONS_ID])
   assert.deepEqual(mobile.entries[1], {
     id: MOBILE_LAYOUT_ID,
-    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.23',
-    rev: '0.1.23',
+    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.30',
+    rev: '0.1.30',
     inject: ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-theme'],
   })
 })
@@ -75,7 +75,8 @@ test('selects only the narrow root below 696px and preserves the exact official 
   assert.deepEqual(wide.manifest.entries[0], official)
   assert.equal(wide.manifest.entries.some(entry => entry.id === MOBILE_LAYOUT_ID), false)
   assert.equal(narrow.layout, 'narrow')
-  assert.deepEqual(narrow.manifest.entries.map(entry => entry.id), [MOBILE_LAYOUT_ID, 'leaf'])
+  assert.deepEqual(narrow.manifest.entries.map(entry => entry.id), [MOBILE_LAYOUT_ID, 'leaf', INTERACTION_OPERATIONS_ID])
+  assert.ok(wide.manifest.entries.some(entry => entry.id === INTERACTION_OPERATIONS_ID))
 })
 
 test('continues narrow layout on harmless revision mismatch and reports it', () => {
@@ -151,7 +152,8 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
     rev: 'mobile',
     entries: [
       { id: 'runtime', url: '/plugins/runtime/client.js?rev=a', rev: 'a', inject: [] },
-      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.23', rev: '0.1.23', inject: [] },
+      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.30', rev: '0.1.30', inject: [] },
+      { id: INTERACTION_OPERATIONS_ID, url: '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.6', rev: '0.1.6', inject: [] },
       { id: CONNECTION_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23', rev: '0.1.23', inject: [] },
       { id: 'leaf', url: '/plugins/leaf/client.js?rev=b', rev: 'b', inject: ['runtime'] },
     ],
@@ -169,10 +171,12 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
   assert.equal(localized.entries[0].url, 'blob:test/runtime/35')
   assert.equal(localized.entries[1].url, manifest.entries[1].url)
   assert.equal(localized.entries[2].url, manifest.entries[2].url)
-  assert.equal(localized.entries[3].url, 'blob:test/leaf/32')
+  assert.equal(localized.entries[3].url, manifest.entries[3].url)
+  assert.equal(localized.entries[4].url, 'blob:test/leaf/32')
   assert.deepEqual(manifest.entries.map(entry => entry.url), [
     '/plugins/runtime/client.js?rev=a',
-    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.23',
+    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.30',
+    '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.6',
     '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23',
     '/plugins/leaf/client.js?rev=b',
   ])
@@ -484,29 +488,18 @@ test('legacy plaintext entries are rewritten compressed on read', async (t) => {
   assert.ok(raw.length < 4000)
 })
 
-test('keeps the pristine official runtime untouched in default compatibility mode', () => {
-  const runtime = { id: RUNTIME_ID, url: '/plugins/runtime.js', rev: SUPPORTED_OFFICIAL_RUNTIME_REVISIONS[0], inject: [], immediately: true }
-  const layout = { id: DESKTOP_LAYOUT_ID, url: '/plugins/layout.js', rev: 'layout', inject: [] }
+test('boot always keeps the official runtime and never inserts session hydration', () => {
+  const runtime = { id: RUNTIME_ID, url: '/plugins/runtime.js', rev: 'official-runtime', inject: [], immediately: true }
+  const layout = {
+    id: DESKTOP_LAYOUT_ID, url: '/plugins/layout.js', rev: 'layout',
+    inject: ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-theme'],
+  }
   const host = { rev: 'host', entries: [runtime, layout] }
-  const selected = selectSessionEnhancement(host, { preference: 'compatible' })
-  assert.equal(selected.status, 'core')
-  assert.equal(selected.manifest.entries[0], runtime)
-  assert.equal(selected.manifest.entries.some(entry => entry.id === MOBILE_HYDRATION_ID), false)
-})
-
-test('enables the local adapter and runtime only for an exact supported official revision', () => {
-  const layout = { id: DESKTOP_LAYOUT_ID, url: '/plugins/layout.js', rev: 'layout', inject: [] }
-  const known = { id: RUNTIME_ID, url: '/plugins/runtime.js', rev: SUPPORTED_OFFICIAL_RUNTIME_REVISIONS[0], inject: ['wire'], immediately: true }
-  const enabled = selectSessionEnhancement({ rev: 'host', entries: [known, layout] }, { preference: 'enhanced' })
-  assert.equal(enabled.status, 'enabled')
-  assert.deepEqual(enabled.manifest.entries.map(entry => entry.id), [MOBILE_HYDRATION_ID, RUNTIME_ID, DESKTOP_LAYOUT_ID])
-  assert.match(enabled.manifest.entries[1].url, /session-hydration\/runtime\.js/)
-  assert.deepEqual(enabled.manifest.entries[1].inject, ['wire', MOBILE_HYDRATION_ID])
-
-  const unknown = { ...known, rev: 'official-update-not-verified' }
-  const disabled = selectSessionEnhancement({ rev: 'updated', entries: [unknown, layout] }, { preference: 'enhanced' })
-  assert.equal(disabled.status, 'incompatible')
-  assert.equal(disabled.reason, 'runtime-revision')
-  assert.equal(disabled.manifest.entries[0], unknown)
-  assert.equal(disabled.manifest.entries.some(entry => entry.id === MOBILE_HYDRATION_ID), false)
+  const selected = selectResponsiveBootManifest(host, { viewportWidth: 390 })
+  assert.equal(selected.layout, 'narrow')
+  assert.deepEqual(selected.manifest.entries.find(entry => entry.id === RUNTIME_ID), runtime)
+  assert.ok(!JSON.stringify(selected.manifest).includes('session-hydration'))
+  const official = selectResponsiveBootManifest(host, { viewportWidth: 1280 })
+  assert.equal(official.layout, 'official')
+  assert.deepEqual(official.manifest.entries.find(entry => entry.id === RUNTIME_ID), runtime)
 })

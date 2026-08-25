@@ -43,11 +43,6 @@ test('shellNeedsPaint is false for the same Host roster and true when host, rev,
   assert.equal(shellNeedsPaint(painted, selection('r2'), { previousHostId: 'host-a', nextHostId: 'host-a' }), true)
   assert.equal(shellNeedsPaint(painted, selection('r1', { layout: 'official' }), { previousHostId: 'host-a', nextHostId: 'host-a' }), true)
   assert.equal(shellNeedsPaint(painted, selection('r1'), { previousHostId: 'host-a', nextHostId: 'host-b' }), true)
-  assert.equal(shellNeedsPaint(
-    { ...painted, enhancement: { status: 'core' } },
-    { ...painted, enhancement: { status: 'incompatible', reason: 'runtime-revision' } },
-    { previousHostId: 'host-a', nextHostId: 'host-a' },
-  ), true)
 })
 
 test('switching Active Host remounts in-shell and never reloads the document', async () => {
