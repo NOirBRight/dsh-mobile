@@ -203,6 +203,10 @@ const root = mkdtempSync(resolve(project, '.dsh-clean-rc2-matrix-'))
 try {
   run('pnpm', ['check'], { cwd: composerRoot })
   run('pnpm', ['check'], { cwd: externalRoot })
+  run('pnpm', ['compat:check'], {
+    cwd: externalRoot,
+    env: { ...process.env, DSH_COMPOSER_PICKER_REPO: composerRoot },
+  })
   run('npm', ['run', 'typecheck'], { cwd: project })
   run('npm', ['test'], { cwd: project })
   run('npm', ['run', 'audit:architecture'], { cwd: project })
