@@ -14,13 +14,17 @@
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
     },
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib/**/*.js",
+    "lib/**/*.d.ts",
+    "cordis.patch.yml"
   ],
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-runtime",

@@ -32,3 +32,4 @@ test('tall popups keep both vertical viewport gutters', () => {
     viewportTop: 0, viewportHeight: 800, gutter: 12,
     popupHeight: 200, anchorTop: 600, anchorBottom: 640, opensAbove: true,
   }), { top: 396, maxHeight: 776 })
+})

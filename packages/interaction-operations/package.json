@@ -9,8 +9,11 @@
     "./client": { "types": "./lib/types/client/index.d.ts", "default": "./lib/client.js" },
     "./package.json": "./package.json"
   },
-  "files": ["lib"],
-  "dsh": { "client": { "inject": ["@deepseek-ai/dsh-client-runtime"], "platform": "web" } },
+  "files": ["lib/**/*.js", "lib/**/*.d.ts", "cordis.patch.yml"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "inject": ["@deepseek-ai/dsh-client-runtime"], "platform": "web" }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json && tsdown",
     "bundle": "tsdown",

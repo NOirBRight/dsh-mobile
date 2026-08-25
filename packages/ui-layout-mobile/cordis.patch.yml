@@ -1,0 +1,4 @@
+# Register the browser mobile layout; Host apply is intentionally a no-op.
+- insert:
+    - id: mobile-ui-layout
+      name: '@dsh-mobile/ui-layout-mobile'

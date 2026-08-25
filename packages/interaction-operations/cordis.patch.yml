@@ -1,0 +1,4 @@
+# Register the browser interaction operations; Host apply is intentionally a no-op.
+- insert:
+    - id: mobile-interaction-operations
+      name: '@dsh-mobile/interaction-operations'
