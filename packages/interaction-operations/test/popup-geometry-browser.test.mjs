@@ -31,6 +31,8 @@ test('popup anchors and authored choice width survive mobile compatibility geome
     assert.equal(capture('choice-at412-width'), '320')
     assert.equal(capture('choice-overflow-y'), 'auto', 'tall rich choices must remain vertically scrollable')
     assert.equal(capture('choice-overflow-x'), 'hidden', 'bilingual choice text must not create a horizontal scrollbar')
+    assert.equal(capture('nested-outer-overflow-y'), 'hidden', 'composite picker chrome must delegate vertical scrolling')
+    assert.equal(capture('nested-inner-overflow-y'), 'auto', 'nested model rows must retain vertical scroll ownership')
     assert.equal(capture('choice-width'), '320', 'choice menus must preserve their authored picker width')
   } finally {
     await rm(outDir, { recursive: true, force: true })

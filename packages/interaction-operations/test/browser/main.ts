@@ -53,6 +53,19 @@ function run(): void {
   ).join('')
   document.body.append(choiceTrigger, choice)
 
+  const nestedTrigger = document.createElement('button')
+  nestedTrigger.setAttribute('aria-expanded', 'true')
+  nestedTrigger.setAttribute('aria-controls', 'nested-popup')
+  const nested = document.createElement('div')
+  nested.id = 'nested-popup'
+  nested.setAttribute('role', 'menu')
+  nested.setAttribute('aria-hidden', 'true')
+  nested.innerHTML = '<input aria-label="Search models"><div data-nested-scroll style="height:120px;overflow-y:auto">' +
+    Array.from({ length: 24 }, (_, index) => '<button role="menuitem">Nested model ' + index + '</button>').join('') +
+    '</div>'
+  const nestedScroll = nested.querySelector<HTMLElement>('[data-nested-scroll]')!
+  document.body.append(nestedTrigger, nested)
+
   const dispose = installPopupGeometryAdapter(document)
   document.body.dataset.choiceNarrowWidth = String(Math.round(choice.getBoundingClientRect().width))
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 360 })
@@ -66,6 +79,8 @@ function run(): void {
   document.body.dataset.choiceAt412Width = String(Math.round(choice.getBoundingClientRect().width))
   document.body.dataset.choiceOverflowY = getComputedStyle(choice).overflowY
   document.body.dataset.choiceOverflowX = getComputedStyle(choice).overflowX
+  document.body.dataset.nestedOuterOverflowY = getComputedStyle(nested).overflowY
+  document.body.dataset.nestedInnerOverflowY = getComputedStyle(nestedScroll).overflowY
   touchPointerDown(trigger, 1)
   click(trigger)
   document.body.dataset.anchorClosed = String(trigger.getAttribute('aria-expanded') === 'false')
