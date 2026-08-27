@@ -145,6 +145,7 @@ function candidateAnchor(
   preferred: HTMLElement | null = null,
 ): HTMLElement | null {
   if (preferred !== null && controlsPopup(preferred, popup)) return preferred
+  if (lastTrigger !== null && controlsPopup(lastTrigger, popup)) return lastTrigger
   if (remembered !== null && controlsPopup(remembered, popup)) return remembered
   if (popup.id !== '') {
     const controlled = Array.from(document.querySelectorAll<HTMLElement>('[aria-controls]'))

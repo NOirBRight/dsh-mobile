@@ -13,7 +13,7 @@ export const RUNTIME_ID = '@deepseek-ai/dsh-client-runtime'
 export const DSH_HOST_BRIDGE_CAPABILITY = '__DSH_HOST_BRIDGE__'
 const CLIENT_HMR_ID = '@deepseek-ai/dsh-client-hmr'
 const MOBILE_LAYOUT_REV = '0.1.30'
-const INTERACTION_OPERATIONS_REV = '0.1.13'
+const INTERACTION_OPERATIONS_REV = '0.1.14'
 const MOBILE_CONNECTION_REV = '0.1.23'
 const MOBILE_CONNECTION_URL = '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=' + MOBILE_CONNECTION_REV
 
