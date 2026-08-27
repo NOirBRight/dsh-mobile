@@ -132,7 +132,7 @@ export class HostSession {
         return bootGeneration === this.bootGeneration ? selection : null
       } catch (error) {
         if (superseded()) return null
-        if (generation !== this.generation) throw error
+        if (generation !== this.generation) throw new TunnelError('closed', HOST_SESSION_STOPPED_MESSAGE)
         if (bootGeneration !== this.bootGeneration) return null
         if (!isTransientTunnelBootError(error)) throw error
         if (client?.state === 'open') client.close()

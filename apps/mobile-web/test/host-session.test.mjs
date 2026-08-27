@@ -456,7 +456,7 @@ test('stop during an in-flight connect rejects as a cancelled Host session, not 
   const manager = fakeManager()
   manager.current = () => pending
   manager.stop = () => {
-    rejectCurrent(new TunnelError('closed', 'Active Host connection stopped'))
+    rejectCurrent(new Error('transport teardown failed'))
   }
   const session = new HostSession({
     slot: { attach() {}, async current() { return manager.client } },

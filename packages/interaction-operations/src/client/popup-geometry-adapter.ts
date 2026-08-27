@@ -57,6 +57,23 @@ interface OriginalSurface {
   readonly marker: string | undefined
 }
 
+interface ViewportMetrics {
+  readonly left: number
+  readonly top: number
+  readonly width: number
+  readonly height: number
+}
+
+function readViewportMetrics(view: Window): ViewportMetrics {
+  const viewport = view.visualViewport
+  return {
+    left: viewport?.offsetLeft ?? 0,
+    top: viewport?.offsetTop ?? 0,
+    width: viewport?.width ?? view.innerWidth,
+    height: viewport?.height ?? view.innerHeight,
+  }
+}
+
 function rendered(element: HTMLElement): boolean {
   if (element.getClientRects().length === 0) return false
   const style = getComputedStyle(element)
@@ -233,11 +250,9 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
       original = { style: popup.getAttribute('style'), marker: popup.dataset.dshMobilePopup }
       originals.set(popup, original)
     }
-    const viewport = view.visualViewport
-    const viewportWidth = viewport?.width ?? view.innerWidth
-    const viewportHeight = viewport?.height ?? view.innerHeight
+    const viewport = readViewportMetrics(view)
     const kind = popupKind(popup)
-    const maxHeight = popupHeightLimit(kind, viewportHeight)
+    const maxHeight = popupHeightLimit(kind, viewport.height)
     const authoredWidth = authoredPopupWidth(popup, original.style)
 
     popup.dataset.dshMobilePopup = kind
@@ -250,35 +265,31 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
     popup.style.setProperty('width', 'max-content', 'important')
     popup.style.setProperty('transform', 'none', 'important')
     const naturalWidth = kind === 'rich' ? Math.max(authoredWidth, popup.scrollWidth) : popup.scrollWidth
-    const width = popupWidth(kind, naturalWidth, anchor?.getBoundingClientRect().width ?? 0, viewportWidth)
+    const width = popupWidth(kind, naturalWidth, anchor?.getBoundingClientRect().width ?? 0, viewport.width)
     popup.style.setProperty('width', width + 'px', 'important')
     return { popup, anchor, kind, width, maxHeight }
   }
 
   const place = ({ popup, anchor, width, maxHeight }: PreparedPopup): void => {
-    const viewport = view.visualViewport
-    const viewportLeft = viewport?.offsetLeft ?? 0
-    const viewportTop = viewport?.offsetTop ?? 0
-    const viewportWidth = viewport?.width ?? view.innerWidth
-    const viewportHeight = viewport?.height ?? view.innerHeight
+    const viewport = readViewportMetrics(view)
     const before = popup.getBoundingClientRect()
     const ar = anchor?.getBoundingClientRect() ?? before
     const horizontal = anchor === null
       ? {
-          left: Math.round(Math.min(Math.max(before.left, viewportLeft + 12), viewportLeft + viewportWidth - 12 - width)),
-          align: (before.left + before.right) / 2 <= viewportLeft + viewportWidth / 2 ? 'start' as const : 'end' as const,
+          left: Math.round(Math.min(Math.max(before.left, viewport.left + 12), viewport.left + viewport.width - 12 - width)),
+          align: (before.left + before.right) / 2 <= viewport.left + viewport.width / 2 ? 'start' as const : 'end' as const,
         }
-      : popupPlacement({ viewportLeft, viewportWidth, gutter: 12, popupWidth: width, anchorLeft: ar.left, anchorRight: ar.right })
+      : popupPlacement({ viewportLeft: viewport.left, viewportWidth: viewport.width, gutter: 12, popupWidth: width, anchorLeft: ar.left, anchorRight: ar.right })
     const measuredHeight = before.height
     const vertical = anchor === null
       ? {
-          top: Math.round(Math.min(Math.max(before.top, viewportTop + 12), viewportTop + viewportHeight - 12 - Math.min(measuredHeight, maxHeight))),
+          top: Math.round(Math.min(Math.max(before.top, viewport.top + 12), viewport.top + viewport.height - 12 - Math.min(measuredHeight, maxHeight))),
           maxHeight,
         }
       : popupVerticalPlacement({
-          viewportTop, viewportHeight, gutter: 12, popupHeight: measuredHeight,
+          viewportTop: viewport.top, viewportHeight: viewport.height, gutter: 12, popupHeight: measuredHeight,
           anchorTop: ar.top, anchorBottom: ar.bottom,
-          opensAbove: before.bottom <= ar.top + 2 || ar.top > viewportTop + viewportHeight / 2,
+          opensAbove: before.bottom <= ar.top + 2 || ar.top > viewport.top + viewport.height / 2,
         })
     popup.style.setProperty('left', horizontal.left + 'px', 'important')
     popup.style.setProperty('right', 'auto', 'important')
