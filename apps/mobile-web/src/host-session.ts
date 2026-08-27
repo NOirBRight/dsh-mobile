@@ -58,6 +58,8 @@ export class HostSession {
   private lastSelection: ResponsiveBootSelection | null = null
   private lastHostId: string | null = null
   private generation = 0
+  private bootGeneration = 0
+  private paintTail: Promise<void> = Promise.resolve()
   private readonly deps: HostSessionDeps
 
   constructor(deps: HostSessionDeps) {
@@ -66,26 +68,39 @@ export class HostSession {
 
   selection(): ResponsiveBootSelection | null { return this.lastSelection }
 
+  /** Refresh the Host roster only when a resident transport recovered from reconnecting. */
+  refreshAfterTransportActivity(
+    previous: TunnelManagerActivity,
+    next: TunnelManagerActivity,
+    shellMounted: boolean,
+  ): Promise<ResponsiveBootSelection | null> | null {
+    return transportOpenNeedsBootRefresh(previous, next, shellMounted) ? this.remount() : null
+  }
+
   /** Paint the cached shell before starting transport; the live connect reuses this selection. */
   async hydrate(prepared: PreparedProfileConnection): Promise<boolean> {
     const generation = this.generation
+    const bootGeneration = ++this.bootGeneration
     this.prepared = prepared
     const cached = await this.deps.hydrateBoot?.(prepared) ?? null
-    if (cached === null || generation !== this.generation) return false
-    await this.paint(cached, prepared.profile.hostId)
+    if (cached === null || generation !== this.generation || bootGeneration !== this.bootGeneration) return false
+    await this.paint(cached, prepared.profile.hostId, bootGeneration)
     return true
   }
 
   async connect(prepared: PreparedProfileConnection): Promise<ResponsiveBootSelection> {
     this.stop()
     const generation = this.generation
+    const bootGeneration = ++this.bootGeneration
     this.prepared = prepared
     const manager = this.deps.createManager(prepared)
     this.manager = manager
     this.deps.slot.attach(manager)
     manager.start()
     const cached = await this.deps.hydrateBoot?.(prepared) ?? null
-    if (cached !== null && generation === this.generation) await this.paint(cached, prepared.profile.hostId)
+    if (cached !== null && generation === this.generation && bootGeneration === this.bootGeneration) {
+      await this.paint(cached, prepared.profile.hostId, bootGeneration)
+    }
     for (;;) {
       if (generation !== this.generation) throw new TunnelError('closed', HOST_SESSION_STOPPED_MESSAGE)
       const client = await manager.current()
@@ -93,7 +108,7 @@ export class HostSession {
         const selection = await this.deps.injectBoot(client, prepared)
         if (generation !== this.generation) return selection
         manager.armHeartbeat()
-        await this.paint(selection, prepared.profile.hostId)
+        await this.paint(selection, prepared.profile.hostId, bootGeneration)
         return selection
       } catch (error) {
         if (generation !== this.generation) throw error
@@ -104,19 +119,24 @@ export class HostSession {
   }
 
   async remount(): Promise<ResponsiveBootSelection | null> {
-    if (this.prepared === null) return null
-    const hostId = this.prepared.profile.hostId
-    if (this.manager === null) {
-      const cached = await this.deps.hydrateBoot?.(this.prepared) ?? null
+    const prepared = this.prepared
+    if (prepared === null) return null
+    const bootGeneration = ++this.bootGeneration
+    const hostId = prepared.profile.hostId
+    const manager = this.manager
+    if (manager === null) {
+      const cached = await this.deps.hydrateBoot?.(prepared) ?? null
+      if (bootGeneration !== this.bootGeneration) return cached
       if (cached !== null) {
-        await this.paint(cached, hostId)
+        await this.paint(cached, hostId, bootGeneration)
         return cached
       }
-      return this.connect(this.prepared)
+      return this.connect(prepared)
     }
-    const client = await this.manager.current()
-    const selection = await this.deps.injectBoot(client, this.prepared)
-    await this.paint(selection, hostId)
+    const client = await manager.current()
+    if (bootGeneration !== this.bootGeneration) return null
+    const selection = await this.deps.injectBoot(client, prepared)
+    await this.paint(selection, hostId, bootGeneration)
     return selection
   }
 
@@ -126,6 +146,7 @@ export class HostSession {
 
   stop(): void {
     this.generation += 1
+    this.bootGeneration += 1
     this.manager?.stop()
     this.manager = null
   }
@@ -136,14 +157,21 @@ export class HostSession {
     this.lastHostId = null
   }
 
-  private async paint(selection: ResponsiveBootSelection, nextHostId: string): Promise<void> {
-    if (!shellNeedsPaint(this.lastSelection, selection, { previousHostId: this.lastHostId, nextHostId })) {
+  private paint(selection: ResponsiveBootSelection, nextHostId: string, bootGeneration: number): Promise<void> {
+    const run = async (): Promise<void> => {
+      if (bootGeneration !== this.bootGeneration) return
+      if (!shellNeedsPaint(this.lastSelection, selection, { previousHostId: this.lastHostId, nextHostId })) {
+        this.lastSelection = selection
+        return
+      }
+      await this.deps.mount(selection, nextHostId)
+      if (bootGeneration !== this.bootGeneration) return
       this.lastSelection = selection
-      return
+      this.lastHostId = nextHostId
     }
-    this.lastSelection = selection
-    this.lastHostId = nextHostId
-    await this.deps.mount(selection, nextHostId)
+    const pending = this.paintTail.then(run, run)
+    this.paintTail = pending.catch(() => {})
+    return pending
   }
 }
 

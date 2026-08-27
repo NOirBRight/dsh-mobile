@@ -98,7 +98,9 @@ function dispatchOfficialOutsideMouseDown(target: Element, view: Window): void {
   target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view }))
 }
 
-function candidateAnchor(document: Document, popup: HTMLElement, lastTrigger: HTMLElement | null): HTMLElement | null {
+function candidateAnchor(
+  document: Document, popup: HTMLElement, lastTrigger: HTMLElement | null, remembered: HTMLElement | null = null,
+): HTMLElement | null {
   if (popup.id !== '') {
     const controlled = Array.from(document.querySelectorAll<HTMLElement>('[aria-controls]'))
       .find(candidate => candidate.getAttribute('aria-controls')?.split(/\s+/).includes(popup.id) === true)
@@ -114,6 +116,9 @@ function candidateAnchor(document: Document, popup: HTMLElement, lastTrigger: HT
       if (trigger !== null) return trigger
     }
   }
+  // A live semantic owner always wins; only reuse history when the popup no
+  // longer exposes a current ARIA/local relationship.
+  if (remembered?.isConnected === true) return remembered
   if (lastTrigger?.isConnected === true) return lastTrigger
   const active = document.activeElement
   if (active instanceof HTMLElement && active.matches('button, [aria-haspopup]')) return active
@@ -147,8 +152,8 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
     const popup = topDismissiblePopup(document)
     if (popup === null) return null
     const owner = popupPresentationSurface(popup)
-    const remembered = resolvedAnchors.get(popup)
-    const anchor = remembered?.isConnected === true ? remembered : candidateAnchor(document, popup, lastTrigger)
+    const remembered = resolvedAnchors.get(popup) ?? null
+    const anchor = candidateAnchor(document, popup, lastTrigger, remembered)
     if (anchor !== null) resolvedAnchors.set(popup, anchor)
     return popup.contains(target) || owner.contains(target) || anchor?.contains(target) === true ? null : popup
   }
@@ -183,8 +188,8 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
 
   const prepare = (popup: HTMLElement): PreparedPopup | null => {
     if (!rendered(popup) || popup.parentElement?.closest('[role="menu"]') !== null) return null
-    const remembered = resolvedAnchors.get(popup)
-    const candidate = remembered?.isConnected === true ? remembered : candidateAnchor(document, popup, lastTrigger)
+    const remembered = resolvedAnchors.get(popup) ?? null
+    const candidate = candidateAnchor(document, popup, lastTrigger, remembered)
     const anchor = candidate !== null && rendered(candidate) ? candidate : null
     if (anchor !== null) resolvedAnchors.set(popup, anchor)
     if (!originals.has(popup)) originals.set(popup, { style: popup.getAttribute('style'), marker: popup.dataset.dshMobilePopup })

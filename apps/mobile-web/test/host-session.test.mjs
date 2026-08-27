@@ -114,6 +114,30 @@ test('a late superseded Host connect cannot repaint or arm after the newer Host'
   assert.equal(managers.get('host-b').stats().armed, 1)
 })
 
+test('automatic reconnect refreshes a changed roster and skips repaint for the same revision', async () => {
+  const mounts = []
+  let injects = 0
+  const manager = fakeManager()
+  const responses = ['initial', 'changed', 'changed']
+  const session = new HostSession({
+    slot: { attach() {}, async current() { return manager.current() } },
+    createManager() { return manager },
+    async injectBoot() {
+      injects += 1
+      return selection(responses.shift())
+    },
+    mount(next) { mounts.push(next.manifest.rev) },
+  })
+  await session.connect(prepared('host-a'))
+  const reconnecting = { phase: 'connecting', attempt: 2, reconnecting: true, route: 'tunnel' }
+  const open = { phase: 'open', attempt: 2, route: 'tunnel' }
+  await session.refreshAfterTransportActivity(reconnecting, open, true)
+  await session.refreshAfterTransportActivity(reconnecting, open, true)
+  assert.equal(session.refreshAfterTransportActivity({ ...reconnecting, reconnecting: false }, open, true), null)
+  assert.deepEqual(mounts, ['initial', 'changed'])
+  assert.equal(injects, 3)
+})
+
 test('viewport remount reuses the live tunnel and does not reconnect or repaint the same roster', async () => {
   const mounts = []
   let injects = 0
@@ -134,6 +158,34 @@ test('viewport remount reuses the live tunnel and does not reconnect or repaint 
   assert.equal(injects, 2)
   assert.equal(manager.stats().started, 1)
   assert.equal(manager.stats().stopped, 0)
+})
+
+test('a superseded remount cannot paint older Host boot data after a newer refresh', async () => {
+  const mounts = []
+  const manager = fakeManager()
+  const slot = { attach(source) { this.source = source }, async current() { return this.source.current() }, source: null }
+  let releaseOlder
+  let releaseNewer
+  const older = new Promise(resolve => { releaseOlder = () => { resolve(selection('older')) } })
+  const newer = new Promise(resolve => { releaseNewer = () => { resolve(selection('newer')) } })
+  const responses = [Promise.resolve(selection('initial')), older, newer]
+  const session = new HostSession({
+    slot,
+    createManager() { return manager },
+    async injectBoot() { return responses.shift() },
+    mount(next) { mounts.push(next.manifest.rev) },
+  })
+  await session.connect(prepared('host-a'))
+  const stale = session.remount()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  const latest = session.remount()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  releaseNewer()
+  await latest
+  releaseOlder()
+  await stale
+  assert.deepEqual(mounts, ['initial', 'newer'])
+  assert.equal(session.selection().manifest.rev, 'newer')
 })
 
 test('connect paints a cached boot roster before the tunnel is open', async () => {

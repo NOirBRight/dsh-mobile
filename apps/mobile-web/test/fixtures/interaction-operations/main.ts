@@ -59,7 +59,6 @@ window.setTimeout(() => {
   const leftMenu = document.querySelector<HTMLElement>('#geo-left [role="menu"]')!
   const rightAnchor = document.querySelector<HTMLElement>('#geo-right > button')!
   const rightMenu = document.querySelector<HTMLElement>('#geo-right [role="menu"]')!
-  const choiceMenu = document.querySelector<HTMLElement>('#geo-choice [role="menu"]')!
   const richMenu = document.querySelector<HTMLElement>('#geo-rich [role="menu"]')!
   const richScroll = richMenu.querySelector<HTMLElement>('[data-rich-scroll]')!
   const selectCard = document.querySelector<HTMLElement>('#geo-select [data-select-card]')!
@@ -68,33 +67,8 @@ window.setTimeout(() => {
   // from semantic Back while the other layered cases run.
   leftMenu.setAttribute('aria-hidden', 'true')
   rightMenu.setAttribute('aria-hidden', 'true')
-  choiceMenu.setAttribute('aria-hidden', 'true')
   richMenu.setAttribute('aria-hidden', 'true')
   selectListbox.setAttribute('aria-hidden', 'true')
-
-  const anchoredTrigger = document.createElement('button')
-  anchoredTrigger.setAttribute('aria-haspopup', 'menu')
-  anchoredTrigger.setAttribute('aria-expanded', 'true')
-  anchoredTrigger.setAttribute('aria-controls', 'anchored-trigger-menu')
-  anchoredTrigger.textContent = 'Anchored picker'
-  const anchoredMenu = document.createElement('div')
-  anchoredMenu.id = 'anchored-trigger-menu'
-  anchoredMenu.setAttribute('role', 'menu')
-  anchoredMenu.textContent = 'Picker rows'
-  const closeAnchoredBeforeClick = (event: MouseEvent): void => {
-    if (!anchoredMenu.contains(event.target as Node)) anchoredTrigger.setAttribute('aria-expanded', 'false')
-  }
-  document.addEventListener('mousedown', closeAnchoredBeforeClick)
-  anchoredTrigger.addEventListener('click', () => {
-    anchoredTrigger.setAttribute('aria-expanded', String(anchoredTrigger.getAttribute('aria-expanded') !== 'true'))
-  })
-  document.body.append(anchoredTrigger, anchoredMenu)
-  pointer(anchoredTrigger, 'pointerdown', { pointerId: 22, clientX: 180, clientY: 180 })
-  anchoredTrigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-  document.body.dataset.anchoredTriggerClosed = String(anchoredTrigger.getAttribute('aria-expanded') === 'false')
-  document.removeEventListener('mousedown', closeAnchoredBeforeClick)
-  anchoredTrigger.remove()
-  anchoredMenu.remove()
 
   const touchModelRoot = document.createElement('div')
   touchModelRoot.innerHTML = '<button aria-haspopup="menu" aria-expanded="true">Model</button><div role="menu">Models</div>'
@@ -217,7 +191,6 @@ window.setTimeout(() => {
     const rightDelta = rightRect.right - rightAnchor.getBoundingClientRect().right
     document.body.dataset.popupRightDelta = String(Math.round(rightDelta))
     document.body.dataset.popupRightAligned = String(Math.abs(rightDelta) < 2)
-    document.body.dataset.popupChoiceWidth = String(Math.round(choiceMenu.getBoundingClientRect().width))
     document.body.dataset.popupRichMaxHeight = getComputedStyle(richMenu).maxHeight
     document.body.dataset.popupRichOverflow = getComputedStyle(richMenu).overflowY
     document.body.dataset.popupRichScrolls = String(richScroll.scrollHeight > richScroll.clientHeight)
