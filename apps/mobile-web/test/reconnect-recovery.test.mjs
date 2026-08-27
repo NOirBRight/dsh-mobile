@@ -42,6 +42,12 @@ test('rescan does not stop the new campaign as Active Host connection stopped', 
   assert.ok(source.includes("'正在加载 ' + activeConnection.profile.displayName"))
 })
 
+test('an automatic tunnel reconnect refreshes a changed Host plugin roster', async () => {
+  const source = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
+  assert.ok(source.includes('transportOpenNeedsBootRefresh(activity, nextActivity, shellMounted)'))
+  assert.ok(source.includes('session?.remount()'))
+})
+
 test('a cold pairing shows a moving plugin count instead of an unexplained spinner', async () => {
   const source = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
   assert.ok(source.includes('onPluginProgress(loaded, total)'))

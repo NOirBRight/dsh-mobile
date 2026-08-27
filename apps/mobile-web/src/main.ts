@@ -17,7 +17,7 @@ import { connectionRecoveryDecision, endpointRefreshRequired } from './reconnect
 import { BrowserProfileStorage, ProfileRepository } from './profiles.ts'
 import { prepareDshClientBoot } from './dsh-boot.ts'
 import { connectionRecoveryNotice, connectionRouteLabel, coreLiveDataReadiness, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, isPassiveConnectionRetry, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type LiveDataReadiness, type TunnelManagerActivity } from './tunnel.ts'
-import { HostSession, isHostSessionStoppedError } from './host-session.ts'
+import { HostSession, isHostSessionStoppedError, transportOpenNeedsBootRefresh } from './host-session.ts'
 import { mountProgressScreen } from './progress-screen.ts'
 import { mountFirstRunScreen } from './first-run-screen.ts'
 import { mountHostProfileMenu, type DeviceConnectionSummary } from './host-profile-menu.ts'
@@ -629,6 +629,7 @@ void (async () => {
             }
           },
           onActivity(nextActivity) {
+            const refreshBoot = transportOpenNeedsBootRefresh(activity, nextActivity, shellMounted)
             activity = nextActivity
             route = connectionRouteLabel(nextActivity.route, next.profile.endpoint.kind, next.profile.connectionPolicy)
             state = nextActivity.phase === 'open'
@@ -651,6 +652,14 @@ void (async () => {
             }
             updateBadge(activity, route, shellMounted, liveDataReady)
             render()
+            if (refreshBoot) {
+              queueMicrotask(() => {
+                void session?.remount().catch(error => {
+                  lastError = error instanceof Error ? error.message : String(error)
+                  render()
+                })
+              })
+            }
           },
         })
       },

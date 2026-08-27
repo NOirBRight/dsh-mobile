@@ -2,7 +2,7 @@
 import { TunnelError, type TunnelClient } from '@dsh-mobile/e2e-tunnel'
 import type { ResponsiveBootSelection } from './manifest.ts'
 import type { PreparedProfileConnection } from './profile-connection.ts'
-import type { TunnelManagerSlot } from './tunnel.ts'
+import type { TunnelManagerActivity, TunnelManagerSlot } from './tunnel.ts'
 
 export interface SessionTunnel {
   start(): void
@@ -37,6 +37,18 @@ export function shellNeedsPaint(
   return previous.layout !== next.layout
     || previous.manifest.rev !== next.manifest.rev
     || previous.officialLayoutRevision !== next.officialLayoutRevision
+}
+
+/** A resident shell must refresh the Host roster after transport-level recovery. */
+export function transportOpenNeedsBootRefresh(
+  previous: TunnelManagerActivity,
+  next: TunnelManagerActivity,
+  shellMounted: boolean,
+): boolean {
+  return shellMounted
+    && previous.phase === 'connecting'
+    && previous.reconnecting
+    && next.phase === 'open'
 }
 
 /** Owns one Active Host tunnel and remounts Host UI in the existing shell. */

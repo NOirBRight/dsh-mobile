@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TunnelError } from '@dsh-mobile/e2e-tunnel'
-import { HostSession, isHostSessionStoppedError, isTransientTunnelBootError, shellNeedsPaint } from '../src/host-session.ts'
+import { HostSession, isHostSessionStoppedError, isTransientTunnelBootError, shellNeedsPaint, transportOpenNeedsBootRefresh } from '../src/host-session.ts'
 
 function selection(rev, extra = {}) {
   return {
@@ -43,6 +43,16 @@ test('shellNeedsPaint is false for the same Host roster and true when host, rev,
   assert.equal(shellNeedsPaint(painted, selection('r2'), { previousHostId: 'host-a', nextHostId: 'host-a' }), true)
   assert.equal(shellNeedsPaint(painted, selection('r1', { layout: 'official' }), { previousHostId: 'host-a', nextHostId: 'host-a' }), true)
   assert.equal(shellNeedsPaint(painted, selection('r1'), { previousHostId: 'host-a', nextHostId: 'host-b' }), true)
+})
+
+test('only an automatic reconnect open refreshes the resident Host plugin roster', () => {
+  const firstConnect = { phase: 'connecting', attempt: 1, reconnecting: false, route: null }
+  const reconnect = { phase: 'connecting', attempt: 2, reconnecting: true, route: 'tunnel' }
+  const open = { phase: 'open', attempt: 2, route: 'tunnel' }
+  assert.equal(transportOpenNeedsBootRefresh(firstConnect, open, true), false)
+  assert.equal(transportOpenNeedsBootRefresh(reconnect, open, false), false)
+  assert.equal(transportOpenNeedsBootRefresh(reconnect, open, true), true)
+  assert.equal(transportOpenNeedsBootRefresh(open, open, true), false)
 })
 
 test('switching Active Host remounts in-shell and never reloads the document', async () => {
