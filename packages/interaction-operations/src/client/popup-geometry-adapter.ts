@@ -147,7 +147,10 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
     const popup = topDismissiblePopup(document)
     if (popup === null) return null
     const owner = popupPresentationSurface(popup)
-    return popup.contains(target) || owner.contains(target) ? null : popup
+    const remembered = resolvedAnchors.get(popup)
+    const anchor = remembered?.isConnected === true ? remembered : candidateAnchor(document, popup, lastTrigger)
+    if (anchor !== null) resolvedAnchors.set(popup, anchor)
+    return popup.contains(target) || owner.contains(target) || anchor?.contains(target) === true ? null : popup
   }
 
   const bridgeTouchOutside = (event: PointerEvent): void => {

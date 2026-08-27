@@ -70,6 +70,30 @@ window.setTimeout(() => {
   richMenu.setAttribute('aria-hidden', 'true')
   selectListbox.setAttribute('aria-hidden', 'true')
 
+  const anchoredTrigger = document.createElement('button')
+  anchoredTrigger.setAttribute('aria-haspopup', 'menu')
+  anchoredTrigger.setAttribute('aria-expanded', 'true')
+  anchoredTrigger.setAttribute('aria-controls', 'anchored-trigger-menu')
+  anchoredTrigger.textContent = 'Anchored picker'
+  const anchoredMenu = document.createElement('div')
+  anchoredMenu.id = 'anchored-trigger-menu'
+  anchoredMenu.setAttribute('role', 'menu')
+  anchoredMenu.textContent = 'Picker rows'
+  const closeAnchoredBeforeClick = (event: MouseEvent): void => {
+    if (!anchoredMenu.contains(event.target as Node)) anchoredTrigger.setAttribute('aria-expanded', 'false')
+  }
+  document.addEventListener('mousedown', closeAnchoredBeforeClick)
+  anchoredTrigger.addEventListener('click', () => {
+    anchoredTrigger.setAttribute('aria-expanded', String(anchoredTrigger.getAttribute('aria-expanded') !== 'true'))
+  })
+  document.body.append(anchoredTrigger, anchoredMenu)
+  pointer(anchoredTrigger, 'pointerdown', { pointerId: 22, clientX: 180, clientY: 180 })
+  anchoredTrigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  document.body.dataset.anchoredTriggerClosed = String(anchoredTrigger.getAttribute('aria-expanded') === 'false')
+  document.removeEventListener('mousedown', closeAnchoredBeforeClick)
+  anchoredTrigger.remove()
+  anchoredMenu.remove()
+
   const touchModelRoot = document.createElement('div')
   touchModelRoot.innerHTML = '<button aria-haspopup="menu" aria-expanded="true">Model</button><div role="menu">Models</div>'
   const touchModelMenu = touchModelRoot.querySelector<HTMLElement>('[role="menu"]')!

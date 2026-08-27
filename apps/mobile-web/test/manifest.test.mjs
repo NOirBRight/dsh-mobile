@@ -36,7 +36,7 @@ test('replaces desktop layout and drops browser HMR without mutating host manife
   const mobile = adaptBootManifestForMobile(host)
 
   assert.deepEqual(host, snapshot)
-  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.30+mobile-interactions-0.1.6')
+  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.30+mobile-interactions-0.1.7')
   assert.deepEqual(mobile.entries.map(entry => entry.id), ['before', MOBILE_LAYOUT_ID, 'after', INTERACTION_OPERATIONS_ID])
   assert.deepEqual(mobile.entries[1], {
     id: MOBILE_LAYOUT_ID,
@@ -153,7 +153,7 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
     entries: [
       { id: 'runtime', url: '/plugins/runtime/client.js?rev=a', rev: 'a', inject: [] },
       { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.30', rev: '0.1.30', inject: [] },
-      { id: INTERACTION_OPERATIONS_ID, url: '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.6', rev: '0.1.6', inject: [] },
+      { id: INTERACTION_OPERATIONS_ID, url: '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.7', rev: '0.1.7', inject: [] },
       { id: CONNECTION_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23', rev: '0.1.23', inject: [] },
       { id: 'leaf', url: '/plugins/leaf/client.js?rev=b', rev: 'b', inject: ['runtime'] },
     ],
@@ -176,7 +176,7 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
   assert.deepEqual(manifest.entries.map(entry => entry.url), [
     '/plugins/runtime/client.js?rev=a',
     '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.30',
-    '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.6',
+    '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.7',
     '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23',
     '/plugins/leaf/client.js?rev=b',
   ])

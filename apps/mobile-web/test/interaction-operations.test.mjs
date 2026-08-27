@@ -29,6 +29,7 @@ test('touch adapters expose actions, route gestures, and retract cleanly', async
     assert.equal(capture('popup-first-opened'), 'true', 'the first touch must retain its popup fallback')
     assert.equal(capture('popup-opened'), 'false')
     assert.equal(capture('popup-retracted'), 'true', 'a second tap on an expanded subagent trigger must close it')
+    assert.equal(capture('anchored-trigger-closed'), 'true', 'a popup anchor tap must not be bridged as an outside dismissal before its click toggle')
     assert.equal(capture('context-opened'), 'true')
     assert.equal(capture('profile-back-closed'), 'true', 'Back must close the profile modal instead of consuming a no-op Escape')
     assert.equal(capture('mixed-back-first'), 'details', 'DOM details must precede a registered drawer')
