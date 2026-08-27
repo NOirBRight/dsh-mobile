@@ -63,6 +63,16 @@ function rendered(element: HTMLElement): boolean {
   return style.display !== 'none' && style.visibility !== 'hidden'
 }
 
+function authoredPopupWidth(popup: HTMLElement, originalStyle: string | null): number {
+  const adaptedStyle = popup.getAttribute('style')
+  if (originalStyle === null) popup.removeAttribute('style')
+  else popup.setAttribute('style', originalStyle)
+  const width = popup.getBoundingClientRect().width
+  if (adaptedStyle === null) popup.removeAttribute('style')
+  else popup.setAttribute('style', adaptedStyle)
+  return width
+}
+
 function popupKind(element: HTMLElement): MobilePopupKind {
   if (element.getAttribute('role') === 'listbox') return 'listbox'
   if (element.querySelector('input, textarea, [role="menuitemradio"], [role="menuitemcheckbox"]') !== null) return 'rich'
@@ -148,13 +158,19 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
     if (trigger !== null && trigger.closest('[role="menu"], [role="listbox"]') === null) lastTrigger = trigger
   }
 
+  const resolveAnchor = (popup: HTMLElement, requireRendered = false): HTMLElement | null => {
+    const remembered = resolvedAnchors.get(popup) ?? null
+    const candidate = candidateAnchor(document, popup, lastTrigger, remembered)
+    const anchor = candidate !== null && (!requireRendered || rendered(candidate)) ? candidate : null
+    if (anchor !== null) resolvedAnchors.set(popup, anchor)
+    return anchor
+  }
+
   const outsidePopup = (target: Element): HTMLElement | null => {
     const popup = topDismissiblePopup(document)
     if (popup === null) return null
     const owner = popupPresentationSurface(popup)
-    const remembered = resolvedAnchors.get(popup) ?? null
-    const anchor = candidateAnchor(document, popup, lastTrigger, remembered)
-    if (anchor !== null) resolvedAnchors.set(popup, anchor)
+    const anchor = resolveAnchor(popup)
     return popup.contains(target) || owner.contains(target) || anchor?.contains(target) === true ? null : popup
   }
 
@@ -188,17 +204,18 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
 
   const prepare = (popup: HTMLElement): PreparedPopup | null => {
     if (!rendered(popup) || popup.parentElement?.closest('[role="menu"]') !== null) return null
-    const remembered = resolvedAnchors.get(popup) ?? null
-    const candidate = candidateAnchor(document, popup, lastTrigger, remembered)
-    const anchor = candidate !== null && rendered(candidate) ? candidate : null
-    if (anchor !== null) resolvedAnchors.set(popup, anchor)
-    if (!originals.has(popup)) originals.set(popup, { style: popup.getAttribute('style'), marker: popup.dataset.dshMobilePopup })
+    const anchor = resolveAnchor(popup, true)
+    let original = originals.get(popup)
+    if (original === undefined) {
+      original = { style: popup.getAttribute('style'), marker: popup.dataset.dshMobilePopup }
+      originals.set(popup, original)
+    }
     const viewport = view.visualViewport
     const viewportWidth = viewport?.width ?? view.innerWidth
     const viewportHeight = viewport?.height ?? view.innerHeight
     const kind = popupKind(popup)
     const maxHeight = popupHeightLimit(kind, viewportHeight)
-    const authoredWidth = popup.getBoundingClientRect().width
+    const authoredWidth = authoredPopupWidth(popup, original.style)
 
     popup.dataset.dshMobilePopup = kind
     popup.style.setProperty('position', 'fixed', 'important')

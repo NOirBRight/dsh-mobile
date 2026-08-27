@@ -125,19 +125,29 @@ export class HostSession {
     const hostId = prepared.profile.hostId
     const manager = this.manager
     if (manager === null) {
-      const cached = await this.deps.hydrateBoot?.(prepared) ?? null
-      if (bootGeneration !== this.bootGeneration) return cached
-      if (cached !== null) {
-        await this.paint(cached, hostId, bootGeneration)
-        return cached
+      try {
+        const cached = await this.deps.hydrateBoot?.(prepared) ?? null
+        if (bootGeneration !== this.bootGeneration) return cached
+        if (cached !== null) {
+          await this.paint(cached, hostId, bootGeneration)
+          return cached
+        }
+        return this.connect(prepared)
+      } catch (error) {
+        if (bootGeneration !== this.bootGeneration) return null
+        throw error
       }
-      return this.connect(prepared)
     }
-    const client = await manager.current()
-    if (bootGeneration !== this.bootGeneration) return null
-    const selection = await this.deps.injectBoot(client, prepared)
-    await this.paint(selection, hostId, bootGeneration)
-    return selection
+    try {
+      const client = await manager.current()
+      if (bootGeneration !== this.bootGeneration) return null
+      const selection = await this.deps.injectBoot(client, prepared)
+      await this.paint(selection, hostId, bootGeneration)
+      return selection
+    } catch (error) {
+      if (bootGeneration !== this.bootGeneration) return null
+      throw error
+    }
   }
 
   async probeNow(): Promise<void> {

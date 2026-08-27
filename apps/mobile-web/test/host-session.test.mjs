@@ -188,6 +188,31 @@ test('a superseded remount cannot paint older Host boot data after a newer refre
   assert.equal(session.selection().manifest.rev, 'newer')
 })
 
+test('a superseded remount failure cannot surface after a newer refresh succeeds', async () => {
+  const mounts = []
+  const manager = fakeManager()
+  let rejectOlder
+  let releaseNewer
+  const older = new Promise((_resolve, reject) => { rejectOlder = () => { reject(new Error('stale refresh failed')) } })
+  const newer = new Promise(resolve => { releaseNewer = () => { resolve(selection('newer')) } })
+  const responses = [Promise.resolve(selection('initial')), older, newer]
+  const session = new HostSession({
+    slot: { attach() {}, async current() { return manager.current() } },
+    createManager() { return manager },
+    async injectBoot() { return responses.shift() },
+    mount(next) { mounts.push(next.manifest.rev) },
+  })
+  await session.connect(prepared('host-a'))
+  const stale = session.remount()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  const latest = session.remount()
+  releaseNewer()
+  await latest
+  rejectOlder()
+  await assert.doesNotReject(stale)
+  assert.deepEqual(mounts, ['initial', 'newer'])
+})
+
 test('connect paints a cached boot roster before the tunnel is open', async () => {
   const mounts = []
   let release

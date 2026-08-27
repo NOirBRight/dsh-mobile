@@ -12,6 +12,13 @@ function click(target: Element): void {
 }
 
 function run(): void {
+  Object.defineProperty(window, 'visualViewport', { configurable: true, value: undefined })
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 320 })
+  Object.defineProperty(window, 'requestAnimationFrame', {
+    configurable: true,
+    value: (callback: FrameRequestCallback) => { callback(window.performance.now()); return 0 },
+  })
+  Object.defineProperty(window, 'cancelAnimationFrame', { configurable: true, value: () => {} })
   const trigger = document.createElement('button')
   trigger.setAttribute('aria-haspopup', 'menu')
   trigger.setAttribute('aria-expanded', 'true')
@@ -42,6 +49,10 @@ function run(): void {
   document.body.append(choiceTrigger, choice)
 
   const dispose = installPopupGeometryAdapter(document)
+  document.body.dataset.choiceNarrowWidth = String(Math.round(choice.getBoundingClientRect().width))
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+  window.dispatchEvent(new Event('resize'))
+  document.body.dataset.choiceWideWidth = String(Math.round(choice.getBoundingClientRect().width))
   touchPointerDown(trigger, 1)
   click(trigger)
   document.body.dataset.anchorClosed = String(trigger.getAttribute('aria-expanded') === 'false')

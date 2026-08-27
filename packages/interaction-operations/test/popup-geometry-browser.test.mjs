@@ -14,7 +14,7 @@ test('popup anchors and authored choice width survive mobile compatibility geome
     await build({ root: fixtureRoot, base: './', configFile: false, logLevel: 'silent', build: { outDir, emptyOutDir: true } })
     const chrome = spawnSync(process.env.CHROME_BIN ?? '/usr/bin/google-chrome', [
       '--headless=new', '--no-sandbox', '--disable-gpu', '--run-all-compositor-stages-before-draw',
-      '--allow-file-access-from-files', '--window-size=360,800', '--virtual-time-budget=1500',
+      '--allow-file-access-from-files', '--window-size=320,800', '--virtual-time-budget=2000',
       '--dump-dom', 'file://' + resolve(outDir, 'index.html'),
     ], { encoding: 'utf8', timeout: 15_000 })
     assert.equal(chrome.status, 0, chrome.stderr)
@@ -24,6 +24,8 @@ test('popup anchors and authored choice width survive mobile compatibility geome
     assert.equal(capture('replacement-anchor-preserved'), 'true', 'a replacement ARIA owner must not be treated as outside')
     assert.equal(capture('replacement-anchor-closed'), 'true', 'the replacement owner click must close and stay closed')
     assert.equal(capture('choice-kind'), 'rich')
+    assert.equal(capture('choice-narrow-width'), '296', 'choice menus must keep 12px narrow viewport gutters')
+    assert.equal(capture('choice-wide-width'), '320', 'choice menus must recover their authored width after widening')
     assert.equal(capture('choice-width'), '320', 'choice menus must preserve their authored picker width')
   } finally {
     await rm(outDir, { recursive: true, force: true })
