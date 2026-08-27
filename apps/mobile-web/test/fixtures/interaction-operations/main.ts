@@ -59,6 +59,7 @@ window.setTimeout(() => {
   const leftMenu = document.querySelector<HTMLElement>('#geo-left [role="menu"]')!
   const rightAnchor = document.querySelector<HTMLElement>('#geo-right > button')!
   const rightMenu = document.querySelector<HTMLElement>('#geo-right [role="menu"]')!
+  const choiceMenu = document.querySelector<HTMLElement>('#geo-choice [role="menu"]')!
   const richMenu = document.querySelector<HTMLElement>('#geo-rich [role="menu"]')!
   const richScroll = richMenu.querySelector<HTMLElement>('[data-rich-scroll]')!
   const selectCard = document.querySelector<HTMLElement>('#geo-select [data-select-card]')!
@@ -67,6 +68,7 @@ window.setTimeout(() => {
   // from semantic Back while the other layered cases run.
   leftMenu.setAttribute('aria-hidden', 'true')
   rightMenu.setAttribute('aria-hidden', 'true')
+  choiceMenu.setAttribute('aria-hidden', 'true')
   richMenu.setAttribute('aria-hidden', 'true')
   selectListbox.setAttribute('aria-hidden', 'true')
 
@@ -215,6 +217,7 @@ window.setTimeout(() => {
     const rightDelta = rightRect.right - rightAnchor.getBoundingClientRect().right
     document.body.dataset.popupRightDelta = String(Math.round(rightDelta))
     document.body.dataset.popupRightAligned = String(Math.abs(rightDelta) < 2)
+    document.body.dataset.popupChoiceWidth = String(Math.round(choiceMenu.getBoundingClientRect().width))
     document.body.dataset.popupRichMaxHeight = getComputedStyle(richMenu).maxHeight
     document.body.dataset.popupRichOverflow = getComputedStyle(richMenu).overflowY
     document.body.dataset.popupRichScrolls = String(richScroll.scrollHeight > richScroll.clientHeight)

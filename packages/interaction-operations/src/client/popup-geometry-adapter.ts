@@ -65,7 +65,7 @@ function rendered(element: HTMLElement): boolean {
 
 function popupKind(element: HTMLElement): MobilePopupKind {
   if (element.getAttribute('role') === 'listbox') return 'listbox'
-  if (element.querySelector('input, textarea') !== null) return 'rich'
+  if (element.querySelector('input, textarea, [role="menuitemradio"], [role="menuitemcheckbox"]') !== null) return 'rich'
   const rows = element.querySelectorAll('[role="menuitem"]')
   if (rows.length > 8 || (element.textContent?.trim().length ?? 0) > 96) return 'rich'
   return 'simple'
@@ -193,6 +193,7 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
     const viewportHeight = viewport?.height ?? view.innerHeight
     const kind = popupKind(popup)
     const maxHeight = popupHeightLimit(kind, viewportHeight)
+    const authoredWidth = popup.getBoundingClientRect().width
 
     popup.dataset.dshMobilePopup = kind
     popup.style.setProperty('position', 'fixed', 'important')
@@ -202,7 +203,8 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
     popup.style.setProperty('overflow-y', kind === 'rich' ? 'hidden' : 'auto', 'important')
     popup.style.setProperty('width', 'max-content', 'important')
     popup.style.setProperty('transform', 'none', 'important')
-    const width = popupWidth(kind, popup.scrollWidth, anchor?.getBoundingClientRect().width ?? 0, viewportWidth)
+    const naturalWidth = kind === 'rich' ? Math.max(authoredWidth, popup.scrollWidth) : popup.scrollWidth
+    const width = popupWidth(kind, naturalWidth, anchor?.getBoundingClientRect().width ?? 0, viewportWidth)
     popup.style.setProperty('width', width + 'px', 'important')
     return { popup, anchor, kind, width, maxHeight }
   }

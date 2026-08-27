@@ -42,6 +42,7 @@ test('touch adapters expose actions, route gestures, and retract cleanly', async
     assert.equal(capture('popup-simple-width'), '144', 'simple mobile menus should shrink to their content class')
     assert.equal(capture('popup-left-aligned'), 'true')
     assert.equal(capture('popup-right-aligned'), 'true', 'right delta: ' + capture('popup-right-delta'))
+    assert.equal(capture('popup-choice-width'), '320', 'choice menus must preserve their authored picker width')
     assert.equal(capture('popup-rich-max-height'), '360px', 'model picker must retain its compact mobile height')
     assert.equal(capture('popup-rich-overflow'), 'hidden', 'model picker chrome must not become the scroll owner')
     assert.equal(capture('popup-rich-scrolls'), 'true', 'model rows must scroll inside the compact picker')
