@@ -1,6 +1,6 @@
 {
   "name": "@dsh-mobile/interaction-operations",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "type": "module",
   "description": "Modality-independent mobile interaction intents and compatibility adapters for DSH",
   "main": "lib/index.js",

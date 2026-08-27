@@ -127,10 +127,10 @@ export class HostSession {
     if (manager === null) {
       try {
         const cached = await this.deps.hydrateBoot?.(prepared) ?? null
-        if (bootGeneration !== this.bootGeneration) return cached
+        if (bootGeneration !== this.bootGeneration) return null
         if (cached !== null) {
           await this.paint(cached, hostId, bootGeneration)
-          return cached
+          return bootGeneration === this.bootGeneration ? cached : null
         }
         return this.connect(prepared)
       } catch (error) {
@@ -143,7 +143,7 @@ export class HostSession {
       if (bootGeneration !== this.bootGeneration) return null
       const selection = await this.deps.injectBoot(client, prepared)
       await this.paint(selection, hostId, bootGeneration)
-      return selection
+      return bootGeneration === this.bootGeneration ? selection : null
     } catch (error) {
       if (bootGeneration !== this.bootGeneration) return null
       throw error

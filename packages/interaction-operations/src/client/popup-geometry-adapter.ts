@@ -108,13 +108,25 @@ function dispatchOfficialOutsideMouseDown(target: Element, view: Window): void {
   target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view }))
 }
 
+function controlsPopup(candidate: HTMLElement | null, popup: HTMLElement): candidate is HTMLElement {
+  return candidate !== null && popup.id !== ''
+    && candidate.getAttribute('aria-controls')?.split(/\s+/).includes(popup.id) === true
+}
+
 function candidateAnchor(
-  document: Document, popup: HTMLElement, lastTrigger: HTMLElement | null, remembered: HTMLElement | null = null,
+  document: Document,
+  popup: HTMLElement,
+  lastTrigger: HTMLElement | null,
+  remembered: HTMLElement | null = null,
+  preferred: HTMLElement | null = null,
 ): HTMLElement | null {
+  if (controlsPopup(preferred, popup)) return preferred
   if (popup.id !== '') {
     const controlled = Array.from(document.querySelectorAll<HTMLElement>('[aria-controls]'))
-      .find(candidate => candidate.getAttribute('aria-controls')?.split(/\s+/).includes(popup.id) === true)
-    if (controlled !== undefined) return controlled
+      .filter(candidate => controlsPopup(candidate, popup))
+    const expanded = controlled.filter(candidate => candidate.getAttribute('aria-expanded') === 'true')
+    const current = expanded.at(-1) ?? controlled.at(-1)
+    if (current !== undefined) return current
   }
   // Local in-place menus conventionally follow their trigger. Never search an
   // application root for a portaled surface: that picks an unrelated button.
@@ -158,9 +170,11 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
     if (trigger !== null && trigger.closest('[role="menu"], [role="listbox"]') === null) lastTrigger = trigger
   }
 
-  const resolveAnchor = (popup: HTMLElement, requireRendered = false): HTMLElement | null => {
+  const resolveAnchor = (
+    popup: HTMLElement, requireRendered = false, preferred: HTMLElement | null = null,
+  ): HTMLElement | null => {
     const remembered = resolvedAnchors.get(popup) ?? null
-    const candidate = candidateAnchor(document, popup, lastTrigger, remembered)
+    const candidate = candidateAnchor(document, popup, lastTrigger, remembered, preferred)
     const anchor = candidate !== null && (!requireRendered || rendered(candidate)) ? candidate : null
     if (anchor !== null) resolvedAnchors.set(popup, anchor)
     return anchor
@@ -170,7 +184,8 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
     const popup = topDismissiblePopup(document)
     if (popup === null) return null
     const owner = popupPresentationSurface(popup)
-    const anchor = resolveAnchor(popup)
+    const preferred = target.closest<HTMLElement>('button, [aria-haspopup], [aria-controls]')
+    const anchor = resolveAnchor(popup, false, preferred)
     return popup.contains(target) || owner.contains(target) || anchor?.contains(target) === true ? null : popup
   }
 

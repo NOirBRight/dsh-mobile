@@ -183,7 +183,7 @@ test('a superseded remount cannot paint older Host boot data after a newer refre
   releaseNewer()
   await latest
   releaseOlder()
-  await stale
+  assert.equal(await stale, null)
   assert.deepEqual(mounts, ['initial', 'newer'])
   assert.equal(session.selection().manifest.rev, 'newer')
 })

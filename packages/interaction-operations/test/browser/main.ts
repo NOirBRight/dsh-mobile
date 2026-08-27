@@ -62,7 +62,6 @@ function run(): void {
   const replacement = document.createElement('button')
   replacement.setAttribute('aria-haspopup', 'menu')
   replacement.setAttribute('aria-expanded', 'true')
-  trigger.removeAttribute('aria-controls')
   replacement.setAttribute('aria-controls', popup.id)
   replacement.addEventListener('click', () => {
     replacement.setAttribute('aria-expanded', String(replacement.getAttribute('aria-expanded') !== 'true'))
