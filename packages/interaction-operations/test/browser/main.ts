@@ -27,7 +27,7 @@ function run(): void {
   const popup = document.createElement('div')
   popup.id = 'owned-popup'
   popup.setAttribute('role', 'menu')
-  popup.textContent = 'Picker rows'
+  popup.textContent = '操作 Actions'
   const dismissBeforeClick = (event: MouseEvent): void => {
     if (!popup.contains(event.target as Node)) trigger.setAttribute('aria-expanded', 'false')
   }
@@ -67,16 +67,21 @@ function run(): void {
   document.body.append(nestedTrigger, nested)
 
   const dispose = installPopupGeometryAdapter(document)
+  document.body.dataset.simpleNarrowWidth = String(Math.round(popup.getBoundingClientRect().width))
   document.body.dataset.choiceNarrowWidth = String(Math.round(choice.getBoundingClientRect().width))
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 360 })
   window.dispatchEvent(new Event('resize'))
   document.body.dataset.choiceAt360Width = String(Math.round(choice.getBoundingClientRect().width))
+  document.body.dataset.simpleAt360Width = String(Math.round(popup.getBoundingClientRect().width))
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
   window.dispatchEvent(new Event('resize'))
   document.body.dataset.choiceWideWidth = String(Math.round(choice.getBoundingClientRect().width))
+  document.body.dataset.simpleWideWidth = String(Math.round(popup.getBoundingClientRect().width))
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 412 })
   window.dispatchEvent(new Event('resize'))
   document.body.dataset.choiceAt412Width = String(Math.round(choice.getBoundingClientRect().width))
+  document.body.dataset.simpleAt412Width = String(Math.round(popup.getBoundingClientRect().width))
+  document.body.dataset.simpleOverflowX = getComputedStyle(popup).overflowX
   document.body.dataset.choiceOverflowY = getComputedStyle(choice).overflowY
   document.body.dataset.choiceOverflowX = getComputedStyle(choice).overflowX
   document.body.dataset.nestedOuterOverflowY = getComputedStyle(nested).overflowY
@@ -107,6 +112,21 @@ function run(): void {
   click(replacement)
   document.body.dataset.replacementAnchorClosed = String(replacement.getAttribute('aria-expanded') === 'false')
   document.removeEventListener('mousedown', dismissReplacementBeforeClick)
+
+  replacement.setAttribute('aria-expanded', 'true')
+  const outside = document.createElement('button')
+  outside.textContent = 'Outside'
+  document.body.append(outside)
+  const dismissFromOutside = (event: MouseEvent): void => {
+    if (!popup.contains(event.target as Node) && !replacement.contains(event.target as Node)) {
+      replacement.setAttribute('aria-expanded', 'false')
+    }
+  }
+  document.addEventListener('mousedown', dismissFromOutside)
+  touchPointerDown(outside, 3)
+  document.body.dataset.genuineOutsideClosed = String(replacement.getAttribute('aria-expanded') === 'false')
+  document.removeEventListener('mousedown', dismissFromOutside)
+  outside.remove()
   trigger.remove()
   replacement.remove()
   popup.remove()
