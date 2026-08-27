@@ -23,6 +23,7 @@ function run(): void {
   trigger.setAttribute('aria-haspopup', 'menu')
   trigger.setAttribute('aria-expanded', 'true')
   trigger.setAttribute('aria-controls', 'owned-popup')
+  trigger.getBoundingClientRect = () => DOMRect.fromRect({ x: 260, y: 24, width: 40, height: 32 })
   const popup = document.createElement('div')
   popup.id = 'owned-popup'
   popup.setAttribute('role', 'menu')
@@ -45,14 +46,26 @@ function run(): void {
   choice.setAttribute('role', 'menu')
   choice.setAttribute('aria-hidden', 'true')
   choice.style.width = '320px'
-  choice.innerHTML = '<button role="menuitemradio">272K context window</button><button role="menuitemradio">1M context window</button>'
+  choice.innerHTML = Array.from({ length: 24 }, (_, index) =>
+    '<button style="display:block;width:100%;white-space:normal" role="menuitemradio">' +
+    (index % 2 === 0 ? '上下文窗口 272K · 详细中文模型选项' : '1M context window · detailed English model option') +
+    '</button>',
+  ).join('')
   document.body.append(choiceTrigger, choice)
 
   const dispose = installPopupGeometryAdapter(document)
   document.body.dataset.choiceNarrowWidth = String(Math.round(choice.getBoundingClientRect().width))
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 360 })
+  window.dispatchEvent(new Event('resize'))
+  document.body.dataset.choiceAt360Width = String(Math.round(choice.getBoundingClientRect().width))
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
   window.dispatchEvent(new Event('resize'))
   document.body.dataset.choiceWideWidth = String(Math.round(choice.getBoundingClientRect().width))
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 412 })
+  window.dispatchEvent(new Event('resize'))
+  document.body.dataset.choiceAt412Width = String(Math.round(choice.getBoundingClientRect().width))
+  document.body.dataset.choiceOverflowY = getComputedStyle(choice).overflowY
+  document.body.dataset.choiceOverflowX = getComputedStyle(choice).overflowX
   touchPointerDown(trigger, 1)
   click(trigger)
   document.body.dataset.anchorClosed = String(trigger.getAttribute('aria-expanded') === 'false')
@@ -63,6 +76,7 @@ function run(): void {
   replacement.setAttribute('aria-haspopup', 'menu')
   replacement.setAttribute('aria-expanded', 'true')
   replacement.setAttribute('aria-controls', popup.id)
+  replacement.getBoundingClientRect = () => DOMRect.fromRect({ x: 20, y: 24, width: 40, height: 32 })
   replacement.addEventListener('click', () => {
     replacement.setAttribute('aria-expanded', String(replacement.getAttribute('aria-expanded') !== 'true'))
   })
@@ -70,8 +84,10 @@ function run(): void {
     if (!popup.contains(event.target as Node)) replacement.setAttribute('aria-expanded', 'false')
   }
   document.addEventListener('mousedown', dismissReplacementBeforeClick)
-  document.body.insertBefore(replacement, popup)
+  document.body.insertBefore(replacement, trigger)
   touchPointerDown(replacement, 2)
+  window.dispatchEvent(new Event('resize'))
+  document.body.dataset.replacementAnchorAlign = popup.dataset.dshMobileAlign ?? ''
   document.body.dataset.replacementAnchorPreserved = String(replacement.getAttribute('aria-expanded') === 'true')
   click(replacement)
   document.body.dataset.replacementAnchorClosed = String(replacement.getAttribute('aria-expanded') === 'false')

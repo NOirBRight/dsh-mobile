@@ -88,7 +88,7 @@ export class HostSession {
     return true
   }
 
-  async connect(prepared: PreparedProfileConnection): Promise<ResponsiveBootSelection> {
+  async connect(prepared: PreparedProfileConnection): Promise<ResponsiveBootSelection | null> {
     this.stop()
     const generation = this.generation
     const bootGeneration = ++this.bootGeneration
@@ -97,23 +97,45 @@ export class HostSession {
     this.manager = manager
     this.deps.slot.attach(manager)
     manager.start()
-    const cached = await this.deps.hydrateBoot?.(prepared) ?? null
+    const superseded = (): boolean => this.manager !== null
+      && (generation !== this.generation || bootGeneration !== this.bootGeneration)
+    let cached: ResponsiveBootSelection | null
+    try {
+      cached = await this.deps.hydrateBoot?.(prepared) ?? null
+    } catch (error) {
+      if (superseded()) return null
+      if (generation !== this.generation) throw new TunnelError('closed', HOST_SESSION_STOPPED_MESSAGE)
+      if (bootGeneration !== this.bootGeneration) return null
+      throw error
+    }
     if (cached !== null && generation === this.generation && bootGeneration === this.bootGeneration) {
       await this.paint(cached, prepared.profile.hostId, bootGeneration)
     }
     for (;;) {
+      if (superseded()) return null
       if (generation !== this.generation) throw new TunnelError('closed', HOST_SESSION_STOPPED_MESSAGE)
-      const client = await manager.current()
+      if (bootGeneration !== this.bootGeneration) return null
+      let client: TunnelClient | null = null
       try {
+        client = await manager.current()
+        if (superseded()) return null
+        if (generation !== this.generation) throw new TunnelError('closed', HOST_SESSION_STOPPED_MESSAGE)
+        if (bootGeneration !== this.bootGeneration) return null
         const selection = await this.deps.injectBoot(client, prepared)
-        if (generation !== this.generation) return selection
+        if (superseded()) return null
+        if (generation !== this.generation) throw new TunnelError('closed', HOST_SESSION_STOPPED_MESSAGE)
+        if (bootGeneration !== this.bootGeneration) return null
         manager.armHeartbeat()
         await this.paint(selection, prepared.profile.hostId, bootGeneration)
-        return selection
+        if (superseded()) return null
+        if (generation !== this.generation) throw new TunnelError('closed', HOST_SESSION_STOPPED_MESSAGE)
+        return bootGeneration === this.bootGeneration ? selection : null
       } catch (error) {
+        if (superseded()) return null
         if (generation !== this.generation) throw error
+        if (bootGeneration !== this.bootGeneration) return null
         if (!isTransientTunnelBootError(error)) throw error
-        if (client.state === 'open') client.close()
+        if (client?.state === 'open') client.close()
       }
     }
   }

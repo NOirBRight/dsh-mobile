@@ -22,10 +22,15 @@ test('popup anchors and authored choice width survive mobile compatibility geome
     const capture = name => new RegExp('data-' + name + '="([^"]*)"').exec(chrome.stdout)?.[1]
     assert.equal(capture('anchor-closed'), 'true', 'an open popup anchor must close once without pre-click dismissal')
     assert.equal(capture('replacement-anchor-preserved'), 'true', 'a replacement ARIA owner must not be treated as outside')
+    assert.equal(capture('replacement-anchor-align'), 'start', 'placement must retain the currently touched owner over stale DOM order')
     assert.equal(capture('replacement-anchor-closed'), 'true', 'the replacement owner click must close and stay closed')
     assert.equal(capture('choice-kind'), 'rich')
     assert.equal(capture('choice-narrow-width'), '296', 'choice menus must keep 12px narrow viewport gutters')
+    assert.equal(capture('choice-at360-width'), '320')
     assert.equal(capture('choice-wide-width'), '320', 'choice menus must recover their authored width after widening')
+    assert.equal(capture('choice-at412-width'), '320')
+    assert.equal(capture('choice-overflow-y'), 'auto', 'tall rich choices must remain vertically scrollable')
+    assert.equal(capture('choice-overflow-x'), 'hidden', 'bilingual choice text must not create a horizontal scrollbar')
     assert.equal(capture('choice-width'), '320', 'choice menus must preserve their authored picker width')
   } finally {
     await rm(outDir, { recursive: true, force: true })

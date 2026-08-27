@@ -63,6 +63,13 @@ function rendered(element: HTMLElement): boolean {
   return style.display !== 'none' && style.visibility !== 'hidden'
 }
 
+function delegatesVerticalScroll(popup: HTMLElement): boolean {
+  return Array.from(popup.querySelectorAll<HTMLElement>('*')).some(element => {
+    const overflow = getComputedStyle(element).overflowY
+    return overflow === 'auto' || overflow === 'scroll'
+  })
+}
+
 function authoredPopupWidth(popup: HTMLElement, originalStyle: string | null): number {
   const adaptedStyle = popup.getAttribute('style')
   if (originalStyle === null) popup.removeAttribute('style')
@@ -108,7 +115,7 @@ function dispatchOfficialOutsideMouseDown(target: Element, view: Window): void {
   target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view }))
 }
 
-function controlsPopup(candidate: HTMLElement | null, popup: HTMLElement): candidate is HTMLElement {
+function controlsPopup(candidate: HTMLElement | null, popup: HTMLElement): boolean {
   return candidate !== null && popup.id !== ''
     && candidate.getAttribute('aria-controls')?.split(/\s+/).includes(popup.id) === true
 }
@@ -120,7 +127,8 @@ function candidateAnchor(
   remembered: HTMLElement | null = null,
   preferred: HTMLElement | null = null,
 ): HTMLElement | null {
-  if (controlsPopup(preferred, popup)) return preferred
+  if (preferred !== null && controlsPopup(preferred, popup)) return preferred
+  if (remembered !== null && controlsPopup(remembered, popup)) return remembered
   if (popup.id !== '') {
     const controlled = Array.from(document.querySelectorAll<HTMLElement>('[aria-controls]'))
       .filter(candidate => controlsPopup(candidate, popup))
@@ -237,7 +245,8 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
     popup.style.setProperty('min-width', '0', 'important')
     popup.style.setProperty('max-width', 'none', 'important')
     popup.style.setProperty('max-height', maxHeight + 'px', 'important')
-    popup.style.setProperty('overflow-y', kind === 'rich' ? 'hidden' : 'auto', 'important')
+    popup.style.setProperty('overflow-y', delegatesVerticalScroll(popup) ? 'hidden' : 'auto', 'important')
+    popup.style.setProperty('overflow-x', 'hidden', 'important')
     popup.style.setProperty('width', 'max-content', 'important')
     popup.style.setProperty('transform', 'none', 'important')
     const naturalWidth = kind === 'rich' ? Math.max(authoredWidth, popup.scrollWidth) : popup.scrollWidth

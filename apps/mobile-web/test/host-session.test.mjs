@@ -108,10 +108,65 @@ test('a late superseded Host connect cannot repaint or arm after the newer Host'
   await new Promise(resolve => setTimeout(resolve, 0))
   await session.connect(prepared('host-b'))
   releaseA()
-  await stale
+  assert.equal(await stale, null)
   assert.deepEqual(mounts, [{ rev: 'host-b', hostId: 'host-b' }])
   assert.equal(managers.get('host-a').stats().armed, 0)
   assert.equal(managers.get('host-b').stats().armed, 1)
+})
+
+test('a superseded Host connect suppresses its late boot failure', async () => {
+  let rejectA
+  const bootA = new Promise((_resolve, reject) => { rejectA = () => { reject(new Error('stale boot failed')) } })
+  const session = new HostSession({
+    slot: { attach() {}, async current() { throw new Error('unused slot') } },
+    createManager() { return fakeManager() },
+    async injectBoot(_client, next) {
+      return next.profile.hostId === 'host-a' ? bootA : selection('host-b')
+    },
+    mount() {},
+  })
+  const stale = session.connect(prepared('host-a'))
+  await new Promise(resolve => setTimeout(resolve, 0))
+  await session.connect(prepared('host-b'))
+  rejectA()
+  assert.equal(await stale, null)
+})
+
+test('a superseded Host connect suppresses its late tunnel readiness failure', async () => {
+  let rejectCurrentA
+  const currentA = new Promise((_resolve, reject) => { rejectCurrentA = () => { reject(new Error('stale tunnel failed')) } })
+  const session = new HostSession({
+    slot: { attach() {}, async current() { throw new Error('unused slot') } },
+    createManager(next) {
+      const manager = fakeManager()
+      if (next.profile.hostId === 'host-a') manager.current = async () => currentA
+      return manager
+    },
+    async injectBoot(_client, next) { return selection(next.profile.hostId) },
+    mount() {},
+  })
+  const stale = session.connect(prepared('host-a'))
+  await new Promise(resolve => setTimeout(resolve, 0))
+  await session.connect(prepared('host-b'))
+  rejectCurrentA()
+  assert.equal(await stale, null)
+})
+
+test('a superseded Host connect suppresses its late cached-boot failure', async () => {
+  let rejectHydrateA
+  const hydrateA = new Promise((_resolve, reject) => { rejectHydrateA = () => { reject(new Error('stale cache failed')) } })
+  const session = new HostSession({
+    slot: { attach() {}, async current() { throw new Error('unused slot') } },
+    createManager() { return fakeManager() },
+    async hydrateBoot(next) { return next.profile.hostId === 'host-a' ? hydrateA : null },
+    async injectBoot(_client, next) { return selection(next.profile.hostId) },
+    mount() {},
+  })
+  const stale = session.connect(prepared('host-a'))
+  await new Promise(resolve => setTimeout(resolve, 0))
+  await session.connect(prepared('host-b'))
+  rejectHydrateA()
+  assert.equal(await stale, null)
 })
 
 test('automatic reconnect refreshes a changed roster and skips repaint for the same revision', async () => {
@@ -186,6 +241,39 @@ test('a superseded remount cannot paint older Host boot data after a newer refre
   assert.equal(await stale, null)
   assert.deepEqual(mounts, ['initial', 'newer'])
   assert.equal(session.selection().manifest.rev, 'newer')
+})
+
+test('a newer refresh paints last when an older mount is already in flight', async () => {
+  const manager = fakeManager()
+  let releaseOlderMount
+  let markOlderStarted
+  const olderMountGate = new Promise(resolve => { releaseOlderMount = resolve })
+  const olderStarted = new Promise(resolve => { markOlderStarted = resolve })
+  const responses = ['initial', 'older', 'newer']
+  let visible = null
+  const mounts = []
+  const session = new HostSession({
+    slot: { attach() {}, async current() { return manager.current() } },
+    createManager() { return manager },
+    async injectBoot() { return selection(responses.shift()) },
+    async mount(next) {
+      mounts.push(next.manifest.rev)
+      if (next.manifest.rev === 'older') {
+        markOlderStarted()
+        await olderMountGate
+      }
+      visible = next.manifest.rev
+    },
+  })
+  await session.connect(prepared('host-a'))
+  const stale = session.remount()
+  await olderStarted
+  const latest = session.remount()
+  releaseOlderMount()
+  assert.equal(await stale, null)
+  assert.equal((await latest).manifest.rev, 'newer')
+  assert.equal(visible, 'newer')
+  assert.deepEqual(mounts, ['initial', 'older', 'newer'])
 })
 
 test('a superseded remount failure cannot surface after a newer refresh succeeds', async () => {
