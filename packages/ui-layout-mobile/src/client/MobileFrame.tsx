@@ -13,6 +13,7 @@
  */
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { createMobileLayoutStore } from './stores.ts'
 import css from './MobileFrame.module.css'
 import { isOfficialNewSessionLabel } from './chrome-anchors.ts'
@@ -59,6 +60,7 @@ export function MobileFrame({
   useSessions,
   actions,
   renderSlot,
+  SessionProvider,
   interactionOperations,
 }: MobileFrameProps) {
   const panels = useStore(s => s)
@@ -207,7 +209,7 @@ export function MobileFrame({
         {renderSlot('sidebar', { collapsed: false, width: drawerWidth })}
       </nav>
       <section className={css.detailsSheet} aria-label="详情面板">
-        {renderSlot('details', {})}
+        <SessionProvider>{renderSlot('details', {})}</SessionProvider>
       </section>
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}

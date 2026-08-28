@@ -65,11 +65,12 @@ export class TunnelWebSocket {
     else this.listeners.set(type, next)
   }
 
-  /** Send one ws-msg frame. */
+  /** Send one ws-msg frame while preserving WebSocket text/binary type. */
   send(data: string | ArrayBuffer | Uint8Array): void {
     if (this.ready !== 1) throw new TunnelError('closed', 'WebSocket is not open')
+    const binary = typeof data !== 'string'
     const bytes = typeof data === 'string' ? utf8Encode(data) : data instanceof Uint8Array ? data : new Uint8Array(data)
-    this.session.send({ t: 'ws-msg', id: this.id, data: b64encode(bytes) })
+    this.session.send({ t: 'ws-msg', id: this.id, data: b64encode(bytes), binary })
   }
 
   close(code = 1000, reason = ''): void {
@@ -95,10 +96,14 @@ export class TunnelWebSocket {
     this.fail(message, 1006)
   }
 
-  /** @internal host to client payload; delivered as a string MessageEvent. */
-  onMsg(dataB64: string): void {
+  /** @internal host to client payload with original WebSocket message type. */
+  onMsg(dataB64: string, binary = false): void {
     if (this.ready !== 1) return
-    this.emit('message', { data: utf8Decode(b64decode(dataB64)) })
+    const bytes = b64decode(dataB64)
+    const data = binary
+      ? this.binaryType === 'arraybuffer' ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : bytes
+      : utf8Decode(bytes)
+    this.emit('message', { data })
   }
 
   /** @internal host closed its side. */

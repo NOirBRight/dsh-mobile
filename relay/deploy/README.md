@@ -60,3 +60,25 @@ second device row.
 The Relay is deliberately not the Caddy+frps Custom Endpoint recipe in
 deploy/self-host/; that recipe serves one operator's Host Gateway. This stack
 must not be pointed at :3080 or a Host Gateway.
+
+## Self-hosted relay checklist (same opaque behavior, no token wall)
+
+A self-hosted Relay is no harder than the official one because it never sees
+DSH credentials. To keep devices reconnecting without a rescan after a Host
+restart, verify all of the following:
+
+1. Caddy (or the edge) reverse-proxies **only** the Relay container's WSS route
+   (`/r/*` and `/healthz`). Never proxy :3080/:3082, the Host Gateway, or any
+   DSH web route behind the same hostname.
+2. No `basic_auth`, Cloudflare Access, or HTTP login sits in front of `/r/*`:
+   the phone must reach the room WebSocket with no credential exchange. The
+   Room ID is the capability; a login wall would silently break reconnect
+   after every Host restart.
+3. Do not append `?token=` or any DSH launch token to the relay URL in the
+   pairing profile; the DSH browser cookie is minted and injected by the Host
+   pairing plugin on the loopback hop, never by the Relay.
+4. Keep `flush_interval -1` (or equivalent) so WebSocket upgrade and binary
+   frames are not buffered by the edge.
+5. Host profile uses `endpointMode: relay` + `relayUrl: wss://<your-domain>`;
+   after a Host restart the plugin revives campaigns for `liveRooms()` and the
+   already-paired device reconnects with its Device Token — no rescan.

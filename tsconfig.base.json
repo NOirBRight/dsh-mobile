@@ -11,12 +11,16 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "paths": {
-      "@deepseek-ai/cordis": ["../deepseek-harness/vendor/cordis/lib/types/index.d.ts"],
-      "@deepseek-ai/dsh-client-runtime/client": ["../deepseek-harness/packages/client/runtime/lib/types/client/index.d.ts"],
-      "@deepseek-ai/dsh-client-ui-slots": ["../deepseek-harness/packages/client/ui-slots/lib/types/index.d.ts"],
-      "@deepseek-ai/dsh-client-ui-theme/client": ["../deepseek-harness/packages/client/ui-theme/lib/types/client/index.d.ts"],
-      "@deepseek-ai/dsh-client-ui-primitives": ["../deepseek-harness/packages/client/ui-primitives/lib/types/index.d.ts"],
-      "@deepseek-ai/dsh-host-webserver": ["../deepseek-harness/packages/host/webserver/lib/types/index.d.ts"]
+      "@deepseek-ai/cordis": ["./.dsh-upstream/vendor/cordis/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-client-store": ["./.dsh-upstream/packages/client/store/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-cordis-client-runner": ["./.dsh-upstream/packages/extensions/cordis-client-runner/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-slots": ["./.dsh-upstream/packages/client/ui-slots/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-theme/client": ["./.dsh-upstream/packages/client/ui-theme/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-primitives": ["./.dsh-upstream/packages/client/ui-primitives/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-renderer": ["./.dsh-upstream/packages/client/ui-renderer/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-renderer/client": ["./.dsh-upstream/packages/client/ui-renderer/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-session/client": ["./.dsh-upstream/packages/client/ui-session/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-host-webserver": ["./.dsh-upstream/packages/host/webserver/lib/types/index.d.ts"]
     }
   }
 }

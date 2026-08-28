@@ -9,7 +9,8 @@ export const DESKTOP_LAYOUT_ID = '@deepseek-ai/dsh-client-ui-layout'
 export const MOBILE_LAYOUT_ID = '@dsh-mobile/ui-layout-mobile'
 export const INTERACTION_OPERATIONS_ID = '@dsh-mobile/interaction-operations'
 export const CONNECTION_ID = '@deepseek-ai/dsh-client-connection'
-export const RUNTIME_ID = '@deepseek-ai/dsh-client-runtime'
+export const MODULES_ID = '@deepseek-ai/dsh-client-modules'
+export const RUNTIME_ID = '@deepseek-ai/dsh-cordis-client-runner'
 export const DSH_HOST_BRIDGE_CAPABILITY = '__DSH_HOST_BRIDGE__'
 const CLIENT_HMR_ID = '@deepseek-ai/dsh-client-hmr'
 const MOBILE_LAYOUT_REV = '0.1.30'
@@ -65,10 +66,32 @@ export interface BootEntry {
   [key: string]: unknown
 }
 
+export interface BootBatch {
+  phase: 'bootstrap' | 'application'
+  url: string
+  rev: string
+  entries: string[]
+}
+
 export interface BootManifest {
   rev: string
   entries: BootEntry[]
+  batches?: BootBatch[]
   [key: string]: unknown
+}
+
+/** Rebuild initial-load batches after entry replacement/localization. */
+function withEntryBatches(manifest: BootManifest, entries: BootEntry[]): BootManifest {
+  return {
+    ...manifest,
+    entries,
+    batches: entries.map(entry => ({
+      phase: entry.id === MODULES_ID ? 'bootstrap' : 'application',
+      url: entry.url,
+      rev: entry.rev,
+      entries: [entry.id],
+    })),
+  }
 }
 
 export interface PluginLocalizationOptions {
@@ -227,7 +250,7 @@ export async function localizePluginBundles(
     options.onProgress?.(loaded, total)
     return localized
   })
-  return { ...manifest, entries }
+  return withEntryBatches(manifest, entries)
 }
 
 async function localizeEntry(entry: BootEntry, options: PluginLocalizationOptions): Promise<BootEntry> {
@@ -298,7 +321,11 @@ export function extractBootManifestJson(html: string, missing = 'boot manifest n
   return JSON.parse(match[1])
 }
 
-const NARROW_LAYOUT_DEPENDENCIES = ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-theme'] as const
+const NARROW_LAYOUT_DEPENDENCIES = [
+  '@deepseek-ai/dsh-client-ui-renderer',
+  '@deepseek-ai/dsh-client-ui-session',
+  '@deepseek-ai/dsh-client-ui-theme',
+] as const
 
 export type LayoutCompatibility = 'compatible' | 'revision-mismatch' | 'missing-contract' | 'layout-load-failed'
 export type ResponsiveRoot = 'official' | 'narrow'
@@ -456,20 +483,26 @@ function validateBootManifest(value: unknown): BootManifest {
   if (typeof manifest.rev !== 'string' || !Array.isArray(manifest.entries)) {
     throw new Error('mobile boot manifest requires string rev and entries array')
   }
+  const entries: BootEntry[] = []
   for (const entry of manifest.entries) {
     if (
       typeof entry !== 'object' || entry === null ||
       typeof entry.id !== 'string' || typeof entry.url !== 'string' ||
-      typeof entry.rev !== 'string' || !Array.isArray(entry.inject)
+      typeof entry.rev !== 'string' ||
+      (entry.inject !== undefined && !Array.isArray(entry.inject))
     ) {
       throw new Error('mobile boot manifest contains an invalid entry')
     }
+    entries.push(entry.inject === undefined
+      ? { ...entry, inject: [] } as BootEntry
+      : entry as BootEntry)
   }
-  const layouts = manifest.entries.filter(entry => entry.id === DESKTOP_LAYOUT_ID)
+  const normalized = { ...manifest, entries } as BootManifest
+  const layouts = normalized.entries.filter(entry => entry.id === DESKTOP_LAYOUT_ID)
   if (layouts.length !== 1) {
     throw new Error('mobile boot manifest expected exactly one desktop layout entry, found ' + layouts.length)
   }
-  return manifest as BootManifest
+  return normalized
 }
 
 /**
@@ -488,7 +521,7 @@ export function selectResponsiveBootManifest(
     id: INTERACTION_OPERATIONS_ID,
     url: '/plugins/@dsh-mobile/interaction-operations/client.js?rev=' + INTERACTION_OPERATIONS_REV,
     rev: INTERACTION_OPERATIONS_REV,
-    inject: ['@deepseek-ai/dsh-client-runtime'],
+    inject: ['@deepseek-ai/dsh-client-ui-renderer'],
   }
   const runtimeIndex = hostEntries.findIndex(entry => entry.id === RUNTIME_ID)
   const mobileEntries = [...hostEntries]
@@ -502,7 +535,10 @@ export function selectResponsiveBootManifest(
 
   if (!wantsNarrow || !contractAvailable || layoutLoadFailed) {
     return {
-      manifest: { ...manifest, rev: manifest.rev + '+mobile-interactions-' + INTERACTION_OPERATIONS_REV, entries: mobileEntries },
+      manifest: withEntryBatches(
+        { ...manifest, rev: manifest.rev + '+mobile-interactions-' + INTERACTION_OPERATIONS_REV },
+        mobileEntries,
+      ),
       layout: 'official',
       compatibility: wantsNarrow && layoutLoadFailed
         ? 'layout-load-failed'
@@ -515,23 +551,32 @@ export function selectResponsiveBootManifest(
     id: MOBILE_LAYOUT_ID,
     url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=' + MOBILE_LAYOUT_REV,
     rev: MOBILE_LAYOUT_REV,
-    inject: ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-theme'],
+    // The mobile layout replaces the official one in the same seat and needs
+    // the same provider roster (renderer/session/theme/locale). Inheriting
+    // prevents another Host graph migration from stranding the shell.
+    inject: [...official.inject],
   }
+  const finalEntries = mobileEntries.map(entry => {
+    if (entry.id === DESKTOP_LAYOUT_ID) return mobileLayout
+    if (entry.id === CONNECTION_ID) return { ...entry, url: MOBILE_CONNECTION_URL, rev: MOBILE_CONNECTION_REV }
+    return { ...entry }
+  })
   return {
-    manifest: {
-      ...manifest,
-      rev: manifest.rev + '+mobile-layout-' + MOBILE_LAYOUT_REV + '+mobile-interactions-' + INTERACTION_OPERATIONS_REV,
-      entries: mobileEntries.map(entry => {
-        if (entry.id === DESKTOP_LAYOUT_ID) return mobileLayout
-        if (entry.id === CONNECTION_ID) return { ...entry, url: MOBILE_CONNECTION_URL, rev: MOBILE_CONNECTION_REV }
-        return { ...entry }
-      }),
-    },
+    manifest: withEntryBatches(
+      {
+        ...manifest,
+        rev: manifest.rev + '+mobile-layout-' + MOBILE_LAYOUT_REV + '+mobile-interactions-' + INTERACTION_OPERATIONS_REV,
+      },
+      finalEntries,
+    ),
     layout: 'narrow',
     compatibility: revisionMismatch ? 'revision-mismatch' : 'compatible',
     officialLayoutRevision: official.rev,
     fallbackOfficial: {
-      manifest: { ...manifest, rev: manifest.rev + '+mobile-interactions-' + INTERACTION_OPERATIONS_REV, entries: mobileEntries },
+      manifest: withEntryBatches(
+        { ...manifest, rev: manifest.rev + '+mobile-interactions-' + INTERACTION_OPERATIONS_REV },
+        mobileEntries,
+      ),
       layout: 'official',
       compatibility: 'layout-load-failed',
       officialLayoutRevision: official.rev,

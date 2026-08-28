@@ -462,7 +462,7 @@ export class TunnelSession implements TunnelClient {
       }
       case 'ws-ack': return void (id !== undefined && this.sockets.get(id)?.onAck())
       case 'ws-err': return void (id !== undefined && this.sockets.get(id)?.onErr(String(message.message ?? 'refused')))
-      case 'ws-msg': return void (id !== undefined && this.sockets.get(id)?.onMsg(message.data as string))
+      case 'ws-msg': return void (id !== undefined && this.sockets.get(id)?.onMsg(message.data as string, message.binary === true))
       case 'ws-close': return void (id !== undefined && this.sockets.get(id)?.onHostClose(message.code as number | undefined, message.reason as string | undefined))
       case 'pong': {
         const probe = id === undefined ? undefined : this.probes.get(id)

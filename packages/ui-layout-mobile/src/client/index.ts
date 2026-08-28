@@ -7,8 +7,9 @@
  * cross-plugin panel-action face consumed by ui-sidebar and ui-conversation.
  * A second effect seats the theme presenter (copied from upstream).
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PanelActions } from './service.ts'
 import { MobileFrame } from './MobileFrame.tsx'
 import type { MobileInteractionOperations } from './MobileFrame.tsx'

@@ -35,7 +35,7 @@ const SKIP_WORKSPACE_BUILD: UserConfig = { entry: '' }
  * engine (defineStore & friends) lives in runtime pending its rehoming; the
  * lazy CJS table answers the require natively (runtime is immediately-tier).
  */
-const RUNTIME_STORE_EXEMPTION = '@deepseek-ai/dsh-client-runtime/client'
+const RUNTIME_STORE_EXEMPTION = '@deepseek-ai/dsh-client-store'
 /** Externals resolved from the loader module table. */
 export const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES, RUNTIME_STORE_EXEMPTION]
 

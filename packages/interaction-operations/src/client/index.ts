@@ -1,5 +1,5 @@
 /** Independently installable client plugin for cross-input Interaction Intents. */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { installComposerInputAdapter } from './composer-input-adapter.ts'
 import { createDomTargetAdapter } from './dom-target-adapter.ts'
 import { InteractionOperations } from './operations.ts'

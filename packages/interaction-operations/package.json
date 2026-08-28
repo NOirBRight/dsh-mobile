@@ -12,7 +12,7 @@
   "files": ["lib/**/*.js", "lib/**/*.d.ts", "cordis.patch.yml"],
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
-    "client": { "inject": ["@deepseek-ai/dsh-client-runtime"], "platform": "web" }
+    "client": { "inject": ["@deepseek-ai/dsh-client-ui-renderer"], "platform": "web" }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && tsdown",

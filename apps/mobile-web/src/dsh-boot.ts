@@ -20,7 +20,6 @@ interface DshBootWindow {
 
 const PARSER_PRELOAD_IDS = [
   '@deepseek-ai/dsh-client-modules',
-  '@deepseek-ai/dsh-client-runtime',
 ] as const
 
 /** Uninstall boot-once globals so a later AppWebEntry can run in this document. */
