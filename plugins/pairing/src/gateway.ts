@@ -31,7 +31,6 @@ export function createHostGateway(options: HostGatewayOptions): HostGateway {
   let listenedPort: number | null = null
   const rooms = new Map<string, number>()
   const sockets = new Set<WebSocket>()
-  const occupied = new Map<string, WebSocket>()
   const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 })
   const server = createServer((req, res) => { void handleHttp(req, res).catch(() => json(res, 500, { error: 'internal Gateway error' })) })
 
@@ -71,21 +70,9 @@ export function createHostGateway(options: HostGatewayOptions): HostGateway {
     const parts = path.split('/')
     const match = parts.length === 3 && (parts[1] === 'signal' || parts[1] === 'tunnel') && ROOM.test(parts[2]) ? parts : null
     if (match === null || !authorizedRoom(match[2])) { socket.write(['HTTP/1.1 401 Unauthorized', 'connection: close', '', ''].join('\r\n')); socket.destroy(); return }
-    const seat = match[1] + ':' + match[2]
-    const occupant = occupied.get(seat)
-    if (occupant !== undefined && (occupant.readyState === 0 || occupant.readyState === 1)) {
-      sockets.delete(occupant)
-      occupant.close(1000, 'seat replaced')
-      occupant.terminate()
-      if (occupied.get(seat) === occupant) occupied.delete(seat)
-    }
     wss.handleUpgrade(req, socket, head, ws => {
       sockets.add(ws)
-      occupied.set(seat, ws)
-      ws.once('close', () => {
-        sockets.delete(ws)
-        if (occupied.get(seat) === ws) occupied.delete(seat)
-      })
+      ws.once('close', () => { sockets.delete(ws) })
       if (match[1] === 'signal') options.onSignal(ws, match[2]); else options.onTunnel(ws, match[2])
     })
   })

@@ -24,6 +24,11 @@ test('narrow layout replaces composer dock stats and does not wrap the official 
   assert.doesNotMatch(css, /\[data-composer-card\]\) ~ div/)
   assert.match(css, /\[data-turn-tail\] \[class\*="timeEnd"\]/)
   assert.doesNotMatch(css, /max-width: min\(52vw/, 'turn-tail metrics must not be silently ellipsized on mobile')
+  const modelTrigger = css.match(/button\[aria-label\^="Select model"\][^}]*\{([^}]*)\}/s)?.[1]
+  assert.ok(modelTrigger, 'mobile layout must own a semantic model trigger selector after the upstream aria-haspopup change')
+  assert.match(modelTrigger, /white-space:\s*nowrap/)
+  assert.match(modelTrigger, /overflow:\s*hidden/)
+  assert.match(modelTrigger, /text-overflow:\s*ellipsis/)
 })
 
 test('mobile drawer closes on navigation and reports its constrained rendered width', async () => {

@@ -354,6 +354,25 @@
   display: none;
 }
 
+/* The official model slot is no longer a direct child of the trailing toolbar.
+   Target its semantic trigger so long provider/model names stay on one line. */
+:global([data-composer-card] button[aria-label^="Select model"]),
+:global([data-composer-card] button[aria-label^="选择模型"]) {
+  min-width: 0;
+  max-width: 5.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global([data-composer-card] button[aria-label^="Select model"] > span:first-of-type),
+:global([data-composer-card] button[aria-label^="选择模型"] > span:first-of-type) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Keep the official permission name for React and accessibility, but render the
    approved compact copy in the fixed-width mobile chip. */
 :global([data-mobile-permission-label]) {
