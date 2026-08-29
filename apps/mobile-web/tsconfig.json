@@ -5,7 +5,7 @@
     "declaration": false,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@deepseek-ai/dsh-client-web": ["../../../deepseek-harness/packages/client/web/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-client-web": ["../../.dsh-upstream/packages/client/web/lib/types/index.d.ts"],
       "@dsh-mobile/e2e-tunnel": ["../../packages/e2e-tunnel/src/index.ts"]
     }
   },

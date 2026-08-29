@@ -35,7 +35,7 @@ test('mobile composer closes other menus and never focuses input from send or st
     assert.equal(capture('send-focus'), 'other', 'Send must not refocus the textarea on mobile')
     assert.equal(capture('click-reached-stop'), 'true', 'the ordinary primary Stop remains clickable before the draft bridge')
     assert.equal(capture('stop-focus'), 'other', 'Stop must not refocus the textarea on mobile')
-    assert.equal(capture('direct-enter'), 'true:true', 'the fixture keyboard seam must observe a synthetic Enter')
+    assert.equal(capture('direct-enter'), 'true:false', 'the handled official Enter seam must cancel the synthetic DOM event')
     assert.equal(capture('stop-marked-before-mousedown'), 'true', 'the marker must already exist before the first tap')
     assert.equal(capture('draft-stop-mouse-down-prevented'), 'false', 'a drafted follow-up must keep the first tap alive')
     assert.equal(capture('draft-stop-marked'), 'true', 'the busy primary action must expose Send styling for a draft')

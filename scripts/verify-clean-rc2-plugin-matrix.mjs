@@ -8,15 +8,15 @@ import { inspectOfficialDshCheckout, REQUIRED_DSH_REVISION } from './verify-offi
 
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const workstation = resolve(project, '..')
-const checkout = resolve(process.env.DSH_UPSTREAM ?? resolve(workstation, 'deepseek-harness'))
+const checkout = resolve(process.env.DSH_UPSTREAM ?? resolve(project, '.dsh-upstream'))
 const composerRoot = resolve(process.env.COMPOSER_PICKER_ROOT ?? resolve(workstation, 'dsh-composer-picker'))
 const externalRoot = resolve(process.env.EXTERNAL_AGENTS_ROOT ?? resolve(workstation, 'dsh-external-agents'))
 const pairingRoot = resolve(process.env.MOBILE_PAIRING_ROOT ?? resolve(workstation, 'dsh-mobile-pairing'))
 const interactionRoot = resolve(project, 'packages/interaction-operations')
 const layoutRoot = resolve(project, 'packages/ui-layout-mobile')
 const cli = resolve(checkout, 'apps/cli/lib/bin.js')
-const commandTimeoutMs = 180_000
-const bootTimeoutMs = 30_000
+const commandTimeoutMs = 600_000
+const bootTimeoutMs = 120_000
 const requestTimeoutMs = 10_000
 const shutdownTimeoutMs = 5_000
 
@@ -126,8 +126,11 @@ async function stopChild(child) {
   }
 }
 
-async function fetchText(url, label) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(requestTimeoutMs) })
+async function fetchText(url, label, cookie) {
+  const response = await fetch(url, {
+    headers: cookie === undefined ? {} : { cookie },
+    signal: AbortSignal.timeout(requestTimeoutMs),
+  })
   if (!response.ok) throw new Error(label + ' returned HTTP ' + String(response.status))
   return response.text()
 }
@@ -135,7 +138,7 @@ async function fetchText(url, label) {
 async function bootProfile({ name, packages, expectedEntries, bundleAssertions, root }) {
   const home = resolve(root, name)
   for (const packagePath of packages) {
-    run(process.execPath, [cli, 'plugin', '--profile', 'web', 'add', packagePath, '--offline'], {
+    run(process.execPath, [cli, 'plugin', '--profile', 'web', 'add', packagePath], {
       env: { ...process.env, DSH_HOME: home },
     })
   }
@@ -155,7 +158,7 @@ async function bootProfile({ name, packages, expectedEntries, bundleAssertions, 
       child.stdout.setEncoding('utf8')
       child.stdout.on('data', chunk => {
         stdout += chunk
-        const match = stdout.match(/dsh web: (http:\/\/127\.0\.0\.1:\d+)/u)
+        const match = stdout.match(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/\?token=[^\s)]+)/u)
         if (match?.[1] !== undefined) {
           clearTimeout(timer)
           resolveUrl(match[1])
@@ -167,12 +170,27 @@ async function bootProfile({ name, packages, expectedEntries, bundleAssertions, 
       })
     })
 
-    const html = await fetchText(url + '/', name + ' root')
+    const login = await fetch(url, {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(requestTimeoutMs),
+    })
+    if (login.status !== 303) throw new Error(name + ' token exchange returned HTTP ' + String(login.status))
+    const setCookie = login.headers.get('set-cookie')
+    if (setCookie === null) throw new Error(name + ' token exchange returned no browser-session cookie')
+    const cookie = setCookie.split(';', 1)[0]
+    const origin = new URL(url).origin
+    const html = await fetchText(origin + '/', name + ' root', cookie)
     for (const entry of expectedEntries) {
       if (occurrences(html, '\"id\":\"' + entry + '\"') !== 1) {
         throw new Error(name + ' expected exactly one boot entry for ' + entry)
       }
-      const source = await fetchText(url + '/plugins/' + entry + '/client.js', name + ' bundle for ' + entry)
+      const idAt = html.indexOf('"id":"' + entry + '"')
+      const urlMarker = '"url":"'
+      const urlAt = html.indexOf(urlMarker, idAt)
+      const urlEnd = urlAt < 0 ? -1 : html.indexOf('"', urlAt + urlMarker.length)
+      if (idAt < 0 || urlAt < 0 || urlEnd < 0) throw new Error(name + ' boot entry has no URL for ' + entry)
+      const bundlePath = JSON.parse('"' + html.slice(urlAt + urlMarker.length, urlEnd) + '"')
+      const source = await fetchText(new URL(bundlePath, origin).toString(), name + ' bundle for ' + entry, cookie)
       for (const assertion of bundleAssertions[entry] ?? []) assertion(source)
     }
     return { name, entries: expectedEntries }
@@ -198,7 +216,7 @@ const checkoutResult = inspectOfficialDshCheckout(checkout, expectedRevision)
 if (!checkoutResult.ok) throw new Error(checkoutResult.reasons.join('; '))
 if (!existsSync(cli)) throw new Error('official DSH CLI is not built: ' + cli)
 
-// Keep temporary profiles on the workspace filesystem so pnpm can reuse the already-verified content store.
+// Keep temporary profiles on the workspace filesystem so pnpm can reuse the verified content store while resolving published dependencies normally.
 const root = mkdtempSync(resolve(project, '.dsh-clean-rc2-matrix-'))
 try {
   run('pnpm', ['check'], { cwd: composerRoot })

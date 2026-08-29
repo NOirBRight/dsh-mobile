@@ -18,10 +18,18 @@ export interface DraftConversation {
   createDraftImages(files: readonly File[]): readonly DraftImage[]
   releaseDraftImage?(id: string): void
   releaseDraftImages?(images: readonly DraftImage[]): void
+  sendSession?(
+    session: unknown,
+    text: string,
+    imageIds: readonly string[],
+    mode: 'queue' | 'steer',
+  ): Promise<unknown>
 }
 
 export interface DraftInputActions {
   addImages(ids: readonly string[]): boolean
+  setDraft?(text: string): void
+  removeImage?(id: string): void
   /** Official session input action; optional for older Hosts using the fallback bridge. */
   submit?(): void
 }
@@ -53,19 +61,27 @@ function composerCardForButton(button: HTMLButtonElement): HTMLElement | null {
   return button.closest<HTMLElement>('[data-composer-card]')
 }
 
+type ComposerDraftElement = HTMLTextAreaElement | HTMLElement
+
+function composerDraftElement(card: HTMLElement): ComposerDraftElement | null {
+  const textarea = card.querySelector('textarea')
+  if (textarea instanceof HTMLTextAreaElement) return textarea
+  return card.querySelector<HTMLElement>('[data-composer-input]')
+}
+
 /** True when the card holds any sendable draft: text OR official image rail. */
 export function composerCardHasDraft(card: HTMLElement): boolean {
-  const textarea = card.querySelector('textarea')
-  if (textarea instanceof HTMLTextAreaElement && textarea.value.trim() !== '') return true
+  const input = composerDraftElement(card)
+  const text = input instanceof HTMLTextAreaElement ? input.value : input?.textContent
+  if (text?.trim() !== '') return true
   // The official image rail is the semantic draft-attachment group above the
-  // toolbar; thumbnails mean the card has content even when its textarea is empty.
+  // toolbar; thumbnails mean the card has content even when its editor is empty.
   return card.querySelector('[role="group"] img') !== null
 }
 
-function composerDraftForCard(card: HTMLElement): HTMLTextAreaElement | null {
-  const textarea = card.querySelector('textarea')
-  if (!(textarea instanceof HTMLTextAreaElement) || !composerCardHasDraft(card)) return null
-  return textarea
+function composerDraftForCard(card: HTMLElement): ComposerDraftElement | null {
+  const input = composerDraftElement(card)
+  return input !== null && composerCardHasDraft(card) ? input : null
 }
 
 function primaryStopButton(card: HTMLElement): HTMLButtonElement | null {
@@ -90,8 +106,8 @@ export function composerDraftActionButton(target: EventTarget | null): HTMLButto
   return null
 }
 
-/** Return the draft input associated with a primary action, if it is non-empty. */
-export function composerDraftInput(button: HTMLButtonElement): HTMLTextAreaElement | null {
+/** Return the draft editor associated with a primary action, if it is non-empty. */
+export function composerDraftInput(button: HTMLButtonElement): ComposerDraftElement | null {
   const card = composerCardForButton(button)
   return card === null ? null : composerDraftForCard(card)
 }
@@ -101,10 +117,11 @@ export function plusMenuAlreadyOpen(button: HTMLButtonElement): boolean {
   return button.getAttribute('aria-expanded') === 'true'
 }
 
-/** Dismiss the composer textarea so the plus menu does not summon the phone keyboard. */
+/** Dismiss the composer editor so toolbar actions do not summon the phone keyboard. */
 export function blurComposer(): void {
   const el = document.activeElement
-  if (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type !== 'file')) el.blur()
+  if (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type !== 'file')
+    || (el instanceof HTMLElement && el.matches('[data-composer-input]'))) el.blur()
 }
 
 /**

@@ -53,6 +53,7 @@ function FrameHarness() {
     useSessions={useSessions as never}
     actions={actions as never}
     renderSlot={renderSlot as never}
+    SessionProvider={(({ children }: { children?: React.ReactNode }) => children) as never}
   />
 }
 

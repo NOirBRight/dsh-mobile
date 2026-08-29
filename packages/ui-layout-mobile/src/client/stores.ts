@@ -7,7 +7,7 @@
  * share from the return type, and the service face receives the bound
  * actions through the registration's inject hook.
  */
-import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
+import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 
 /** Mobile layout store state: drawer + details sheet open flags. */
 type MobileLayoutState = { drawerOpen: boolean; detailsOpen: boolean }

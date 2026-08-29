@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { mobileEnterAction } from '../src/client/composer-input-adapter.ts'
 
 const base = {
@@ -7,6 +9,12 @@ const base = {
   legacyKeyCode: 13, shift: false, control: false, meta: false, alt: false,
   selectionPopupOpen: false,
 }
+
+test('adapter targets the alpha1 contenteditable composer instead of only legacy textarea', async () => {
+  const source = await readFile(resolve(import.meta.dirname, '../src/client/composer-input-adapter.ts'), 'utf8')
+  assert.match(source, /\[data-composer-input\]\[data-phase\]/)
+  assert.match(source, /contenteditable/)
+})
 
 test('trusted plain mobile Enter remains a newline', () => {
   assert.equal(mobileEnterAction(base), 'newline')

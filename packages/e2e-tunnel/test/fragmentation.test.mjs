@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import nacl from 'tweetnacl'
-import { DataChannelTransport, fragmentFrame, FrameReassembler, MAX_MESSAGE_BYTES, MAX_FRAME_BYTES, TunnelError } from '../src/index.ts'
+import { DataChannelTransport, WsFrameTransport, fragmentFrame, FrameReassembler, MAX_MESSAGE_BYTES, MAX_RELAY_MESSAGE_BYTES, MAX_FRAME_BYTES, TunnelError } from '../src/index.ts'
 import { FakeDataChannel } from './fake-datachannel.mjs'
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
@@ -131,6 +131,39 @@ test('fragmented frames and whole frames interleave without reordering', async (
   assert.equal(sha256(frames[0]), sha256(big1))
   assert.deepEqual(frames[1], small)
   assert.equal(sha256(frames[2]), sha256(big2))
+})
+
+test('relay WebSocket transport fragments a multi-megabyte sealed frame below the Relay cap', async () => {
+  const [a, b] = FakeDataChannel.pair()
+  const sender = new WsFrameTransport(a)
+  const receiver = new WsFrameTransport(b)
+  const frames = []
+  a.wireSizes = []
+  receiver.onFrame(frame => frames.push(frame))
+  const big = pattern(2 * 1024 * 1024 - 123)
+
+  sender.send(big)
+  await waitFor(() => frames.length === 1)
+
+  assert.ok(a.wireSizes.length > 1)
+  for (const size of a.wireSizes) assert.ok(size <= MAX_RELAY_MESSAGE_BYTES, 'Relay message over limit: ' + size)
+  assert.equal(sha256(frames[0]), sha256(big))
+})
+
+test('relay WebSocket transport leaves small sealed frames raw for rolling compatibility', async () => {
+  const [a, b] = FakeDataChannel.pair()
+  const sender = new WsFrameTransport(a)
+  const receiver = new WsFrameTransport(b)
+  const frames = []
+  a.wireSizes = []
+  receiver.onFrame(frame => frames.push(frame))
+  const small = pattern(1024)
+
+  sender.send(small)
+  await waitFor(() => frames.length === 1)
+
+  assert.deepEqual(a.wireSizes, [small.length])
+  assert.deepEqual(frames[0], small)
 })
 
 test('fragments delivered as Blobs reassemble in order', async () => {

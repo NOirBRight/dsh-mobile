@@ -17,7 +17,7 @@
  * Demultiplexing: http-req issues a real request to the loopback dsh web
  * server (Host rewritten to the loopback authority, so the upstream /api
  * trust fence passes); ws-open builds a loopback WebSocket (e.g.
- * /api/events.mux) bridged both ways. Loopback WS needs no subprotocol —
+ * /api/remote.mux) bridged both ways. Loopback WS needs no subprotocol —
  * direct connection (M1's subprotocol dance belongs to the LAN proxy, not
  * the tunnel).
  *

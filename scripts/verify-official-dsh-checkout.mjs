@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const OFFICIAL_REPOSITORY = 'deepseek-ai/deepseek-harness'
-export const REQUIRED_DSH_REVISION = 'b150a551b8d465e31e418e1b2eaf5e79bbb7d28e'
+export const REQUIRED_DSH_REVISION = 'cd5ef8148158c3a752a658978873241fdf8e2bbc'
 
 function repositoryOf(remote) {
   return remote
@@ -46,7 +46,7 @@ export function inspectOfficialDshCheckout(checkout, expectedRevision) {
 
 function main() {
   const scriptDir = dirname(fileURLToPath(import.meta.url))
-  const checkout = process.env.DSH_UPSTREAM ?? resolve(scriptDir, '..', '..', 'deepseek-harness')
+  const checkout = process.env.DSH_UPSTREAM ?? resolve(scriptDir, '..', '.dsh-upstream')
   const result = inspectOfficialDshCheckout(checkout, process.env.DSH_EXPECTED_REVISION)
   if (!result.ok) {
     console.error(result.reasons.map(reason => checkout + ': ' + reason).join('\n'))

@@ -94,6 +94,7 @@ function App() {
       document.body.dataset.navWidth = String(Math.round(nav.getBoundingClientRect().width))
       document.body.dataset.navListDirection = getComputedStyle(list).flexDirection
       document.body.dataset.navListOverflow = getComputedStyle(list).overflowX
+      document.body.dataset.navListPaddingRight = getComputedStyle(list).paddingRight
       document.body.dataset.contentWidth = String(Math.round(content.getBoundingClientRect().width))
       document.body.dataset.optionsWidth = String(Math.round(options.getBoundingClientRect().width))
       const optionStyle = getComputedStyle(options)
@@ -141,6 +142,7 @@ function App() {
       useSessions={useSessions as never}
       actions={actions as never}
       renderSlot={renderSlot as never}
+      SessionProvider={(({ children }: { children?: React.ReactNode }) => children) as never}
     />
   </>
 }

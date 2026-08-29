@@ -112,7 +112,7 @@ export function startFakeDcHost(dc, opts = {}) {
         sendFrame(seal({ t: 'ws-ack', id: msg.id }))
         return
       case 'ws-msg':
-        sendFrame(seal({ t: 'ws-msg', id: msg.id, data: msg.data }))
+        sendFrame(seal({ t: 'ws-msg', id: msg.id, data: msg.data, binary: msg.binary === true }))
         return
       case 'ws-close':
         sendFrame(seal({ t: 'ws-close', id: msg.id, code: msg.code ?? 1000, reason: msg.reason ?? '' }))

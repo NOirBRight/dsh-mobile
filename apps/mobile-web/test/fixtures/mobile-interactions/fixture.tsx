@@ -7,7 +7,7 @@ function dispatch(target: HTMLElement, type: string): void {
 }
 
 function App() {
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = useRef<HTMLDivElement>(null)
   const modeRef = useRef<HTMLDivElement>(null)
   const [modeOpen, setModeOpen] = useState(true)
 
@@ -50,7 +50,7 @@ function App() {
 
         delete document.body.dataset.stopClicked
         inputRef.current!.dataset.mobileBusyPolicy = 'steer'
-        inputRef.current!.value = 'queued follow-up'
+        inputRef.current!.textContent = 'queued follow-up'
         dispatch(inputRef.current!, 'input')
         // Seam guard: the fixture's React handler must see a synthetic Enter,
         // the same path the mobile bridge uses for the official policy resolver.
@@ -80,7 +80,7 @@ function App() {
           document.body.dataset.draftStopLabel = stop.getAttribute('aria-label') ?? ''
           document.body.dataset.draftSubmit = document.body.dataset.sendViaSubmit ?? 'false'
           document.body.dataset.draftEnter = document.body.dataset.sendViaEnter ?? 'false'
-          inputRef.current!.value = ''
+          inputRef.current!.textContent = ''
           dispatch(inputRef.current!, 'input')
           const rail = document.createElement('div')
           rail.setAttribute('role', 'group')
@@ -138,8 +138,12 @@ function App() {
   return <>
     <div ref={modeRef} data-mode-menu role="menu" data-open={modeOpen ? 'true' : undefined}>Read Only</div>
     <div data-composer-card>
-      <textarea
+      <div
         ref={inputRef}
+        contentEditable
+        suppressContentEditableWarning
+        data-composer-input
+        data-phase="plain"
         aria-label="message"
         onKeyDown={(event) => {
           if (event.key !== 'Enter') return
@@ -149,6 +153,9 @@ function App() {
           }
           if (inputRef.current?.dataset.mobileBusyPolicy === undefined) return
           document.body.dataset.sendViaEnter = 'true'
+          // Official Lexical Enter handling cancels the DOM event after it has
+          // resolved Queue/Steer and admitted the submission.
+          event.preventDefault()
         }}
       />
       <button id="plus" type="button" aria-haspopup="listbox" aria-expanded="false">Plus</button>

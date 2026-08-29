@@ -354,6 +354,25 @@
   display: none;
 }
 
+/* The official model slot is no longer a direct child of the trailing toolbar.
+   Target its semantic trigger so long provider/model names stay on one line. */
+:global([data-composer-card] button[aria-label^="Select model"]),
+:global([data-composer-card] button[aria-label^="选择模型"]) {
+  min-width: 0;
+  max-width: 5.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global([data-composer-card] button[aria-label^="Select model"] > span:first-of-type),
+:global([data-composer-card] button[aria-label^="选择模型"] > span:first-of-type) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Keep the official permission name for React and accessibility, but render the
    approved compact copy in the fixed-width mobile chip. */
 :global([data-mobile-permission-label]) {
@@ -415,6 +434,18 @@
   }
 }
 
+/* The official composer scrollport still scrolls after its 14-line cap, but
+   Android WebView paints an always-visible thumb even for an empty one-line
+   draft. Keep the scroll behavior and suppress only that permanent chrome. */
+.frame :global([data-composer-card] [data-input-scroll]) {
+  scrollbar-width: none;
+}
+
+.frame :global([data-composer-card] [data-input-scroll]::-webkit-scrollbar) {
+  width: 0;
+  height: 0;
+}
+
 /* Touch has no meaningful hover. Keep official tooltips for mouse users, but
    suppress the delayed/focus bubble that otherwise remains over the plus menu
    on Android Chrome. */
@@ -422,16 +453,6 @@
   :global([role="tooltip"]) {
     display: none !important;
   }
-}
-
-/* Narrow popup placement: official desktop menus are right-aligned to their
-   small root. On a phone that makes the wide card hug the left edge. Center
-   each composer popup on its own trigger and clamp its width to the viewport. */
-:global([data-composer-card] button[aria-haspopup="menu"] + [role="menu"]) {
-  left: 50%;
-  right: auto;
-  width: min(240px, calc(100vw - 24px));
-  transform: translateX(-50%);
 }
 
 /* ContextMeter's panel keeps the official anchor (8px above the trigger). The
@@ -443,9 +464,9 @@
 .center :global(header:has(> [role="tablist"])) {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   min-height: 48px;
-  padding: 0 16px;
+  padding: 0 8px;
   overflow: hidden;
 }
 
@@ -458,7 +479,7 @@
 
 /* A main session keeps its existing title in the mobile topbar; show only the
    official subagent count beside the existing mode/actions when children exist. */
-.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-haspopup="tree"]):not(:has(button[aria-label^="切换子代理"]))) {
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-haspopup="tree"]):not(:has(button:is([aria-label^="切换子代理"], [aria-label^="Switch subagent:"])))) {
   position: static;
   order: 2;
   display: flex;
@@ -470,15 +491,15 @@
   white-space: nowrap;
 }
 
-.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-haspopup="tree"]):not(:has(button[aria-label^="切换子代理"])) > span:first-child > button:disabled),
-.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-haspopup="tree"]):not(:has(button[aria-label^="切换子代理"])) [class*="separator"]) {
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-haspopup="tree"]):not(:has(button:is([aria-label^="切换子代理"], [aria-label^="Switch subagent:"]))) > span:first-child > button:disabled),
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-haspopup="tree"]):not(:has(button:is([aria-label^="切换子代理"], [aria-label^="Switch subagent:"]))) [class*="separator"]) {
   display: none;
 }
 
 /* A child uses the same topbar lane as the main title. The upstream button
    remains the parent breadcrumb action, and the switcher remains the child
    title/action; no replacement navigation state is introduced here. */
-.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-label^="切换子代理"])) {
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button:is([aria-label^="切换子代理"], [aria-label^="Switch subagent:"]))) {
   position: fixed;
   top: calc(env(safe-area-inset-top) + 10px);
   right: 56px;
@@ -493,28 +514,28 @@
   white-space: nowrap;
 }
 
-.frame:has(.center nav[aria-label] button[aria-label^="切换子代理"]) .sessionTitle {
+.frame:has(.center nav[aria-label] button:is([aria-label^="切换子代理"], [aria-label^="Switch subagent:"])) .sessionTitle {
   display: none;
 }
 
 /* Give the active child the title budget: the parent is intentionally a
    short, tertiary breadcrumb and the child keeps the remaining width. */
-.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-label^="切换子代理"])) {
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button:is([aria-label^="切换子代理"], [aria-label^="Switch subagent:"]))) {
   gap: 2px;
 }
 
-.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-label^="切换子代理"]) > span) {
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button:is([aria-label^="切换子代理"], [aria-label^="Switch subagent:"])) > span) {
   gap: 2px;
   min-width: 0;
 }
 
-.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-label^="切换子代理"]) > span:first-child > button:not([aria-haspopup])) {
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button:is([aria-label^="切换子代理"], [aria-label^="Switch subagent:"])) > span:first-child > button:not([aria-haspopup])) {
   max-width: 88px;
   padding-right: 4px;
   padding-left: 4px;
 }
 
-.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button[aria-label^="切换子代理"]) button[aria-label^="切换子代理"]) {
+.center :global(header:has(> [role="tablist"]) nav[aria-label]:has(button:is([aria-label^="切换子代理"], [aria-label^="Switch subagent:"])) button:is([aria-label^="切换子代理"], [aria-label^="Switch subagent:"])) {
   min-width: 0;
   max-width: 160px;
   overflow: hidden;
@@ -550,8 +571,8 @@
   flex: 0 1 auto;
   width: auto;
   min-width: 0;
-  max-width: 194px;
-  gap: 8px;
+  max-width: 210px;
+  gap: 4px;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -655,7 +676,7 @@
 }
 
 .center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span[class*="count"]:lang(zh)::after) {
-  content: '后台任务';
+  content: '后台';
 }
 
 .center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span[class*="count"]:lang(en)::after) {
@@ -673,7 +694,7 @@
 }
 
 .center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span:not([data-state]):lang(zh)::after) {
-  content: '后台任务';
+  content: '后台';
 }
 
 .center :global(header:has(> [role="tablist"]) button[aria-expanded]:not([aria-haspopup]) > span:not([data-state]):lang(en)::after) {
@@ -723,7 +744,7 @@
   align-items: stretch;
   flex: none;
   height: 48px;
-  gap: 8px;
+  gap: 6px;
   margin: 0;
   padding-left: 0;
 }
@@ -733,17 +754,6 @@
   align-items: center;
   height: 48px;
   padding: 0 0 2px;
-}
-
-/* English Trajectory is too wide for the fixed mobile header; preserve the
-   tab semantics and expose the compact visual label only on English UI. */
-.center :global(header:has(> [role="tablist"]) > [role="tablist"] > [role="tab"]:nth-child(2):lang(en)) {
-  font-size: 0;
-}
-
-.center :global(header:has(> [role="tablist"]) > [role="tablist"] > [role="tab"]:nth-child(2):lang(en)::after) {
-  content: 'Trace';
-  font-size: 13px;
 }
 
 /* Official narrow transcript adds clearance + 16px while the composer uses
@@ -822,7 +832,7 @@
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0 14px 10px;
+  padding: 0 56px 10px 14px;
   scrollbar-width: none;
 }
 

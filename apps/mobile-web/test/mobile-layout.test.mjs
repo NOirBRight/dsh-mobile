@@ -24,6 +24,20 @@ test('narrow layout replaces composer dock stats and does not wrap the official 
   assert.doesNotMatch(css, /\[data-composer-card\]\) ~ div/)
   assert.match(css, /\[data-turn-tail\] \[class\*="timeEnd"\]/)
   assert.doesNotMatch(css, /max-width: min\(52vw/, 'turn-tail metrics must not be silently ellipsized on mobile')
+  const modelTrigger = css.match(/button\[aria-label\^="Select model"\][^}]*\{([^}]*)\}/s)?.[1]
+  assert.ok(modelTrigger, 'mobile layout must own a semantic model trigger selector after the upstream aria-haspopup change')
+  assert.match(modelTrigger, /white-space:\s*nowrap/)
+  assert.match(modelTrigger, /overflow:\s*hidden/)
+  assert.match(modelTrigger, /text-overflow:\s*ellipsis/)
+  assert.doesNotMatch(
+    css,
+    /button\[aria-haspopup="menu"\]\s*\+\s*\[role="menu"\]/,
+    'model popup geometry must have one JS owner instead of a competing CSS transform',
+  )
+  const composerScroll = css.match(/\[data-input-scroll\][^}]*\{([^}]*)\}/s)?.[1]
+  assert.ok(composerScroll, 'mobile layout must target the official composer scrollport semantically')
+  assert.match(composerScroll, /scrollbar-width:\s*none/, 'an empty composer must not paint a permanent scrollbar')
+  assert.match(css, /\[data-input-scroll\]::\-webkit-scrollbar/, 'Android WebView needs the WebKit scrollbar suppression')
 })
 
 test('mobile drawer closes on navigation and reports its constrained rendered width', async () => {
@@ -51,7 +65,9 @@ test('mobile drawer closes on navigation and reports its constrained rendered wi
     assert.equal(capture('crumb-hidden'), 'none', 'main sessions should keep the original title row without a breadcrumb')
     assert.equal(capture('child-crumb-display'), 'flex', 'active child sessions should expose the official breadcrumb')
     assert.equal(capture('child-crumb-position'), 'fixed', 'active child breadcrumb should use the mobile topbar lane')
-    assert.ok(Number(capture('child-crumb-top')) <= 12, 'active child breadcrumb should sit in the topbar')
+    assert.ok(Number(capture('child-crumb-top')) <= 12, 'active English child breadcrumb should sit in the topbar')
+    assert.equal(capture('child-session-title-display'), 'none', 'the scalar title must yield to the complete child breadcrumb')
+    assert.equal(capture('child-crumb-position-zh'), 'fixed', 'Chinese child semantics must keep the same topbar placement')
     assert.equal(capture('fish-hidden'), 'none')
     assert.notEqual(capture('panel-visible'), 'none')
     assert.equal(capture('codex-closed-left'), '360', 'Codex should leave the viewport through the right edge')
@@ -74,15 +90,18 @@ test('mobile drawer closes on navigation and reports its constrained rendered wi
     assert.match(capture('subagent-copy-en') ?? '', /Subs/)
     assert.match(capture('job-copy-en') ?? '', /Jobs/)
     assert.match(capture('subagent-copy-zh') ?? '', /子代/)
-    assert.match(capture('job-copy-zh') ?? '', /后台任务/)
+    assert.match(capture('job-copy-zh') ?? '', /后台/)
     assert.equal(capture('subagent-copy-display'), 'inline-block')
     assert.equal(capture('subagent-copy-line-height'), '18px')
     assert.equal(capture('job-copy-display'), 'inline-block')
     assert.equal(capture('job-copy-line-height'), '18px')
-    assert.match(capture('mode-text') ?? '', /Standard mode/)
+    assert.equal(capture('mode-text'), 'PTC')
+    assert.equal(capture('hero-mode-text'), 'PTC')
+    assert.equal(capture('mode-text-zh'), 'PTC')
     assert.equal(capture('mode-font-size'), '12px')
     assert.equal(capture('mode-max-width'), '82px')
-    assert.match(capture('trace-copy-en') ?? '', /Trace/)
+    assert.equal(capture('trajectory-text'), 'Trajectory')
+    assert.ok(Number.parseFloat(capture('trajectory-font-size') ?? '0') >= 13)
     assert.match(capture('log-copy') ?? '', /Log/)
     assert.equal(capture('chat-padding'), '16px')
     assert.equal(capture('command-option-owned'), 'true', 'mobile composer focus adapter must not claim listbox options')
@@ -102,10 +121,10 @@ test('mobile drawer closes on navigation and reports its constrained rendered wi
     assert.equal(capture('subagent-menu-position'), 'fixed')
     assert.equal(capture('job-menu-position'), 'fixed')
     assert.equal(capture('header-fits'), 'true', 'header bounds: ' + capture('header-widths'))
-    assert.equal(capture('header-left-inset'), '16', 'tablist should use the mobile content inset')
-    assert.equal(capture('header-right-inset'), '16', 'Log should use the mobile content inset')
+    assert.equal(capture('header-left-inset'), '8', 'tablist should use the compact mobile content inset')
+    assert.equal(capture('header-right-inset'), '8', 'Log should use the compact mobile content inset')
     assert.equal(capture('action-justify'), 'flex-start', 'mode/actions should stay grouped')
-    assert.equal(capture('action-gap'), '8px', 'mode/actions should have a readable gap')
+    assert.equal(capture('action-gap'), '4px', 'mode/actions should preserve labels before adding whitespace')
     assert.ok(Number(capture('mode-subagent-gap')) >= 0 && Number(capture('mode-subagent-gap')) <= 12, 'subagents should follow the mode')
     assert.ok(Number(capture('subagent-job-gap')) >= 0 && Number(capture('subagent-job-gap')) <= 12, 'jobs should follow subagents')
   } finally {

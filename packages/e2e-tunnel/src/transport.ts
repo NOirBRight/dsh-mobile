@@ -20,6 +20,9 @@
  * Adapters: WsFrameTransport (relay room WebSocket, M3 path) and
  * DataChannelTransport (WebRTC DataChannel; signaling and the surrounding
  * peer setup live outside this package — the channel arrives already open).
+ * Both hide carrier message limits: callers always send and receive one whole
+ * sealed frame. Relay fragmentation keeps legacy frames through 256 KiB raw
+ * and marks only larger frames, so updated peers still accept old senders.
  *
  * DataChannel wire format (both peers run this layer; the host-side mirror
  * uses the same exported codec). RTCDataChannel application messages must
@@ -51,9 +54,9 @@ export interface FrameTransport {
 /** Hard cap on one RTCDataChannel application message (SCTP interop insurance). */
 export const MAX_MESSAGE_BYTES = 60 * 1024
 /**
- * Defensive cap on one reassembled frame. Session plaintext is capped at
- * 200 KiB by the tunnel protocol, so honest frames are far smaller; this
- * bound exists to stop a peer from forcing unbounded reassembly buffers.
+ * Defensive cap on one reassembled sealed frame. Virtual WebSocket payloads
+ * can be multi-megabyte even though client-originated plaintext messages stay
+ * below 200 KiB; this bound prevents unbounded carrier reassembly.
  */
 export const MAX_FRAME_BYTES = 16 * 1024 * 1024
 
@@ -150,6 +153,98 @@ export class FrameReassembler {
   }
 }
 
+/** Largest raw Relay frame retained for compatibility with pre-fragmentation peers. */
+const RELAY_RAW_COMPATIBILITY_BYTES = 256 * 1024
+/** Maximum wire message emitted for one fragment, below the Relay's legacy cap. */
+export const MAX_RELAY_MESSAGE_BYTES = 192 * 1024
+const RELAY_FRAGMENT_MAGIC = new Uint8Array([0x44, 0x53, 0x48, 0x52, 0x4c, 0x59, 0x01, 0x00])
+const RELAY_FRAGMENT_HEADER_BYTES = RELAY_FRAGMENT_MAGIC.length + 2 + 4 + 4
+const RELAY_FRAGMENT_PAYLOAD_BYTES = MAX_RELAY_MESSAGE_BYTES - RELAY_FRAGMENT_HEADER_BYTES
+
+/**
+ * Keep legacy-sized Relay frames byte-identical and split only oversized frames.
+ * @param frame whole sealed tunnel frame.
+ * @param frameId sender-side rolling id for fragmented frames.
+ * @returns one raw legacy frame or ordered marked fragments.
+ */
+export function fragmentRelayFrame(frame: Uint8Array, frameId: number): Uint8Array[] {
+  if (frame.length <= RELAY_RAW_COMPATIBILITY_BYTES) return [frame]
+  if (frame.length > MAX_FRAME_BYTES) throw new TunnelError('too-large', 'Relay frame exceeds 16 MiB')
+  const out: Uint8Array[] = []
+  for (let offset = 0; offset < frame.length; offset += RELAY_FRAGMENT_PAYLOAD_BYTES) {
+    const slice = frame.subarray(offset, Math.min(offset + RELAY_FRAGMENT_PAYLOAD_BYTES, frame.length))
+    const message = new Uint8Array(RELAY_FRAGMENT_HEADER_BYTES + slice.length)
+    message.set(RELAY_FRAGMENT_MAGIC)
+    const view = new DataView(message.buffer)
+    view.setUint16(RELAY_FRAGMENT_MAGIC.length, frameId, true)
+    view.setUint32(RELAY_FRAGMENT_MAGIC.length + 2, offset, true)
+    view.setUint32(RELAY_FRAGMENT_MAGIC.length + 6, frame.length, true)
+    message.set(slice, RELAY_FRAGMENT_HEADER_BYTES)
+    out.push(message)
+  }
+  return out
+}
+
+/** Strict reassembler for marked Relay fragments; unmarked legacy frames pass through. */
+export class RelayFrameReassembler {
+  private pending: { id: number; total: number; buf: Uint8Array; received: number } | null = null
+  private broken = false
+
+  /**
+   * @param message one Relay WebSocket binary message.
+   * @returns a complete frame, or null while marked fragments remain.
+   */
+  push(message: Uint8Array): Uint8Array | null {
+    if (this.broken) throw new TunnelError('bad-fragment', 'Relay reassembler is broken')
+    try {
+      return this.accept(message)
+    } catch (error) {
+      this.broken = true
+      throw error
+    }
+  }
+
+  private accept(message: Uint8Array): Uint8Array | null {
+    if (!hasRelayFragmentMagic(message)) {
+      if (this.pending !== null) throw new TunnelError('bad-fragment', 'raw Relay frame during fragmented frame')
+      if (message.length > MAX_FRAME_BYTES) throw new TunnelError('bad-fragment', 'raw Relay frame exceeds 16 MiB')
+      return message
+    }
+    if (message.length <= RELAY_FRAGMENT_HEADER_BYTES || message.length > MAX_RELAY_MESSAGE_BYTES) {
+      throw new TunnelError('bad-fragment', 'Relay fragment size is invalid')
+    }
+    const view = new DataView(message.buffer, message.byteOffset, message.byteLength)
+    const id = view.getUint16(RELAY_FRAGMENT_MAGIC.length, true)
+    const offset = view.getUint32(RELAY_FRAGMENT_MAGIC.length + 2, true)
+    const total = view.getUint32(RELAY_FRAGMENT_MAGIC.length + 6, true)
+    if (total <= RELAY_RAW_COMPATIBILITY_BYTES || total > MAX_FRAME_BYTES) {
+      throw new TunnelError('bad-fragment', 'Relay frame total is invalid: ' + total)
+    }
+    const payload = message.subarray(RELAY_FRAGMENT_HEADER_BYTES)
+    if (offset + payload.length > total) throw new TunnelError('bad-fragment', 'Relay fragment overruns frame')
+    let pending = this.pending
+    if (pending === null) {
+      if (offset !== 0) throw new TunnelError('bad-fragment', 'Relay fragments do not start at offset 0')
+      pending = this.pending = { id, total, buf: new Uint8Array(total), received: 0 }
+    } else if (id !== pending.id || total !== pending.total || offset !== pending.received) {
+      throw new TunnelError('bad-fragment', 'Relay fragment order mismatch')
+    }
+    pending.buf.set(payload, offset)
+    pending.received += payload.length
+    if (pending.received !== pending.total) return null
+    this.pending = null
+    return pending.buf
+  }
+}
+
+function hasRelayFragmentMagic(message: Uint8Array): boolean {
+  if (message.length < RELAY_FRAGMENT_MAGIC.length) return false
+  for (let index = 0; index < RELAY_FRAGMENT_MAGIC.length; index++) {
+    if (message[index] !== RELAY_FRAGMENT_MAGIC[index]) return false
+  }
+  return true
+}
+
 /**
  * Normalize a message payload to bytes or text. binaryType='arraybuffer'
  * is a HINT some WebViews (WeChat/TBS among them) ignore and deliver Blobs
@@ -207,6 +302,8 @@ abstract class QueuedTransport implements FrameTransport {
 /** Relay-room WebSocket adapter (the M3 wire). Construct once the socket exists; open-wait stays with the caller. */
 export class WsFrameTransport extends QueuedTransport {
   private readonly ws: WebSocket
+  private readonly reassembler = new RelayFrameReassembler()
+  private nextFrameId = 0
 
   constructor(ws: WebSocket) {
     super()
@@ -217,10 +314,23 @@ export class WsFrameTransport extends QueuedTransport {
   }
 
   send(frame: Uint8Array): void {
-    // FrameTransport accepts any view; WebSocket wants a BufferSource over a
-    // real ArrayBuffer (TS 5.7+ generic Uint8Array). Session frames come from
-    // concat() and are always fresh exact arrays.
-    this.ws.send(frame as Uint8Array<ArrayBuffer>)
+    const messages = fragmentRelayFrame(frame, this.nextFrameId)
+    if (messages.length > 1) this.nextFrameId = (this.nextFrameId + 1) & 0xffff
+    for (const message of messages) {
+      // FrameTransport accepts any view; WebSocket wants a BufferSource over a
+      // real ArrayBuffer (TS 5.7+ generic Uint8Array). Codec outputs are fresh exact arrays.
+      this.ws.send(message as Uint8Array<ArrayBuffer>)
+    }
+  }
+
+  protected process(frame: Uint8Array | string): Uint8Array | string | null {
+    if (typeof frame === 'string') return frame
+    try {
+      return this.reassembler.push(frame)
+    } catch {
+      this.close(1008, 'bad Relay fragment')
+      return null
+    }
   }
 
   close(code?: number, reason?: string): void {

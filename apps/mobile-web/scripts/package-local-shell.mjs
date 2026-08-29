@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const officialRoot = process.env.DSH_UPSTREAM ?? resolve(appRoot, '../../../deepseek-harness')
+const officialRoot = process.env.DSH_UPSTREAM ?? resolve(appRoot, '../../.dsh-upstream')
 const layoutSource = resolve(appRoot, '../../packages/ui-layout-mobile/lib/client.js')
 const layoutTarget = resolve(appRoot, 'dist/plugins/@dsh-mobile/ui-layout-mobile/client.js')
 const interactionsSource = resolve(appRoot, '../../packages/interaction-operations/lib/client.js')

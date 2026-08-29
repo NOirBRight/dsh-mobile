@@ -14,11 +14,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 const runtime = {
   id: RUNTIME_ID, url: '/plugins/runtime.js', rev: 'official-runtime',
-  inject: ['@deepseek-ai/dsh-client-runtime'], immediately: true,
+  inject: ['@deepseek-ai/dsh-client-ui-renderer'], immediately: true,
 }
 const layout = {
   id: DESKTOP_LAYOUT_ID, url: '/plugins/layout.js', rev: 'layout',
-  inject: ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-theme'],
+  inject: ['@deepseek-ai/dsh-client-ui-renderer', '@deepseek-ai/dsh-client-ui-session', '@deepseek-ai/dsh-client-ui-theme'],
 }
 const host = { rev: 'official', entries: [runtime, layout] }
 

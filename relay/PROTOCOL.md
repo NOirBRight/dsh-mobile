@@ -25,10 +25,12 @@ connection, room, byte, and backpressure limits.
 
 ## Frames
 
-The only accepted room payload is a WebSocket binary frame. The Relay copies
+The only accepted room payload is a WebSocket binary message. The Relay copies
 its bytes and ordering to the opposite seat without parsing or logging them.
-Frames are dropped when the opposite seat is absent. There is no buffering,
-storage, replay, or migration between rooms.
+Peers keep legacy sealed frames through 256 KiB raw and split larger sealed frames
+into marked sub-256 KiB messages; reassembly is end-to-end and invisible to the
+Relay. Messages are dropped when the opposite seat is absent. There is no
+buffering, storage, replay, or migration between rooms.
 
 Text frames, unknown roles, and malformed room paths are rejected. Duplicate
 seats are not denied: the latest join sits. WebSocket ping keeps NAT mappings

@@ -5,26 +5,25 @@ import { prepareDshClientBoot, resetDshClientBoot } from '../src/dsh-boot.ts'
 test('prepareDshClientBoot installs the queue and parser preloads before create', async () => {
   const manifest = { rev: 'host', entries: [
     { id: '@deepseek-ai/dsh-client-modules', url: 'blob:modules', rev: 'm', inject: [] },
-    { id: '@deepseek-ai/dsh-client-runtime', url: 'blob:runtime', rev: 'r', inject: [] },
   ] }
   const loaded = []
   await prepareDshClientBoot(manifest, async (_url, id) => {
     loaded.push(id)
     const loader = globalThis.__ModuleLoader__
-    loader.load(id === '@deepseek-ai/dsh-client-modules' ? {
+    loader.load({
       id,
       factory: () => ({
         apply() {},
         createClientModuleSystem: (facade, bootstrap, options) => ({ facade, bootstrap, options }),
       }),
-    } : { id, factory: () => ({ apply() {} }) })
+    })
   })
-  assert.deepEqual(loaded, ['@deepseek-ai/dsh-client-modules', '@deepseek-ai/dsh-client-runtime'])
+  assert.deepEqual(loaded, ['@deepseek-ai/dsh-client-modules'])
   assert.deepEqual(globalThis.__ModuleLoader__.pendingQueue.map(row => row.id), loaded)
   const result = globalThis.__ModuleLoader__.create({ boot: true })
   assert.equal(result.bootstrap.id, '@deepseek-ai/dsh-client-modules')
   assert.deepEqual(result.options, { boot: true })
-  assert.deepEqual(globalThis.__ModuleLoader__.pendingQueue.map(row => row.id), ['@deepseek-ai/dsh-client-runtime'])
+  assert.deepEqual(globalThis.__ModuleLoader__.pendingQueue.map(row => row.id), [])
   resetDshClientBoot()
 })
 

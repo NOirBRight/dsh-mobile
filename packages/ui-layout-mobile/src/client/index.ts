@@ -7,8 +7,9 @@
  * cross-plugin panel-action face consumed by ui-sidebar and ui-conversation.
  * A second effect seats the theme presenter (copied from upstream).
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PanelActions } from './service.ts'
 import { MobileFrame } from './MobileFrame.tsx'
 import type { MobileInteractionOperations } from './MobileFrame.tsx'
@@ -21,6 +22,7 @@ import { installHistoryContinuityAdapter } from './history-continuity.ts'
 import { installTurnTailPresenter } from './turn-tail-presenter.ts'
 import { installModelPickerPresenter } from './model-picker-presenter.ts'
 import { installPermissionLabelPresenter } from './permission-label-presenter.ts'
+import { installPresetLabelPresenter } from './preset-label-presenter.ts'
 import type { DraftConversation } from './composer-attach.ts'
 
 // Contract exports only. IMobileLayout: the ctx.layout face consumers and test
@@ -67,10 +69,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'shell.overlay': { kind: 'list'; scope: 'root' }
     /** Occupied by this package's plus-button attach control. Declared by ui-conversation. */
-    'conversation.input.left': { kind: 'list'; scope: 'session'; owner: object }
+    'conversation.input.left': { kind: 'list'; scope: 'session'; owner: InputZoneLike }
     /** Occupied by this package's compact StatsLine. Declared by ui-conversation. */
     'conversation.composer.dock': { kind: 'list'; scope: 'session'; owner: object }
   }
+}
+
+/** Minimal InputZone share consumed by the plus-button attach control. */
+interface InputZoneLike {
+  readonly session: { readonly running: boolean; readonly subagent: unknown | null }
+  readonly input: { readonly draft: string; readonly imageIds: readonly string[] }
 }
 
 /** Sidebar owner share: live drawer state from the frame. */
@@ -88,7 +96,7 @@ export interface ConvOwnerProps {}
 export interface DetailsOwnerProps {}
 
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
-export const inject = ['slots', 'theme', 'sessions']
+export const inject = ['slots', 'theme', 'sessions', 'settingsScope']
 
 function interactionOperationsFrom(ctx: ClientContext): MobileInteractionOperations | undefined {
   const holder = ctx as ClientContext & { get?(name: string, strict?: boolean): unknown; interactionOperations?: unknown }
@@ -108,6 +116,20 @@ function interactionOperationsFrom(ctx: ClientContext): MobileInteractionOperati
  */
 export function apply(ctx: ClientContext): void {
   const layout = new MobileLayoutController()
+  const settings = (ctx as ClientContext & {
+    settingsScope: {
+      bind<T>(spec: { namespace: string; decode(value: unknown): T | undefined }): {
+        getSnapshot(): { value: T | undefined }
+      }
+    }
+  }).settingsScope.bind({
+    namespace: 'ui-conversation',
+    decode: (value): { busyEnter: 'queue' | 'steer' } | undefined => {
+      if (typeof value !== 'object' || value === null) return undefined
+      const busyEnter = Reflect.get(value, 'busyEnter')
+      return busyEnter === 'queue' || busyEnter === 'steer' ? { busyEnter } : undefined
+    },
+  })
   ctx.effect(() => {
     const disposeService = ctx.reflect.provide('layout', layout)
     const disposeRegistration = ctx.slots.register({
@@ -149,6 +171,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => installTurnTailPresenter(), 'ui-layout-mobile: compact turn tail')
   ctx.effect(() => installModelPickerPresenter(), 'ui-layout-mobile: compact model details')
   ctx.effect(() => installPermissionLabelPresenter(), 'ui-layout-mobile: compact permission labels')
+  ctx.effect(() => installPresetLabelPresenter(), 'ui-layout-mobile: compact preset labels')
 
   ctx.effect(() => {
     let disposeAttach: (() => void) | undefined
@@ -159,7 +182,11 @@ export function apply(ctx: ClientContext): void {
           name: 'conversation.input.left',
           id: 'composer-attach',
           order: 0,
-          inject: () => draftImageInject(ctx),
+          inject: (sessionId: string) => draftImageInject(
+            ctx,
+            sessionId,
+            () => settings.getSnapshot().value?.busyEnter ?? 'queue',
+          ),
         }, ComposerAttach)
       } catch {
         // ui-conversation declares this slot; retry when that roster lands.
@@ -203,13 +230,32 @@ export function apply(ctx: ClientContext): void {
   }, 'ui-layout-mobile: compact stats')
 }
 
-function draftImageInject(ctx: ClientContext): {
+function draftImageInject(
+  ctx: ClientContext,
+  sessionId: string,
+  busyEnter: () => 'queue' | 'steer',
+): {
   createDraftImages: DraftConversation['createDraftImages']
   releaseDraftImage: DraftConversation['releaseDraftImage']
   releaseDraftImages: DraftConversation['releaseDraftImages']
+  busyEnter: () => 'queue' | 'steer'
+  submitSteer: (text: string, imageIds: readonly string[]) => Promise<void>
 } {
   const live = (): DraftConversation | undefined => liveConversation(ctx)
   return {
+    busyEnter,
+    submitSteer: async (text, imageIds) => {
+      const conversation = live()
+      if (conversation?.sendSession === undefined) {
+        throw new Error('ui-layout-mobile: steer submission unavailable')
+      }
+      const bound = ctx.sessions as unknown as {
+        binding(id: string): { session: unknown } | undefined
+      }
+      const sessionFace = bound.binding(sessionId)?.session
+      if (sessionFace === undefined) throw new Error('ui-layout-mobile: steer session unavailable')
+      await conversation.sendSession(sessionFace, text, imageIds, 'steer')
+    },
     createDraftImages: (files) => {
       const conversation = live()
       if (conversation?.createDraftImages === undefined) {

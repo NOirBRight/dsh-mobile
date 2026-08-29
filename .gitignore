@@ -4,5 +4,6 @@ dist/
 artifacts/
 .scratch/
 .tmp/
+.dsh-upstream
 prototypes/
 pnpm-lock.yaml

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { adaptBootManifestForMobile, COLD_BOOT_PLUGIN_CONCURRENCY, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, INTERACTION_OPERATIONS_ID, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, RUNTIME_ID } from '../src/manifest.ts'
+import { adaptBootManifestForMobile, COLD_BOOT_PLUGIN_CONCURRENCY, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, installCompatibilityNotice, loadSameOriginMobileBootManifest, localizePluginBundles, INTERACTION_OPERATIONS_ID, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, RUNTIME_ID } from '../src/manifest.ts'
 
 test('extracts the boot graph from every historical host embedding form', () => {
   const graph = { rev: 'rev-1', entries: [{ id: 'x', url: '/plugins/x.js', rev: 'a' }] }
@@ -16,6 +16,76 @@ test('extracts the boot graph from every historical host embedding form', () => 
   assert.throws(() => extractBootManifestJson('<html></html>', 'boot manifest not found in tunneled index'), /boot manifest not found in tunneled index/)
 })
 
+test('compatible Host boot retracts a compatibility notice left by the prior Host', () => {
+  const previous = globalThis.document
+  let removed = false
+  globalThis.document = {
+    querySelector: selector => {
+      assert.equal(selector, '[data-mobile-compatibility-notice]')
+      return { remove() { removed = true } }
+    },
+  }
+  try {
+    installCompatibilityNotice('compatible')
+    assert.equal(removed, true)
+  } finally {
+    if (previous === undefined) delete globalThis.document
+    else globalThis.document = previous
+  }
+})
+
+test('keeps official multi-entry batches and only adds missing ids', () => {
+  const selected = selectResponsiveBootManifest({
+    rev: 'alpha.1',
+    entries: [
+      { id: '@deepseek-ai/dsh-client-modules', url: '/plugins/modules.js', rev: 'm', inject: [], immediately: true },
+      { id: '@deepseek-ai/dsh-cordis-client-runner', url: '/plugins/runner.js', rev: 'r', inject: [] },
+      { id: '@deepseek-ai/dsh-client-ui-renderer', url: '/plugins/renderer.js', rev: 'u', inject: [] },
+      {
+        id: DESKTOP_LAYOUT_ID, url: '/plugins/layout.js', rev: 'l',
+        inject: ['@deepseek-ai/dsh-client-ui-renderer'],
+      },
+    ],
+    batches: [{
+      phase: 'application',
+      url: '/plugins/group.js',
+      rev: 'g',
+      entries: ['@deepseek-ai/dsh-client-modules', '@deepseek-ai/dsh-cordis-client-runner', 'ghost'],
+    }],
+  }, { viewportWidth: 390 })
+  const grouped = selected.manifest.batches?.find(batch => batch.url === '/plugins/group.js')
+  assert.deepEqual(grouped?.entries, ['@deepseek-ai/dsh-client-modules', '@deepseek-ai/dsh-cordis-client-runner'])
+  assert.equal(selected.manifest.batches?.some(batch => batch.entries.includes('ghost')), false)
+})
+
+test('accepts alpha.1 entries without inject and rebuilds exact initial-load batches', () => {
+  const selected = selectResponsiveBootManifest({
+    rev: 'alpha.1',
+    entries: [
+      { id: '@deepseek-ai/dsh-client-modules', url: '/plugins/modules.js', rev: 'm', inject: [], immediately: true },
+      { id: '@deepseek-ai/dsh-cordis-client-runner', url: '/plugins/runner.js', rev: 'r', inject: [] },
+      // alpha.1 renderer intentionally omits inject.
+      { id: '@deepseek-ai/dsh-client-ui-renderer', url: '/plugins/renderer.js', rev: 'u', immediately: true },
+      { id: '@deepseek-ai/dsh-client-ui-session', url: '/plugins/session.js', rev: 's', inject: [] },
+      { id: '@deepseek-ai/dsh-client-ui-theme', url: '/plugins/theme.js', rev: 't', inject: [] },
+      {
+        id: DESKTOP_LAYOUT_ID, url: '/plugins/layout.js', rev: 'l',
+        inject: ['@deepseek-ai/dsh-client-ui-renderer', '@deepseek-ai/dsh-client-ui-session', '@deepseek-ai/dsh-client-ui-theme'],
+      },
+    ],
+    batches: [{ phase: 'application', url: '/plugins/stale-batch.js', rev: 'old', entries: ['ghost'] }],
+  }, { viewportWidth: 390 })
+  assert.equal(selected.layout, 'narrow')
+  assert.deepEqual(selected.manifest.entries.find(entry => entry.id === '@deepseek-ai/dsh-client-ui-renderer')?.inject, [])
+  const named = selected.manifest.batches?.flatMap(batch => batch.entries) ?? []
+  assert.deepEqual([...named].sort(), selected.manifest.entries.map(entry => entry.id).sort())
+  assert.equal(selected.manifest.batches?.some(batch => batch.entries.includes('ghost')), false)
+  for (const entry of selected.manifest.entries) {
+    const batch = selected.manifest.batches?.filter(candidate => candidate.entries.includes(entry.id)) ?? []
+    assert.equal(batch.length, 1, entry.id)
+  }
+})
+
 test('replaces desktop layout and drops browser HMR without mutating host manifest', () => {
   const host = {
     rev: 'host-rev',
@@ -26,7 +96,7 @@ test('replaces desktop layout and drops browser HMR without mutating host manife
         id: '@deepseek-ai/dsh-client-ui-layout',
         url: '/plugins/desktop-layout.js',
         rev: 'desktop',
-        inject: ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-theme'],
+        inject: ['@deepseek-ai/dsh-client-ui-renderer', '@deepseek-ai/dsh-client-ui-session', '@deepseek-ai/dsh-client-ui-theme'],
       },
       { id: 'after', url: '/plugins/after.js', rev: 'b', inject: [] },
     ],
@@ -36,13 +106,13 @@ test('replaces desktop layout and drops browser HMR without mutating host manife
   const mobile = adaptBootManifestForMobile(host)
 
   assert.deepEqual(host, snapshot)
-  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.30+mobile-interactions-0.1.14')
+  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.45+mobile-interactions-0.1.14')
   assert.deepEqual(mobile.entries.map(entry => entry.id), ['before', MOBILE_LAYOUT_ID, 'after', INTERACTION_OPERATIONS_ID])
   assert.deepEqual(mobile.entries[1], {
     id: MOBILE_LAYOUT_ID,
-    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.30',
-    rev: '0.1.30',
-    inject: ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-theme'],
+    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.45',
+    rev: '0.1.45',
+    inject: ['@deepseek-ai/dsh-client-ui-renderer', '@deepseek-ai/dsh-client-ui-session', '@deepseek-ai/dsh-client-ui-theme'],
   })
 })
 
@@ -100,7 +170,7 @@ test('detects the official narrow slot contract and names visible compatibility 
     id: DESKTOP_LAYOUT_ID,
     url: '/plugins/official.js',
     rev: 'host-layout',
-    inject: ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-theme'],
+    inject: ['@deepseek-ai/dsh-client-ui-renderer', '@deepseek-ai/dsh-client-ui-session', '@deepseek-ai/dsh-client-ui-theme'],
   }
   assert.equal(officialNarrowContractAvailable({ rev: 'host', entries: [official] }), true)
   assert.equal(officialNarrowContractAvailable({ rev: 'host', entries: [{ ...official, inject: [] }] }), false)
@@ -152,11 +222,17 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
     rev: 'mobile',
     entries: [
       { id: 'runtime', url: '/plugins/runtime/client.js?rev=a', rev: 'a', inject: [] },
-      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.30', rev: '0.1.30', inject: [] },
+      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.45', rev: '0.1.45', inject: [] },
       { id: INTERACTION_OPERATIONS_ID, url: '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.14', rev: '0.1.14', inject: [] },
       { id: CONNECTION_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23', rev: '0.1.23', inject: [] },
       { id: 'leaf', url: '/plugins/leaf/client.js?rev=b', rev: 'b', inject: ['runtime'] },
     ],
+    batches: [{
+      phase: 'application',
+      url: '/plugins/??runtime/client.js,leaf/client.js&rev=batch',
+      rev: 'batch',
+      entries: ['runtime', 'leaf'],
+    }],
   }
   const loaded = []
   const localized = await localizePluginBundles(manifest, {
@@ -173,9 +249,15 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
   assert.equal(localized.entries[2].url, manifest.entries[2].url)
   assert.equal(localized.entries[3].url, manifest.entries[3].url)
   assert.equal(localized.entries[4].url, 'blob:test/leaf/32')
+  assert.equal(localized.batches.some(batch => batch.url.includes('/plugins/??')), false)
+  for (const entry of localized.entries) {
+    const batches = localized.batches.filter(batch => batch.entries.includes(entry.id))
+    assert.equal(batches.length, 1, entry.id)
+    assert.equal(batches[0].url, entry.url, entry.id)
+  }
   assert.deepEqual(manifest.entries.map(entry => entry.url), [
     '/plugins/runtime/client.js?rev=a',
-    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.30',
+    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.45',
     '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.14',
     '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23',
     '/plugins/leaf/client.js?rev=b',
@@ -461,7 +543,7 @@ test('hydrate-localize fails loud on any missing bundle (every entry is booted e
   const manifest = {
     rev: 'host-rev',
     entries: [
-      { id: '@deepseek-ai/dsh-client-runtime', url: '/plugins/@deepseek-ai/dsh-client-runtime/client.js?rev=r1', rev: 'r1' },
+      { id: '@deepseek-ai/dsh-cordis-client-runner', url: '/plugins/@deepseek-ai/dsh-cordis-client-runner/client.js?rev=r1', rev: 'r1' },
       { id: 'dsh-codex-sidebar', url: '/plugins/dsh-codex-sidebar/client.js?rev=e1', rev: 'e1' },
     ],
   }
@@ -472,7 +554,7 @@ test('hydrate-localize fails loud on any missing bundle (every entry is booted e
       cache: memory,
       cacheOnly: true,
     }),
-    /plugin cache miss: @deepseek-ai\/dsh-client-runtime/,
+    /plugin cache miss: @deepseek-ai\/dsh-cordis-client-runner/,
   )
 })
 
@@ -492,7 +574,7 @@ test('boot always keeps the official runtime and never inserts session hydration
   const runtime = { id: RUNTIME_ID, url: '/plugins/runtime.js', rev: 'official-runtime', inject: [], immediately: true }
   const layout = {
     id: DESKTOP_LAYOUT_ID, url: '/plugins/layout.js', rev: 'layout',
-    inject: ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-theme'],
+    inject: ['@deepseek-ai/dsh-client-ui-renderer', '@deepseek-ai/dsh-client-ui-session', '@deepseek-ai/dsh-client-ui-theme'],
   }
   const host = { rev: 'host', entries: [runtime, layout] }
   const selected = selectResponsiveBootManifest(host, { viewportWidth: 390 })

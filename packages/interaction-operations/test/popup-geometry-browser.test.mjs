@@ -39,6 +39,9 @@ test('popup anchors and authored choice width survive mobile compatibility geome
     assert.equal(capture('choice-overflow-x'), 'hidden', 'bilingual choice text must not create a horizontal scrollbar')
     assert.equal(capture('nested-outer-overflow-y'), 'hidden', 'composite picker chrome must delegate vertical scrolling')
     assert.equal(capture('nested-inner-overflow-y'), 'auto', 'nested model rows must retain vertical scroll ownership')
+    assert.equal(capture('composer-overlay-position'), 'absolute', 'slash/@ overlays must keep the Host card-relative anchor')
+    assert.equal(capture('composer-overlay-marker'), '', 'card overlays without an ARIA trigger must not enter fixed popup presentation')
+    assert.notEqual(capture('composer-overlay-z-index'), '1200', 'composer overlays must not float over the conversation header')
     assert.equal(capture('choice-width'), '320', 'choice menus must preserve their authored picker width')
   } finally {
     await rm(outDir, { recursive: true, force: true })

@@ -148,6 +148,7 @@ test('Host Gateway signal and tunnel paths are not tunneled sockets', () => {
   assert.equal(isHostGatewaySocketPath('/signal/check'), true)
   assert.equal(isHostGatewaySocketPath('/signal/' + 'a'.repeat(32)), true)
   assert.equal(isHostGatewaySocketPath('/tunnel/' + 'b'.repeat(32)), true)
+  assert.equal(isHostGatewaySocketPath('/api/remote.mux'), false)
   assert.equal(isHostGatewaySocketPath('/api/events.mux'), false)
   assert.equal(isHostGatewaySocketPath('/healthz'), false)
 })

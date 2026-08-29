@@ -142,17 +142,21 @@ test('frames delivered as Blobs keep seq order (async normalization queue)', asy
 
 test('tunneled WebSocket opens, echoes, and closes', async () => {
   const { client } = await hostAndClient()
-  const sock = client.openWebSocket('/api/events.mux')
+  const sock = client.openWebSocket('/api/remote.mux')
   await nextEvent(sock, 'open')
   assert.equal(sock.readyState, 1)
   const received = []
   sock.addEventListener('message', (ev) => received.push(ev.data))
   sock.send('ping-1')
   sock.send('ping-2')
+  sock.send(new Uint8Array([1, 2, 3]))
   const closed = nextEvent(sock, 'close')
-  // Wait for both echoes, then close.
-  while (received.length < 2) await new Promise((r) => setTimeout(r, 1))
-  assert.deepEqual(received, ['ping-1', 'ping-2'])
+  // Preserve WebSocket message type in both directions: remote.mux requires
+  // text JSON, while binary callers still receive an ArrayBuffer.
+  while (received.length < 3) await new Promise((r) => setTimeout(r, 1))
+  assert.deepEqual(received.slice(0, 2), ['ping-1', 'ping-2'])
+  assert.ok(received[2] instanceof ArrayBuffer)
+  assert.deepEqual([...new Uint8Array(received[2])], [1, 2, 3])
   sock.close(1000, 'done')
   const ev = await closed
   assert.equal(ev.code, 1000)
@@ -164,7 +168,7 @@ test('tunneled WebSocket opens, echoes, and closes', async () => {
 
 test('transport close aborts in-flight fetch, closes sockets with 1006, flips state', async () => {
   const { client, hostDc, states } = await hostAndClient()
-  const sock = client.openWebSocket('/api/events.mux')
+  const sock = client.openWebSocket('/api/remote.mux')
   await nextEvent(sock, 'open')
   const sockClosed = nextEvent(sock, 'close')
   const hung = client.fetch('/hang')
