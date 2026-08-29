@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "dsh-mobile 移动浏览器表面 bundle:patch 层(换根布局、换 dist)+ webRuntime 胶水插件",
+  "license": "MIT",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",

@@ -127,3 +127,7 @@ npm run android:debug --workspace @dsh-mobile/mobile-web
 调试 APK：`apps/mobile-web/android/app/build/outputs/apk/debug/app-debug.apk`。签名发布包：`npm run android:release --workspace @dsh-mobile/mobile-web`。
 
 配对配置见 [plugins/pairing/README.md](plugins/pairing/README.md) 和已发布的 [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing)。自托管 Relay 见 [relay/deploy/README.md](relay/deploy/README.md)。布局契约见 [docs/adr/0004-responsive-layout-and-design-ownership.md](docs/adr/0004-responsive-layout-and-design-ownership.md)。维护者架构见 [docs/architecture.md](docs/architecture.md)。
+
+## 许可证
+
+[MIT](LICENSE)

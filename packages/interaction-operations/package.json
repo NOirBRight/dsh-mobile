@@ -3,6 +3,7 @@
   "version": "0.1.14",
   "type": "module",
   "description": "Modality-independent mobile interaction intents and compatibility adapters for DSH",
+  "license": "MIT",
   "main": "lib/index.js",
   "exports": {
     ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
