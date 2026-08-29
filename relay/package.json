@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "description": "Untrusted multi-room opaque sealed-frame Relay for dsh-mobile",
+  "license": "MIT",
   "engines": { "node": ">=22" },
   "dependencies": { "ws": "^8.21.3" },
   "scripts": {

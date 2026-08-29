@@ -127,3 +127,7 @@ npm run android:debug --workspace @dsh-mobile/mobile-web
 Debug APK: `apps/mobile-web/android/app/build/outputs/apk/debug/app-debug.apk`. Signed release: `npm run android:release --workspace @dsh-mobile/mobile-web`.
 
 Pairing configuration: [plugins/pairing/README.md](plugins/pairing/README.md) and the published [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing) repo. Self-hosted Relay: [relay/deploy/README.md](relay/deploy/README.md). Layout contract: [docs/adr/0004-responsive-layout-and-design-ownership.md](docs/adr/0004-responsive-layout-and-design-ownership.md). Maintainer architecture: [docs/architecture.md](docs/architecture.md).
+
+## License
+
+[MIT](LICENSE)

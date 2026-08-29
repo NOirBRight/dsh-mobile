@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "DeepSeek Harness 手机客户端(独立项目,不进入上游仓库)",
+  "license": "MIT",
   "workspaces": [
     "packages/*",
     "apps/*",

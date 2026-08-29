@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "移动端根布局:dsh.client 插件(platform web),逐字实现上游 ui-layout 的 root slot 契约",
+  "license": "MIT",
   "main": "lib/index.js",
   "exports": {
     ".": {
