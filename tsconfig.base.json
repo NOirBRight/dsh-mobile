@@ -20,6 +20,8 @@
       "@deepseek-ai/dsh-client-ui-renderer": ["./.dsh-upstream/packages/client/ui-renderer/lib/types/index.d.ts"],
       "@deepseek-ai/dsh-client-ui-renderer/client": ["./.dsh-upstream/packages/client/ui-renderer/lib/types/client/index.d.ts"],
       "@deepseek-ai/dsh-client-ui-session/client": ["./.dsh-upstream/packages/client/ui-session/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-session-stats/client": ["./.dsh-upstream/packages/session/session-stats/lib/types/client.d.ts"],
+      "@deepseek-ai/dsh-token-meter/client": ["./.dsh-upstream/packages/llm/token-meter/lib/types/client.d.ts"],
       "@deepseek-ai/dsh-host-webserver": ["./.dsh-upstream/packages/host/webserver/lib/types/index.d.ts"]
     }
   }

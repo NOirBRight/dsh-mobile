@@ -40,9 +40,11 @@ public final class DshSystemBarsPlugin extends Plugin {
                         | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
                 controller.setSystemBarsAppearance(dark ? 0 : mask, mask);
             }
-            return;
         }
 
+        // Capacitor and some OEM skins retain the legacy light-icon bits even
+        // on API 30+. Keep both control planes synchronized so dark surfaces
+        // always receive light status/navigation glyphs.
         View decor = window.getDecorView();
         int flags = decor.getSystemUiVisibility();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

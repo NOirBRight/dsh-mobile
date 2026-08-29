@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { Capacitor, registerPlugin } from '@capacitor/core'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { claimShellNativeBridges, concealShellNativeBridges, installSystemBarThemeSync } from '../src/native-bridges.ts'
 
 test('claiming native bridges removes them from the public Capacitor table', () => {
@@ -26,6 +28,17 @@ test('conceal can be repeated after a later plugin import', () => {
   concealShellNativeBridges()
   assert.equal('CapacitorBarcodeScanner' in Capacitor.Plugins, false)
   assert.throws(() => Capacitor.registerPlugin('App'), /reserved for the App Shell/)
+})
+
+test('modern Android clears both InsetsController and legacy light-icon flags', async () => {
+  const source = await readFile(resolve(import.meta.dirname, '../android/app/src/main/java/top/noirbright/dshmobile/DshSystemBarsPlugin.java'), 'utf8')
+  assert.match(source, /setSystemBarsAppearance/)
+  assert.match(source, /SYSTEM_UI_FLAG_LIGHT_STATUS_BAR/)
+  assert.doesNotMatch(
+    source,
+    /setSystemBarsAppearance[\s\S]*?\n\s*}\n\s*return;/,
+    'API 30+ must continue through the legacy flag cleanup used by OEM/Capacitor chrome',
+  )
 })
 
 test('system bars follow light/dark body theme changes without exposing the plugin', async () => {

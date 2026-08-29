@@ -26,6 +26,9 @@
 - 桌面三栏/拖拽把手/ concession 链 → 移动单栏 + 抽屉 + 弹层;store 状态从 px 宽度简化为 `{ drawerOpen, detailsOpen }`。
 - 会话切换时除关闭 details(上游行为)外**还关闭抽屉**(移动端导航即收起的惯例)。
 - 抽屉打开时不传 `collapsed: true`,侧边栏的紧凑轨道 UI 在移动端永不出现。
+- 上游暂未提供语义 seam、只能桥接本地化 ARIA 时，不得只匹配一种语言；当前上游中英文词典必须同时匹配，并由真实浏览器 fixture 固定两种 label 下的同一布局结果。
+- 不得用控件已有的伪元素承载移动端文案；例如 View tab 的 `::after` 属于选中下划线，移动布局必须保留真实 tab 文本并通过间距分配解决宽度。
+- 已知内置 preset 被用户层覆盖后可能携带非本地化 metadata；移动端只可按可证明的内置身份补齐紧凑文案（PTC 使用语言无关的 `PTC`），任意用户 preset 名称保持原样。
 
 ## 静态加载修订号
 
@@ -33,7 +36,7 @@
 
 ## 构建
 
-`npm run build` = tsc(emit lib/types)+ tsdown(node 半 lib/index.js + 浏览器闭包工厂包 lib/client.js)。tsdown 预设在本仓库 `build/tsdown.client.ts`(上游 packages/client/tsdown.client.ts 的适配拷贝,PLATFORM_MODULES 指向上游 checkout)。浏览器包外部化 PLATFORM_MODULES + `@deepseek-ai/dsh-client-runtime/client`(运行时由 shell 的模块表应答),其余依赖内联并过 purity gate。
+`npm run build` 先由 `prepare-upstream.mjs` 选定根目录 `.dsh-upstream`；Vite、tsdown、类型路径、Host bridge 构建与本地打包必须全部消费这一个 checkout，禁止各自回退到 sibling 路径。随后执行 tsc(emit lib/types)+ tsdown(node 半 lib/index.js + 浏览器闭包工厂包 lib/client.js)。tsdown 预设在本仓库 `build/tsdown.client.ts`(上游 packages/client/tsdown.client.ts 的适配拷贝,PLATFORM_MODULES 指向上游 checkout)。浏览器包外部化 PLATFORM_MODULES + `@deepseek-ai/dsh-client-runtime/client`(运行时由 shell 的模块表应答),其余依赖内联并过 purity gate。
 
 ## 同步策略
 

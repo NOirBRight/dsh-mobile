@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readlinkSync, rmSync, symlinkSync } from 'node:fs'
+import { existsSync, lstatSync, readlinkSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -14,7 +14,9 @@ function current() {
   } catch { return undefined }
 }
 
-const requested = process.env.DSH_UPSTREAM === undefined ? undefined : resolve(process.env.DSH_UPSTREAM)
+const requested = process.env.DSH_UPSTREAM === undefined
+  ? undefined
+  : realpathSync(resolve(process.env.DSH_UPSTREAM))
 const existing = current()
 const candidates = [requested, existing, resolve(root, '../deepseek-harness')]
 const target = candidates.find(value => value !== undefined && valid(value))

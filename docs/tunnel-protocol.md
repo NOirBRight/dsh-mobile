@@ -92,7 +92,7 @@ The client connects to the Host Gateway tunnel WebSocket derived from the same P
 
 ### Official Relay
 
-The client and Host both join `wss://relay.example/r/<room>?role=client|host`. The Relay forwards only binary frames; the same NaCl handshake/session protocol runs above `WsFrameTransport`. One Host and one Client occupy each Room, while many Rooms share the regional Relay process.
+The client and Host both join `wss://relay.example/r/<room>?role=client|host`. The Relay forwards only binary messages; the same NaCl handshake/session protocol runs above `WsFrameTransport`. Sealed frames through 256 KiB remain byte-identical for rolling compatibility. Larger sealed frames are split into marked messages no larger than 192 KiB and reassembled behind the `FrameTransport` interface, with a 16 MiB assembled-frame ceiling. One Host and one Client occupy each Room, while many Rooms share the regional Relay process.
 
 Connection policy is explicit:
 
@@ -116,8 +116,8 @@ Profile Removal is local and does not revoke the Host record. Device Revocation 
 
 ## 7. Limits and security rules
 
-- Session plaintext frame maximum: 200 KiB. Larger HTTP bodies use continuation frames and retain the existing bounded body limit.
-- DataChannel wire fragmentation preserves the existing 60 KiB message ceiling and 16 MiB assembled-frame ceiling.
+- Client-originated session plaintext frames remain limited to 200 KiB. Larger HTTP bodies use continuation frames and retain the existing bounded body limit. Host virtual-WebSocket delivery may produce larger sealed frames, bounded by the 16 MiB carrier reassembly ceiling.
+- DataChannel wire fragmentation preserves the 60 KiB message ceiling. Relay WebSocket fragmentation preserves legacy raw frames through 256 KiB and emits marked messages no larger than 192 KiB.
 - Credentials never appear in query parameters, logs, plugin props, or unsealed application frames.
 - Raw DSH port 3080 is never the Public Endpoint.
 - An Official Relay accepts only bounded binary sealed frames and must never become a generic HTTP/DSH proxy.

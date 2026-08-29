@@ -66,6 +66,29 @@ function run(): void {
   const nestedScroll = nested.querySelector<HTMLElement>('[data-nested-scroll]')!
   document.body.append(nestedTrigger, nested)
 
+  // Official alpha.1 slash/@ menus live in the first, zero-height overlay
+  // anchor inside the composer card. They have no aria-controls trigger and
+  // must retain the Host's card-relative absolute geometry.
+  const composerCard = document.createElement('div')
+  composerCard.setAttribute('data-composer-card', '')
+  composerCard.style.position = 'relative'
+  composerCard.style.width = '296px'
+  composerCard.style.height = '120px'
+  const overlayAnchor = document.createElement('div')
+  overlayAnchor.style.position = 'absolute'
+  overlayAnchor.style.inset = '0 0 auto'
+  overlayAnchor.style.height = '0'
+  const composerOverlay = document.createElement('div')
+  composerOverlay.setAttribute('role', 'listbox')
+  composerOverlay.style.position = 'absolute'
+  composerOverlay.style.left = '0'
+  composerOverlay.style.right = '0'
+  composerOverlay.style.bottom = 'calc(100% + 4px)'
+  composerOverlay.textContent = 'Files & folders Commands'
+  overlayAnchor.append(composerOverlay)
+  composerCard.append(overlayAnchor)
+  document.body.insertBefore(composerCard, trigger)
+
   const dispose = installPopupGeometryAdapter(document)
   document.body.dataset.simpleNarrowWidth = String(Math.round(popup.getBoundingClientRect().width))
   document.body.dataset.choiceNarrowWidth = String(Math.round(choice.getBoundingClientRect().width))
@@ -86,6 +109,9 @@ function run(): void {
   document.body.dataset.choiceOverflowX = getComputedStyle(choice).overflowX
   document.body.dataset.nestedOuterOverflowY = getComputedStyle(nested).overflowY
   document.body.dataset.nestedInnerOverflowY = getComputedStyle(nestedScroll).overflowY
+  document.body.dataset.composerOverlayPosition = getComputedStyle(composerOverlay).position
+  document.body.dataset.composerOverlayMarker = composerOverlay.dataset.dshMobilePopup ?? ''
+  document.body.dataset.composerOverlayZIndex = getComputedStyle(composerOverlay).zIndex
   touchPointerDown(trigger, 1)
   click(trigger)
   document.body.dataset.anchorClosed = String(trigger.getAttribute('aria-expanded') === 'false')

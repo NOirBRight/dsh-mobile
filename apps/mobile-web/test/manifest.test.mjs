@@ -106,12 +106,12 @@ test('replaces desktop layout and drops browser HMR without mutating host manife
   const mobile = adaptBootManifestForMobile(host)
 
   assert.deepEqual(host, snapshot)
-  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.30+mobile-interactions-0.1.14')
+  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.45+mobile-interactions-0.1.14')
   assert.deepEqual(mobile.entries.map(entry => entry.id), ['before', MOBILE_LAYOUT_ID, 'after', INTERACTION_OPERATIONS_ID])
   assert.deepEqual(mobile.entries[1], {
     id: MOBILE_LAYOUT_ID,
-    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.30',
-    rev: '0.1.30',
+    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.45',
+    rev: '0.1.45',
     inject: ['@deepseek-ai/dsh-client-ui-renderer', '@deepseek-ai/dsh-client-ui-session', '@deepseek-ai/dsh-client-ui-theme'],
   })
 })
@@ -222,11 +222,17 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
     rev: 'mobile',
     entries: [
       { id: 'runtime', url: '/plugins/runtime/client.js?rev=a', rev: 'a', inject: [] },
-      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.30', rev: '0.1.30', inject: [] },
+      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.45', rev: '0.1.45', inject: [] },
       { id: INTERACTION_OPERATIONS_ID, url: '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.14', rev: '0.1.14', inject: [] },
       { id: CONNECTION_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23', rev: '0.1.23', inject: [] },
       { id: 'leaf', url: '/plugins/leaf/client.js?rev=b', rev: 'b', inject: ['runtime'] },
     ],
+    batches: [{
+      phase: 'application',
+      url: '/plugins/??runtime/client.js,leaf/client.js&rev=batch',
+      rev: 'batch',
+      entries: ['runtime', 'leaf'],
+    }],
   }
   const loaded = []
   const localized = await localizePluginBundles(manifest, {
@@ -243,9 +249,15 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
   assert.equal(localized.entries[2].url, manifest.entries[2].url)
   assert.equal(localized.entries[3].url, manifest.entries[3].url)
   assert.equal(localized.entries[4].url, 'blob:test/leaf/32')
+  assert.equal(localized.batches.some(batch => batch.url.includes('/plugins/??')), false)
+  for (const entry of localized.entries) {
+    const batches = localized.batches.filter(batch => batch.entries.includes(entry.id))
+    assert.equal(batches.length, 1, entry.id)
+    assert.equal(batches[0].url, entry.url, entry.id)
+  }
   assert.deepEqual(manifest.entries.map(entry => entry.url), [
     '/plugins/runtime/client.js?rev=a',
-    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.30',
+    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.45',
     '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.14',
     '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23',
     '/plugins/leaf/client.js?rev=b',

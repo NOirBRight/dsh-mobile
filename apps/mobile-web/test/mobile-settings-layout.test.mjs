@@ -30,6 +30,7 @@ test('mobile settings uses a full-width panel and horizontal category navigation
     assert.equal(capture('nav-width'), capture('panel-width'), 'settings navigation should span the panel')
     assert.equal(capture('nav-list-direction'), 'row', 'settings categories should become a horizontal row')
     assert.equal(capture('nav-list-overflow'), 'auto', 'settings categories should be horizontally scrollable')
+    assert.equal(capture('nav-list-padding-right'), '56px', 'the trailing settings tab must scroll clear of panel chrome')
     assert.equal(capture('codex-toggle-visibility'), 'hidden', 'Codex sidebar toggle should not paint above settings')
     assert.equal(capture('codex-toggle-pointer-events'), 'none', 'Codex sidebar toggle should not intercept settings taps')
     assert.equal(capture('codex-handle-visibility'), 'hidden', 'Codex resize handle should not paint above settings')

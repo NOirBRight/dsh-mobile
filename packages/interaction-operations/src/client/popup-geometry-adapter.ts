@@ -137,6 +137,19 @@ function controlsPopup(candidate: HTMLElement | null, popup: HTMLElement): boole
     && candidate.getAttribute('aria-controls')?.split(/\s+/).includes(popup.id) === true
 }
 
+/** Alpha.1 slash/@ surfaces live in the composer's zero-height overlay seat.
+ * They deliberately have no button owner: the card is their positioning context,
+ * so replacing authored absolute geometry with viewport-fixed placement detaches them. */
+function isComposerOverlaySurface(document: Document, popup: HTMLElement): boolean {
+  if (popup.closest('[data-composer-card]') === null) return false
+  if (popup.id !== '' && Array.from(document.querySelectorAll<HTMLElement>('[aria-controls]'))
+    .some(candidate => controlsPopup(candidate, popup))) return false
+  for (let sibling = popup.previousElementSibling; sibling !== null; sibling = sibling.previousElementSibling) {
+    if (sibling.matches('button, [aria-haspopup]') || sibling.querySelector('button, [aria-haspopup]') !== null) return false
+  }
+  return true
+}
+
 function candidateAnchor(
   document: Document,
   popup: HTMLElement,
@@ -244,7 +257,8 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
   }
 
   const prepare = (popup: HTMLElement): PreparedPopup | null => {
-    if (!rendered(popup) || popup.parentElement?.closest('[role="menu"]') !== null) return null
+    if (!rendered(popup) || popup.parentElement?.closest('[role="menu"]') !== null
+      || isComposerOverlaySurface(document, popup)) return null
     const anchor = resolveAnchor(popup, true)
     let original = originals.get(popup)
     if (original === undefined) {

@@ -6,6 +6,7 @@ import { CompactStatsLine } from '../../../../../packages/ui-layout-mobile/src/c
 import { installTurnTailPresenter } from '../../../../../packages/ui-layout-mobile/src/client/turn-tail-presenter.ts'
 import { installModelPickerPresenter } from '../../../../../packages/ui-layout-mobile/src/client/model-picker-presenter.ts'
 import { installPermissionLabelPresenter } from '../../../../../packages/ui-layout-mobile/src/client/permission-label-presenter.ts'
+import { installPresetLabelPresenter } from '../../../../../packages/ui-layout-mobile/src/client/preset-label-presenter.ts'
 
 const sessions = { current: 'session-a', byId: { 'session-a': { blank: false, displayTitle: 'Mobile UI Session' } } }
 const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)
@@ -49,14 +50,15 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
       <header data-session-header>
         <div>
           <div><nav aria-label="会话层级">Old title</nav><div data-header-action>
-            <span title="Current preset description" data-mode-label><svg width="14" height="14" />Standard mode</span>
+            <span title="PTC 模式 SDK" data-mode-label><svg width="14" height="14" />PTC 模式</span>
             <div><button aria-haspopup="tree" aria-expanded="true"><span className="activitySlot" /><span data-subagent-count>15 个子代理</span><svg /></button><div role="tree" data-subagent-menu /></div>
             <div><button aria-expanded="true"><span data-state /><span data-job-count>1 background job running</span><svg /></button><ul aria-label="Background jobs" data-job-menu /></div>
           </div></div>
           <div data-header-utility><div data-utility-wrapper><button><span>Session log</span><svg /></button></div></div>
         </div>
-        <div role="tablist"><button role="tab">对话</button><button role="tab">轨迹</button></div>
+        <div role="tablist"><button role="tab">Chat</button><button role="tab">Trajectory</button></div>
       </header>
+      <button type="button" data-hero-preset>PTC mode</button>
       <div data-chat-scroll><div data-chat-flow>Conversation<div data-turn-tail><span className="fixture_timeEnd">23:41 <span className="fixture_runTimeDot">·</span> Ran for 15s <span className="fixture_runTimeDot">·</span> TTFT 1.2s <span className="fixture_runTimeDot">·</span> 72 tok/s</span></div></div></div>
       <div data-composer-card>
         <CompactStatsLine useProjection={key => statsProjections[key]} />
@@ -100,6 +102,7 @@ function App() {
     const disposeTurnTail = installTurnTailPresenter()
     const disposeModelPicker = installModelPickerPresenter()
     const disposePermissionLabel = installPermissionLabelPresenter()
+    const disposePresetLabel = installPresetLabelPresenter()
     const timer = window.setTimeout(() => {
       const laggySheet = document.querySelector<HTMLElement>('#laggy section[aria-label="详情面板"]')!
       document.body.dataset.laggySheetVisibility = getComputedStyle(laggySheet).visibility
@@ -138,13 +141,18 @@ function App() {
       const childCrumb = document.createElement('button')
       childCrumb.type = 'button'
       childCrumb.setAttribute('aria-haspopup', 'tree')
-      childCrumb.setAttribute('aria-label', '切换子代理：Child')
+      childCrumb.setAttribute('aria-label', 'Switch subagent: Child')
       childCrumb.textContent = 'Child'
       breadcrumb.append(document.createTextNode(' / '), childCrumb)
       const childStyle = getComputedStyle(breadcrumb)
       document.body.dataset.childCrumbDisplay = childStyle.display
       document.body.dataset.childCrumbPosition = childStyle.position
       document.body.dataset.childCrumbTop = String(Math.round(breadcrumb.getBoundingClientRect().top))
+      document.body.dataset.childSessionTitleDisplay = getComputedStyle(
+        document.querySelector<HTMLElement>('#official [data-mobile-session-title]')!,
+      ).display
+      childCrumb.setAttribute('aria-label', '切换子代理：Child')
+      document.body.dataset.childCrumbPositionZh = getComputedStyle(breadcrumb).position
       document.body.dataset.fishHidden = getComputedStyle(document.querySelector<HTMLElement>('#official [data-duplicate-fish]')!).display
       document.body.dataset.panelVisible = getComputedStyle(document.querySelector<HTMLElement>('#official [data-panel-icon]')!).display
       const codexFrame = document.querySelector<HTMLElement>('#official [data-drawer-open]')!
@@ -221,12 +229,16 @@ function App() {
       document.body.dataset.subagentCopyEn = getComputedStyle(subagentCount, '::after').content
       document.body.dataset.jobCopyEn = getComputedStyle(jobCount, '::after').content
       document.body.dataset.modeText = preset.textContent ?? ''
+      document.body.dataset.heroModeText = document.querySelector<HTMLElement>('#official [data-hero-preset]')?.textContent ?? ''
       document.body.dataset.modeFontSize = getComputedStyle(preset).fontSize
       document.body.dataset.modeMaxWidth = getComputedStyle(preset).maxWidth
-      document.body.dataset.traceCopyEn = getComputedStyle(tablist.querySelectorAll<HTMLElement>('[role="tab"]')[1]!, '::after').content
+      const trajectoryTab = tablist.querySelectorAll<HTMLElement>('[role="tab"]')[1]!
+      document.body.dataset.trajectoryText = trajectoryTab.textContent ?? ''
+      document.body.dataset.trajectoryFontSize = getComputedStyle(trajectoryTab).fontSize
       document.documentElement.lang = 'zh-CN'
       document.body.dataset.subagentCopyZh = getComputedStyle(subagentCount, '::after').content
       document.body.dataset.jobCopyZh = getComputedStyle(jobCount, '::after').content
+      document.body.dataset.modeTextZh = preset.textContent ?? ''
       document.body.dataset.subagentCopyDisplay = getComputedStyle(subagentCount, '::after').display
       document.body.dataset.subagentCopyLineHeight = getComputedStyle(subagentCount, '::after').lineHeight
       document.body.dataset.jobCopyDisplay = getComputedStyle(jobCount, '::after').display
@@ -283,7 +295,7 @@ function App() {
       document.body.dataset.questionMatrix = matrixIds.map((id, index) => id + ':' + matrixResults[index]).join(',')
       document.body.dataset.ready = 'true'
     }, 100)
-    return () => { window.clearTimeout(timer); disposeTurnTail(); disposeModelPicker(); disposePermissionLabel() }
+    return () => { window.clearTimeout(timer); disposeTurnTail(); disposeModelPicker(); disposePermissionLabel(); disposePresetLabel() }
   }, [])
   return <>
     <style>{`:root { --dsw-alias-bg-base: #ffffff; --dsw-alias-bg-layer-1: #f3f4f6; }

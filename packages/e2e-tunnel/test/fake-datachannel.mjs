@@ -7,7 +7,7 @@
 export class FakeDataChannel {
   constructor() {
     this.binaryType = 'arraybuffer'
-    this.listeners = { message: [], close: [], open: [] }
+    this.listeners = { message: [], close: [], open: [], error: [] }
     this.peer = null
     this.closed = false
     this.blobMode = false

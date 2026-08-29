@@ -2,7 +2,7 @@
  * Shared tsdown preset for UI plugin client bundles. Adapted copy of
  * deepseek-harness packages/client/tsdown.client.ts — sync target: keep this
  * file diffable against the upstream original. Only two intentional changes:
- * the PLATFORM_MODULES import points at the upstream checkout, and
+ * the PLATFORM_MODULES import points at the prepared upstream checkout, and
  * REPOSITORY_ROOT is this repository's root (sourcemap path rebasing).
  *
  * Emits a closure-factory artifact: the bundle calls
@@ -17,7 +17,7 @@ import { basename, dirname, relative, resolve as resolvePath, sep } from 'node:p
 import { fileURLToPath } from 'node:url'
 import type { UserConfig } from 'tsdown'
 import { transform } from 'lightningcss'
-import { PLATFORM_MODULES } from '../../deepseek-harness/packages/client/web/src/platform.ts'
+import { PLATFORM_MODULES } from '../.dsh-upstream/packages/client/web/src/platform.ts'
 
 const CSS_VIRTUAL_PREFIX = '\0dsh-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'

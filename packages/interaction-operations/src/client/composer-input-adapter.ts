@@ -1,8 +1,15 @@
 /** Mobile composer keyboard policy: plain Enter is a newline, never submit. */
 
-function composerTextarea(target: EventTarget | null): HTMLTextAreaElement | null {
-  const textarea = target instanceof Element ? target.closest('textarea[data-phase]') : null
-  return textarea instanceof HTMLTextAreaElement ? textarea : null
+function composerInput(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof Element)) return null
+  const input = target.closest<HTMLElement>('textarea[data-phase], [data-composer-input][data-phase]')
+  return input instanceof HTMLTextAreaElement || input instanceof HTMLElement ? input : null
+}
+
+function editable(input: HTMLElement | null): boolean {
+  if (input instanceof HTMLTextAreaElement) return !input.disabled && !input.readOnly
+  return input !== null && input.getAttribute('contenteditable') === 'true'
+    && input.getAttribute('aria-disabled') !== 'true'
 }
 
 function selectionPopupOpen(document: Document): boolean {
@@ -38,11 +45,11 @@ export function mobileEnterAction(input: MobileEnterPolicyInput): 'newline' | 'u
 
 /** Decide whether a trusted composer Enter should bypass upstream submit logic. */
 export function shouldKeepEnterAsNewline(event: KeyboardEvent, document: Document): boolean {
-  const textarea = composerTextarea(event.target)
+  const input = composerInput(event.target)
   return mobileEnterAction({
     key: event.key,
     trusted: event.isTrusted,
-    editable: textarea !== null && !textarea.disabled && !textarea.readOnly,
+    editable: editable(input),
     composing: event.isComposing,
     legacyKeyCode: event.keyCode,
     shift: event.shiftKey,
@@ -55,16 +62,17 @@ export function shouldKeepEnterAsNewline(event: KeyboardEvent, document: Documen
 
 /** Apply both event policy and the native keyboard enter-key hint. */
 export function installComposerInputAdapter(document: Document = globalThis.document): () => void {
-  const originalHints = new Map<HTMLTextAreaElement, string | null>()
+  const originalHints = new Map<HTMLElement, string | null>()
 
   const annotate = (root: ParentNode): void => {
-    const textareas = root instanceof HTMLTextAreaElement && root.matches('[data-phase]')
+    const selector = 'textarea[data-phase], [data-composer-input][data-phase]'
+    const inputs = root instanceof HTMLElement && root.matches(selector)
       ? [root]
-      : Array.from(root.querySelectorAll<HTMLTextAreaElement>('textarea[data-phase]'))
-    for (const textarea of textareas) {
-      if (originalHints.has(textarea)) continue
-      originalHints.set(textarea, textarea.getAttribute('enterkeyhint'))
-      textarea.setAttribute('enterkeyhint', 'enter')
+      : Array.from(root.querySelectorAll<HTMLElement>(selector))
+    for (const input of inputs) {
+      if (originalHints.has(input)) continue
+      originalHints.set(input, input.getAttribute('enterkeyhint'))
+      input.setAttribute('enterkeyhint', 'enter')
     }
   }
 
@@ -89,10 +97,10 @@ export function installComposerInputAdapter(document: Document = globalThis.docu
   return () => {
     observer.disconnect()
     document.removeEventListener('keydown', onKeyDown, true)
-    for (const [textarea, hint] of originalHints) {
-      if (!textarea.isConnected) continue
-      if (hint === null) textarea.removeAttribute('enterkeyhint')
-      else textarea.setAttribute('enterkeyhint', hint)
+    for (const [input, hint] of originalHints) {
+      if (!input.isConnected) continue
+      if (hint === null) input.removeAttribute('enterkeyhint')
+      else input.setAttribute('enterkeyhint', hint)
     }
     originalHints.clear()
   }

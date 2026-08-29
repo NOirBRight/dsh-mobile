@@ -13,7 +13,7 @@ export const MODULES_ID = '@deepseek-ai/dsh-client-modules'
 export const RUNTIME_ID = '@deepseek-ai/dsh-cordis-client-runner'
 export const DSH_HOST_BRIDGE_CAPABILITY = '__DSH_HOST_BRIDGE__'
 const CLIENT_HMR_ID = '@deepseek-ai/dsh-client-hmr'
-const MOBILE_LAYOUT_REV = '0.1.30'
+const MOBILE_LAYOUT_REV = '0.1.45'
 const INTERACTION_OPERATIONS_REV = '0.1.14'
 const MOBILE_CONNECTION_REV = '0.1.23'
 const MOBILE_CONNECTION_URL = '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=' + MOBILE_CONNECTION_REV
@@ -80,8 +80,20 @@ export interface BootManifest {
   [key: string]: unknown
 }
 
-/** Rebuild initial-load batches after entry replacement/localization. */
-function withEntryBatches(manifest: BootManifest, entries: BootEntry[]): BootManifest {
+/** Rebuild initial-load batches after entry replacement or localization. */
+function withEntryBatches(manifest: BootManifest, entries: BootEntry[], preserveExisting = true): BootManifest {
+  if (!preserveExisting) {
+    return {
+      ...manifest,
+      entries,
+      batches: entries.map(entry => ({
+        phase: entry.id === MODULES_ID ? 'bootstrap' as const : 'application' as const,
+        url: entry.url,
+        rev: entry.rev,
+        entries: [entry.id],
+      })),
+    }
+  }
   const remaining = new Set(entries.map(entry => entry.id))
   const kept = (manifest.batches ?? [])
     .map(batch => ({
@@ -255,7 +267,7 @@ export async function localizePluginBundles(
     options.onProgress?.(loaded, total)
     return localized
   })
-  return withEntryBatches(manifest, entries)
+  return withEntryBatches(manifest, entries, false)
 }
 
 async function localizeEntry(entry: BootEntry, options: PluginLocalizationOptions): Promise<BootEntry> {

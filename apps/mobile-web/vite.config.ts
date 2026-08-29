@@ -1,23 +1,21 @@
 /**
  * Mobile shell Vite build. Mirrors upstream apps/web/vite.config.ts with one
  * adaptation: the workspace aliases point at the upstream checkout's SOURCES
- * (DSH_UPSTREAM, default: sibling dsh-wt-02 if present, else deepseek-harness), because
+ * (DSH_UPSTREAM, default: the prepared .dsh-upstream link), because
  * the browser bundle must compile src directly so CSS rides vite's pipeline
  * (package.json exports point at lib for Node consumers). Plugin packages are
  * NEVER bundled here — they arrive as runtime bundles through the client
  * module system (/plugins, host-side scan of the dsh.client roster).
  */
-import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
 const src = (rel: string): string => fileURLToPath(new URL(rel, import.meta.url))
-/** Upstream checkout root; override when the sibling layout does not hold. */
-const defaultHost = fileURLToPath(new URL('../../../dsh-wt-02', import.meta.url))
-const defaultHarness = fileURLToPath(new URL('../../../deepseek-harness', import.meta.url))
-const UP = process.env.DSH_UPSTREAM ?? (existsSync(defaultHost) ? defaultHost : defaultHarness)
+/** Upstream checkout root selected by prepare-upstream.mjs; explicit env still wins. */
+const preparedUpstream = fileURLToPath(new URL('../../.dsh-upstream', import.meta.url))
+const UP = process.env.DSH_UPSTREAM ?? preparedUpstream
 const up = (rel: string): string => UP + '/' + rel
 
 const STANDALONE_ERROR = 'apps/mobile-web is an Android shell, not a standalone browser server: bare Vite cannot supply a paired tunnel or window.__DSH_BOOT__. Build/sync the Capacitor app instead.'
