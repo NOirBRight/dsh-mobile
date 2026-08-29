@@ -82,16 +82,21 @@ export interface BootManifest {
 
 /** Rebuild initial-load batches after entry replacement/localization. */
 function withEntryBatches(manifest: BootManifest, entries: BootEntry[]): BootManifest {
-  return {
-    ...manifest,
-    entries,
-    batches: entries.map(entry => ({
-      phase: entry.id === MODULES_ID ? 'bootstrap' : 'application',
-      url: entry.url,
-      rev: entry.rev,
-      entries: [entry.id],
-    })),
-  }
+  const remaining = new Set(entries.map(entry => entry.id))
+  const kept = (manifest.batches ?? [])
+    .map(batch => ({
+      ...batch,
+      entries: batch.entries.filter(id => remaining.has(id)),
+    }))
+    .filter(batch => batch.entries.length > 0)
+  const covered = new Set(kept.flatMap(batch => batch.entries))
+  const extra = entries.filter(entry => !covered.has(entry.id)).map(entry => ({
+    phase: entry.id === MODULES_ID ? 'bootstrap' as const : 'application' as const,
+    url: entry.url,
+    rev: entry.rev,
+    entries: [entry.id],
+  }))
+  return { ...manifest, entries, batches: [...kept, ...extra] }
 }
 
 export interface PluginLocalizationOptions {

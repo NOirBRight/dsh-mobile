@@ -16,7 +16,7 @@ function current() {
 
 const requested = process.env.DSH_UPSTREAM === undefined ? undefined : resolve(process.env.DSH_UPSTREAM)
 const existing = current()
-const candidates = [requested, existing, resolve(root, '../deepseek-harness'), resolve(root, '../dsh-wt-02')]
+const candidates = [requested, existing, resolve(root, '../deepseek-harness')]
 const target = candidates.find(value => value !== undefined && valid(value))
 if (target === undefined) {
   throw new Error('dsh-mobile: set DSH_UPSTREAM to a DSH >=0.1.2 checkout containing ' + required)

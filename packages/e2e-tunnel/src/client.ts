@@ -63,7 +63,7 @@ export interface TunnelClient {
     body?: string | ArrayBuffer | Uint8Array | Blob | URLSearchParams | ReadableStream<Uint8Array> | null
     signal?: AbortSignal | null
   }): Promise<Response>
-  /** Open a tunneled WebSocket to a loopback path (e.g. /api/events.mux). */
+  /** Open a tunneled WebSocket to a loopback path (e.g. /api/remote.mux). */
   openWebSocket(path: string): TunnelWebSocket
   /** Probe application-level liveness inside the encrypted session. */
   probe(timeoutMs?: number): Promise<void>

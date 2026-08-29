@@ -34,6 +34,30 @@ test('compatible Host boot retracts a compatibility notice left by the prior Hos
   }
 })
 
+test('keeps official multi-entry batches and only adds missing ids', () => {
+  const selected = selectResponsiveBootManifest({
+    rev: 'alpha.1',
+    entries: [
+      { id: '@deepseek-ai/dsh-client-modules', url: '/plugins/modules.js', rev: 'm', inject: [], immediately: true },
+      { id: '@deepseek-ai/dsh-cordis-client-runner', url: '/plugins/runner.js', rev: 'r', inject: [] },
+      { id: '@deepseek-ai/dsh-client-ui-renderer', url: '/plugins/renderer.js', rev: 'u', inject: [] },
+      {
+        id: DESKTOP_LAYOUT_ID, url: '/plugins/layout.js', rev: 'l',
+        inject: ['@deepseek-ai/dsh-client-ui-renderer'],
+      },
+    ],
+    batches: [{
+      phase: 'application',
+      url: '/plugins/group.js',
+      rev: 'g',
+      entries: ['@deepseek-ai/dsh-client-modules', '@deepseek-ai/dsh-cordis-client-runner', 'ghost'],
+    }],
+  }, { viewportWidth: 390 })
+  const grouped = selected.manifest.batches?.find(batch => batch.url === '/plugins/group.js')
+  assert.deepEqual(grouped?.entries, ['@deepseek-ai/dsh-client-modules', '@deepseek-ai/dsh-cordis-client-runner'])
+  assert.equal(selected.manifest.batches?.some(batch => batch.entries.includes('ghost')), false)
+})
+
 test('accepts alpha.1 entries without inject and rebuilds exact initial-load batches', () => {
   const selected = selectResponsiveBootManifest({
     rev: 'alpha.1',
@@ -53,11 +77,12 @@ test('accepts alpha.1 entries without inject and rebuilds exact initial-load bat
   }, { viewportWidth: 390 })
   assert.equal(selected.layout, 'narrow')
   assert.deepEqual(selected.manifest.entries.find(entry => entry.id === '@deepseek-ai/dsh-client-ui-renderer')?.inject, [])
-  assert.equal(selected.manifest.batches?.length, selected.manifest.entries.length)
+  const named = selected.manifest.batches?.flatMap(batch => batch.entries) ?? []
+  assert.deepEqual([...named].sort(), selected.manifest.entries.map(entry => entry.id).sort())
+  assert.equal(selected.manifest.batches?.some(batch => batch.entries.includes('ghost')), false)
   for (const entry of selected.manifest.entries) {
     const batch = selected.manifest.batches?.filter(candidate => candidate.entries.includes(entry.id)) ?? []
     assert.equal(batch.length, 1, entry.id)
-    assert.equal(batch[0].url, entry.url)
   }
 })
 

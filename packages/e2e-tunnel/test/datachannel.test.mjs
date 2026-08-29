@@ -168,7 +168,7 @@ test('tunneled WebSocket opens, echoes, and closes', async () => {
 
 test('transport close aborts in-flight fetch, closes sockets with 1006, flips state', async () => {
   const { client, hostDc, states } = await hostAndClient()
-  const sock = client.openWebSocket('/api/events.mux')
+  const sock = client.openWebSocket('/api/remote.mux')
   await nextEvent(sock, 'open')
   const sockClosed = nextEvent(sock, 'close')
   const hung = client.fetch('/hang')
