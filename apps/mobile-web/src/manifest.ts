@@ -605,9 +605,10 @@ export function layoutCompatibilityMessage(compatibility: LayoutCompatibility): 
 }
 
 export function installCompatibilityNotice(compatibility: LayoutCompatibility): void {
-  const message = layoutCompatibilityMessage(compatibility)
-  if (message === null || typeof document === 'undefined') return
+  if (typeof document === 'undefined') return
   document.querySelector('[data-mobile-compatibility-notice]')?.remove()
+  const message = layoutCompatibilityMessage(compatibility)
+  if (message === null) return
   const bar = document.createElement('div')
   bar.setAttribute('role', 'status')
   bar.setAttribute('data-mobile-compatibility-notice', '')

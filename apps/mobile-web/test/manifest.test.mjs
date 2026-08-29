@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { adaptBootManifestForMobile, COLD_BOOT_PLUGIN_CONCURRENCY, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, loadSameOriginMobileBootManifest, localizePluginBundles, INTERACTION_OPERATIONS_ID, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, RUNTIME_ID } from '../src/manifest.ts'
+import { adaptBootManifestForMobile, COLD_BOOT_PLUGIN_CONCURRENCY, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, installCompatibilityNotice, loadSameOriginMobileBootManifest, localizePluginBundles, INTERACTION_OPERATIONS_ID, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, RUNTIME_ID } from '../src/manifest.ts'
 
 test('extracts the boot graph from every historical host embedding form', () => {
   const graph = { rev: 'rev-1', entries: [{ id: 'x', url: '/plugins/x.js', rev: 'a' }] }
@@ -14,6 +14,24 @@ test('extracts the boot graph from every historical host embedding form', () => 
     assert.deepEqual(extractBootManifestJson(html), graph)
   }
   assert.throws(() => extractBootManifestJson('<html></html>', 'boot manifest not found in tunneled index'), /boot manifest not found in tunneled index/)
+})
+
+test('compatible Host boot retracts a compatibility notice left by the prior Host', () => {
+  const previous = globalThis.document
+  let removed = false
+  globalThis.document = {
+    querySelector: selector => {
+      assert.equal(selector, '[data-mobile-compatibility-notice]')
+      return { remove() { removed = true } }
+    },
+  }
+  try {
+    installCompatibilityNotice('compatible')
+    assert.equal(removed, true)
+  } finally {
+    if (previous === undefined) delete globalThis.document
+    else globalThis.document = previous
+  }
 })
 
 test('accepts alpha.1 entries without inject and rebuilds exact initial-load batches', () => {

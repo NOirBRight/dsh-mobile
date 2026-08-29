@@ -579,21 +579,47 @@ void (async () => {
       await connectPairingOffer(offerUrl)
     }
 
-    async function connectPairingOffer(offerUrl: string): Promise<void> {
-      const next = await prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange })
+    async function stageHostSwitch(next: PreparedProfileConnection): Promise<void> {
+      session?.stop()
+      await webEntry?.dispose()
+      webEntry = null
+      session?.forgetPaint()
+      shellMounted = false
+      transportReady = false
+      liveDataReady = 'pending'
+      state = 'connecting'
+      route = ''
+      lastError = ''
+      endpointRefreshAvailable = false
+      bootProgress = null
+      activity = { phase: 'connecting', attempt: activity.attempt + 1, reconnecting: false, route: null }
       activeConnection = next
       setProtectedCacheScope(next.profile.hostId)
+      updateBadge(activity, route, shellMounted, liveDataReady)
+      setTopbarNotice(null)
+      // Compatibility notices live outside #root. A Host switch owns the
+      // entire shell surface, so the prior Host cannot remain visible while
+      // the next graph is fetched and mounted.
+      installCompatibilityNotice('compatible')
+      mountProgressScreen(el, {
+        title: '正在切换到 ' + next.profile.displayName,
+        detail: '正在准备 Host 界面…',
+        spinning: true,
+      })
+    }
+
+    async function connectPairingOffer(offerUrl: string): Promise<void> {
+      const next = await prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange })
+      await stageHostSwitch(next)
       await session?.connect(next)
       markTransportReady()
     }
 
     async function reconnectActiveHost(propagateError = false): Promise<void> {
-      session?.stop()
       document.getElementById('endpoint-refresh-banner')?.remove()
       try {
         const next = await prepareProfileConnection({ repository, vault, acknowledgeIdentityChange })
-        activeConnection = next
-        setProtectedCacheScope(next.profile.hostId)
+        await stageHostSwitch(next)
         await session?.connect(next)
         markTransportReady()
       } catch (error) {
