@@ -1,5 +1,7 @@
 # @dsh-mobile/pairing
 
+**Source of truth is `/home/noirbright/Workstation/dsh-mobile-pairing`.** This tree is a workspace snapshot for mobile tests; do not add inject or peer ranges here that the Workstation plugin does not have.
+
 DSH Mobile 的 Host 插件。正式版可安装在日常 `:3080` 或 lab `:3082` web profile 中；每个 DSH 进程独立提供配对管理、回环 Host Gateway、WebRTC Direct 与加密 Tunnel Fallback。
 
 ## 数据路径
