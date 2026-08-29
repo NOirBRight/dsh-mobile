@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Android-first Capacitor shell with camera pairing and direct WebRTC tunnel",
+  "license": "MIT",
   "exports": {
     "./dist/*": "./dist/*",
     "./package.json": "./package.json"
