@@ -27,10 +27,10 @@ dsh web
 1. **自动生成**（临时 Quick Tunnel）或 **填写地址**（你拿到的，或[自己部署](relay/deploy/README.md) 的 Relay）。
 2. 刷新二维码。约 5 分钟有效，且一次性。
 
-Android APK（已签名 **v1.1.0**）：
+Android APK（已签名 **v1.1.2**）：
 
-- 发布页：https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.0
-- APK：https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.0/dsh-mobile-1.1.0.apk
+- 发布页：https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.2
+- APK：https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.2/dsh-mobile-1.1.2.apk
 
 装上应用，打开后扫描 Host 二维码。
 
@@ -39,7 +39,7 @@ Android APK（已签名 **v1.1.0**）：
 | [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing)（`@dsh-mobile/pairing`） | [v0.1.6](https://github.com/NOirBRight/dsh-mobile-pairing/releases/tag/v0.1.6) | **必装。** Host 插件：二维码、设备、回环 Gateway、Tunnel / Direct。这就是 **远程**。 |
 | [dsh-e2e-tunnel](https://github.com/NOirBRight/dsh-e2e-tunnel)（`@dsh-mobile/e2e-tunnel`） | [v0.1.3](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.3) | 配套库。pairing 已经依赖它。 |
 | [dsh-codex-sidebar](https://github.com/NOirBRight/dsh-codex-sidebar) | [v0.3.8](https://github.com/NOirBRight/dsh-codex-sidebar/releases/tag/v0.3.8) | **可选。** details 席位上的 Files / Review / Browser / Terminal。 |
-| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.0](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.0) | 手机应用。用上面的 APK 链接。 |
+| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.2](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.2) | 手机应用。用上面的 APK 链接。 |
 | Relay | [`relay/deploy`](relay/deploy/README.md) | 可选自托管密文转发。只用 Quick Tunnel 就跳过。 |
 
 把隧道嵌进别的 Host 时才单独钉库（装手机不用跑）：

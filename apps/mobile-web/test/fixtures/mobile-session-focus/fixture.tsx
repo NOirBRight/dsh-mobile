@@ -28,7 +28,18 @@ function FrameHarness() {
       aria-selected={current === 'b'}
       onClick={() => { setCurrent('b') }}
     >Session B</button>
-    if (name === 'conversation') return <div data-composer-card><textarea id="message" defaultValue="draft" /></div>
+    if (name === 'conversation') return (
+      <div data-composer-card>
+        <div
+          id="message"
+          role="textbox"
+          contentEditable
+          suppressContentEditableWarning
+          data-composer-input
+          data-phase="idle"
+        >draft</div>
+      </div>
+    )
     return null
   }
   useEffect(() => {

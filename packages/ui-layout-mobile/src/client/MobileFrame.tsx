@@ -17,7 +17,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { createMobileLayoutStore } from './stores.ts'
 import css from './MobileFrame.module.css'
 import { isOfficialNewSessionLabel } from './chrome-anchors.ts'
-import { blurComposer } from './composer-attach.ts'
+import { blurComposer, composerEditor } from './composer-attach.ts'
 import { resolveMobileViewportHeight } from './mobile-viewport.ts'
 
 /** Official expanded-sidebar geometry used whenever the viewport permits it. */
@@ -89,10 +89,30 @@ export function MobileFrame({
     const current = s.current
     return current !== undefined && s.byId[current]?.blank === false ? current : undefined
   })
+  const currentSession = useSessions(s => s.current)
   const sessionTitle = useSessions((s) => {
     const current = s.current
     return current === undefined ? 'DeepSeek Harness' : s.byId[current]?.displayTitle ?? current
   })
+
+  // ConversationRoot reuses the composer across sessions. Official InputBar
+  // then focuses that retained Lexical host (or a legacy textarea) after
+  // layout. Drop the programmatic focus so the phone IME opens only when
+  // the user taps the input.
+  useLayoutEffect(() => {
+    const stopLateComposerFocus = (event: FocusEvent): void => {
+      composerEditor(event.target)?.blur()
+    }
+    document.addEventListener('focus', stopLateComposerFocus, true)
+    blurComposer()
+    const release = window.setTimeout(() => {
+      document.removeEventListener('focus', stopLateComposerFocus, true)
+    }, 100)
+    return () => {
+      window.clearTimeout(release)
+      document.removeEventListener('focus', stopLateComposerFocus, true)
+    }
+  }, [currentSession])
 
   // Session switch closes the details sheet and the drawer: on mobile both
   // cover the content column, so keeping them open across navigation strands
@@ -101,29 +121,11 @@ export function MobileFrame({
   const lastSession = useRef(detailsSession)
   useLayoutEffect(() => {
     if (lastSession.current === detailsSession) return
-    // ConversationRoot intentionally reuses its textarea across sessions.
-    // Remove focus before the new session paints so Android does not reopen
-    // the IME as part of that retained DOM transition.
-    const stopLateComposerFocus = (event: FocusEvent): void => {
-      const target = event.target
-      if (target instanceof HTMLTextAreaElement && target.closest('[data-composer-card]') !== null) {
-        target.blur()
-      }
-    }
-    document.addEventListener('focus', stopLateComposerFocus, true)
-    blurComposer()
-    const release = window.setTimeout(() => {
-      document.removeEventListener('focus', stopLateComposerFocus, true)
-    }, 100)
     if (lastSession.current !== undefined && detailsSession !== undefined) {
       actions.closeDetails()
       actions.closeDrawer()
     }
     lastSession.current = detailsSession
-    return () => {
-      window.clearTimeout(release)
-      document.removeEventListener('focus', stopLateComposerFocus, true)
-    }
   }, [actions, detailsSession])
 
   // Publish the rendered drawer box, including viewport constraints, to its owner.
