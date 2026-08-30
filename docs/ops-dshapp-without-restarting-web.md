@@ -33,11 +33,11 @@ MainPID 变了 = 本轮失败，先把 web 拉回，再谈 app。
 |---|---|
 | `packages/ui-layout-mobile` | 窄屏根布局：官方 `root` slot 的空间重组 |
 | `apps/mobile-web` 的 boot/manifest 适配 | 从 Host roster 里换根布局、丢掉 HMR；不是第二套功能 UI |
-| VPS 卷 `/var/lib/docker/volumes/dsh-mobile-web/_data` | dshapp（以及 `app.noirbright.top`）的静态壳和 mobile layout bundle |
+| VPS 卷 `/var/lib/docker/volumes/dsh-mobile-web/_data` | dshapp 的静态壳和 mobile layout bundle。`app.noirbright.top` 只 301 到 dshapp，不再做 Host 桥 |
 
-默认发布路径：本地 `npm run build` → rsync/scp 进该卷（`index.html` + `assets/` + `plugins/@dsh-mobile/ui-layout-mobile/`）→ 浏览器硬刷新 dshapp。静态 Web 容器直接读卷上的文件，**不要**重启 `dsh-web`、**不要** `docker restart caddy`、**不要**重启 `dsh-mobile-web`（除非静态没被卷进来）。
+默认发布路径：本地 `npm run build` → rsync/scp 进该卷（`index.html` + `assets/` + `plugins/@dsh-mobile/`）→ 浏览器硬刷新 dshapp。静态 Web 容器直接读卷上的文件，**不要**重启 `dsh-web`、**不要** `docker restart caddy`、**不要**重启 `dsh-mobile-web`（除非静态没被卷进来）。
 
-Caddy 的 dshapp 站点块只有在改路由或上游请求头时才动。必须重载时用 `docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`，禁止 `docker restart caddy`，更不要重启 `dsh-web.service`。dshapp 代理的 `Host`、`X-Forwarded-Host`、`Origin`、`Referer` 必须全部使用 Host 回环值：`127.0.0.1:3080`、`127.0.0.1:3080`、`http://127.0.0.1:3080`、`http://127.0.0.1:3080/`；公共域名头会触发 Host 的 403。当前需保持的扩展 RPC 路由包括 `/api/*`、`/plugins/*`、`/codex/*`、`/codex-sidebar/*`、`/dsh-market/*`、`/external-agents/*`、`/grok/*`、`/llm-assistant/*`、`/ollama-cloud/*`、`/usage-monitor/*`。
+Caddy 的 dshapp / `app.noirbright.top` 站点块只有在改路由或上游请求头时才动。必须重载时用 `docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`，禁止 `docker restart caddy`，更不要重启 `dsh-web.service`。dshapp 代理的 `Host`、`X-Forwarded-Host`、`Origin`、`Referer` 必须全部使用 Host 回环值：`127.0.0.1:3080`、`127.0.0.1:3080`、`http://127.0.0.1:3080`、`http://127.0.0.1:3080/`；公共域名头会触发 Host 的 403。当前需保持的扩展 RPC 路由包括 `/api/*`、`/plugins/*`、`/codex/*`、`/codex-sidebar/*`、`/dsh-market/*`、`/external-agents/*`、`/grok/*`、`/llm-assistant/*`、`/ollama-cloud/*`、`/usage-monitor/*`。`GET /?token=` 必须反代到 Host 根路径做 launch-token 换 cookie；静态壳若直接吃掉这个查询，alpha.1 以后会掉进扫码页而不是手机布局。`/plugins/@dsh-mobile/*` 走静态卷，不要打到 Host。
 
 需要破坏性试验时走 `dsh-lab.service` `:3082` / 独立 Custom Endpoint 或 Official Relay，或 dshapp 已有的 `/__prototype/*` → `31423`。当前 `pair.noirbright.top` 有意连接 daily 3080，不要把 lab 试验切到该域名。
 

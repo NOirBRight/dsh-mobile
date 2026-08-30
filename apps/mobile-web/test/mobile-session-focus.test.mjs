@@ -8,7 +8,7 @@ import { build } from 'vite'
 
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/mobile-session-focus')
 
-test('switching sessions does not leave the composer textarea focused', async () => {
+test('switching sessions does not leave the composer editor focused', async () => {
   const outDir = await mkdtemp(join(tmpdir(), 'dsh-mobile-session-focus-'))
   try {
     await build({ root: fixtureRoot, base: './', configFile: false, logLevel: 'silent', build: { outDir, emptyOutDir: true } })
@@ -20,7 +20,7 @@ test('switching sessions does not leave the composer textarea focused', async ()
     assert.equal(chrome.status, 0, chrome.stderr)
     assert.match(chrome.stdout, /data-ready="true"/, 'session focus fixture did not settle')
     const active = new RegExp('data-active-after-switch="([^"]*)"').exec(chrome.stdout)?.[1]
-    assert.notEqual(active, 'message', 'session switch must blur the retained composer textarea')
+    assert.notEqual(active, 'message', 'session switch must blur the retained composer editor')
   } finally {
     await rm(outDir, { recursive: true, force: true })
   }

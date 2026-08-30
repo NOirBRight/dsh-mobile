@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { adaptBootManifestForMobile, COLD_BOOT_PLUGIN_CONCURRENCY, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, installCompatibilityNotice, loadSameOriginMobileBootManifest, localizePluginBundles, INTERACTION_OPERATIONS_ID, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, RUNTIME_ID } from '../src/manifest.ts'
+import { adaptBootManifestForMobile, COLD_BOOT_PLUGIN_CONCURRENCY, createLocalStoragePluginCache, createMemoryPluginCache, extractBootManifestJson, hostLaunchTokenExchangeUrl, launchTokenFromSearch, readCachedBootManifest, writeCachedBootManifest, CONNECTION_ID, DESKTOP_LAYOUT_ID, DSH_HOST_BRIDGE_CAPABILITY, layoutCompatibilityMessage, installCompatibilityNotice, loadSameOriginMobileBootManifest, localizePluginBundles, INTERACTION_OPERATIONS_ID, MOBILE_LAYOUT_ID, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readViewportWidth, sameOriginBootFailureTitle, sameOriginHostRedirectLocation, selectResponsiveBootManifest, setSameOriginHostBridgeCapability, RUNTIME_ID } from '../src/manifest.ts'
 
 test('extracts the boot graph from every historical host embedding form', () => {
   const graph = { rev: 'rev-1', entries: [{ id: 'x', url: '/plugins/x.js', rev: 'a' }] }
@@ -14,6 +14,18 @@ test('extracts the boot graph from every historical host embedding form', () => 
     assert.deepEqual(extractBootManifestJson(html), graph)
   }
   assert.throws(() => extractBootManifestJson('<html></html>', 'boot manifest not found in tunneled index'), /boot manifest not found in tunneled index/)
+})
+
+test('extracts a nested Host boot object instead of stopping at the first brace', () => {
+  const graph = {
+    rev: 'nested',
+    entries: [
+      { id: '@deepseek-ai/dsh-client-ui-layout', url: '/plugins/layout.js', rev: 'l', inject: [] },
+      { id: 'leaf', url: '/plugins/leaf.js', rev: 'a}b', inject: [] },
+    ],
+  }
+  const html = '<script>globalThis["__DSH_BOOT__"] = ' + JSON.stringify(graph) + '</script>'
+  assert.deepEqual(extractBootManifestJson(html), graph)
 })
 
 test('compatible Host boot retracts a compatibility notice left by the prior Host', () => {
@@ -106,12 +118,12 @@ test('replaces desktop layout and drops browser HMR without mutating host manife
   const mobile = adaptBootManifestForMobile(host)
 
   assert.deepEqual(host, snapshot)
-  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.45+mobile-interactions-0.1.14')
+  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.47+mobile-interactions-0.1.14')
   assert.deepEqual(mobile.entries.map(entry => entry.id), ['before', MOBILE_LAYOUT_ID, 'after', INTERACTION_OPERATIONS_ID])
   assert.deepEqual(mobile.entries[1], {
     id: MOBILE_LAYOUT_ID,
-    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.45',
-    rev: '0.1.45',
+    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.47',
+    rev: '0.1.47',
     inject: ['@deepseek-ai/dsh-client-ui-renderer', '@deepseek-ai/dsh-client-ui-session', '@deepseek-ai/dsh-client-ui-theme'],
   })
 })
@@ -222,7 +234,7 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
     rev: 'mobile',
     entries: [
       { id: 'runtime', url: '/plugins/runtime/client.js?rev=a', rev: 'a', inject: [] },
-      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.45', rev: '0.1.45', inject: [] },
+      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.47', rev: '0.1.47', inject: [] },
       { id: INTERACTION_OPERATIONS_ID, url: '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.14', rev: '0.1.14', inject: [] },
       { id: CONNECTION_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23', rev: '0.1.23', inject: [] },
       { id: 'leaf', url: '/plugins/leaf/client.js?rev=b', rev: 'b', inject: ['runtime'] },
@@ -257,7 +269,7 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
   }
   assert.deepEqual(manifest.entries.map(entry => entry.url), [
     '/plugins/runtime/client.js?rev=a',
-    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.45',
+    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.47',
     '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.14',
     '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23',
     '/plugins/leaf/client.js?rev=b',
@@ -370,6 +382,7 @@ test('loads a validated raw same-origin manifest before responsive root selectio
   assert.equal(requests.length, 1)
   assert.equal(requests[0][0], '/__dsh_boot')
   assert.equal(requests[0][1].credentials, 'same-origin')
+  assert.equal(requests[0][1].redirect, 'follow')
   assert.deepEqual(manifest.entries.map(entry => entry.id), ['@deepseek-ai/dsh-client-connection', DESKTOP_LAYOUT_ID, 'conversation'])
   assert.equal(manifest.entries[0].url, '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23')
   assert.equal(manifest.entries[0].rev, '0.1.23')
@@ -393,6 +406,39 @@ test('ignores a static SPA fallback that is not an operator Host bridge', async 
     { status: 200, headers: { 'content-type': 'text/html' } },
   ))
   assert.equal(manifest, null)
+})
+
+test('Host 401 is a failed bridge, not a missing one that would fall through to pairing', async () => {
+  await assert.rejects(
+    () => loadSameOriginMobileBootManifest(async () => new Response('dsh web authentication required', { status: 401 })),
+    /same-origin boot manifest fetch failed: HTTP 401/,
+  )
+  assert.match(sameOriginBootFailureTitle(new Error('same-origin boot manifest fetch failed: HTTP 401')), /token/)
+  assert.equal(sameOriginBootFailureTitle(new Error('same-origin boot manifest fetch failed: HTTP 502')), '无法加载 Custom Endpoint Host bridge')
+})
+
+test('Host login bounce asks the shell to navigate instead of pairing', async () => {
+  try {
+    await loadSameOriginMobileBootManifest(async () => {
+      const bounced = new Response('<html><div id="root"></div></html>', { status: 200 })
+      Object.defineProperty(bounced, 'url', { value: 'https://dshapp.noirbright.top/' })
+      return bounced
+    })
+    assert.fail('expected redirect error')
+  } catch (error) {
+    assert.equal(sameOriginHostRedirectLocation(error), '/__dsh_boot')
+  }
+})
+
+test('launch token is sent through /__dsh_boot so static GET / cannot swallow it', () => {
+  assert.equal(launchTokenFromSearch(''), null)
+  assert.equal(launchTokenFromSearch('?offer=nope'), null)
+  assert.equal(launchTokenFromSearch('?token=abc'), 'abc')
+  assert.equal(launchTokenFromSearch('token=abc&x=1'), 'abc')
+  assert.equal(
+    hostLaunchTokenExchangeUrl('https://dshapp.noirbright.top', 'abc'),
+    'https://dshapp.noirbright.top/__dsh_boot?token=abc',
+  )
 })
 
 test('fails loud when the host desktop layout seam is absent or duplicated', () => {

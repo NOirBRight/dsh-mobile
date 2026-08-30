@@ -4,6 +4,7 @@ import {
   attachBusyMessage,
   attachFiles,
   attachUnavailableMessage,
+  composerEditor,
   dismissOfficialMenus,
   plusMenuAlreadyOpen,
   unsupportedImageMessage,
@@ -74,4 +75,9 @@ test('plusMenuAlreadyOpen follows aria-expanded', () => {
   assert.equal(plusMenuAlreadyOpen({ getAttribute: () => 'true' }), true)
   assert.equal(plusMenuAlreadyOpen({ getAttribute: () => 'false' }), false)
   assert.equal(plusMenuAlreadyOpen({ getAttribute: () => null }), false)
+})
+
+test('composerEditor ignores non-elements and is the IME target helper', () => {
+  assert.equal(composerEditor(null), null)
+  assert.equal(composerEditor({}), null)
 })

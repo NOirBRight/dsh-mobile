@@ -8,7 +8,7 @@ import { resolveClientDeviceName } from './client-device-name.ts'
 import { createBackgroundConnectionControl, readBackgroundConnectionPreference, writeBackgroundConnectionPreference } from './background-connection.ts'
 import { BrowserCredentialVault, NativeCredentialVault, purgeLegacyAndroidWebCredentials, type NativeCredentialVaultBridge, type ReadableCredentialVault } from './credential-vault.ts'
 import { claimShellNativeBridges, concealShellNativeBridges, installSystemBarThemeSync } from './native-bridges.ts'
-import { COLD_BOOT_PLUGIN_CONCURRENCY, installCompatibilityNotice, loadSameOriginMobileBootManifest, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, readViewportWidth, selectResponsiveBootManifest, setProtectedCacheScope, setSameOriginHostBridgeCapability, type BootManifest, type ResponsiveBootSelection } from './manifest.ts'
+import { COLD_BOOT_PLUGIN_CONCURRENCY, hostLaunchTokenExchangeUrl, installCompatibilityNotice, launchTokenFromSearch, loadSameOriginMobileBootManifest, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, readViewportWidth, SAME_ORIGIN_BOOT_NAV_KEY, sameOriginBootFailureTitle, sameOriginHostRedirectLocation, selectResponsiveBootManifest, setProtectedCacheScope, setSameOriginHostBridgeCapability, type BootManifest, type ResponsiveBootSelection } from './manifest.ts'
 import { scanPairingQr } from './pairing-scanner.ts'
 import { routePlatformBack } from './platform-back.ts'
 import { prepareProfileConnection, type PreparedProfileConnection } from './profile-connection.ts'
@@ -255,6 +255,11 @@ void (async () => {
   let responsiveSelection: ResponsiveBootSelection | null = null
 
   if (!native && scannedOffer === undefined) {
+    const launchToken = launchTokenFromSearch(location.search)
+    if (launchToken !== null) {
+      location.replace(hostLaunchTokenExchangeUrl(location.origin, launchToken))
+      return
+    }
     try {
       const manifest = await loadSameOriginMobileBootManifest()
       if (manifest !== null) {
@@ -266,10 +271,24 @@ void (async () => {
         ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = responsiveSelection.manifest
         setSameOriginHostBridgeCapability(true)
         sameOriginBoot = true
+        sessionStorage.removeItem(SAME_ORIGIN_BOOT_NAV_KEY)
       }
     } catch (error) {
+      const redirect = sameOriginHostRedirectLocation(error)
+      if (redirect !== null) {
+        const hops = Number(sessionStorage.getItem(SAME_ORIGIN_BOOT_NAV_KEY) ?? '0')
+        if (hops < 2) {
+          sessionStorage.setItem(SAME_ORIGIN_BOOT_NAV_KEY, String(hops + 1))
+          location.replace(new URL(redirect, location.origin).href)
+          return
+        }
+      }
       el.innerHTML = ''
-      mountProgressScreen(el, { title: '无法加载 Custom Endpoint Host bridge', spinning: false })
+      mountProgressScreen(el, {
+        title: sameOriginBootFailureTitle(error),
+        detail: error instanceof Error ? error.message : String(error),
+        spinning: false,
+      })
       throw error
     }
   }

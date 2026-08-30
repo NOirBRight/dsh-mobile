@@ -117,11 +117,25 @@ export function plusMenuAlreadyOpen(button: HTMLButtonElement): boolean {
   return button.getAttribute('aria-expanded') === 'true'
 }
 
+/**
+ * The official composer editor: Lexical's contenteditable host, or a legacy
+ * textarea still rendered by an older Host.
+ */
+export function composerEditor(target: EventTarget | null): HTMLElement | null {
+  if (typeof Element === 'undefined' || !(target instanceof Element)) return null
+  return target.closest<HTMLElement>('[data-composer-input], [data-composer-card] textarea')
+}
+
 /** Dismiss the composer editor so toolbar actions do not summon the phone keyboard. */
 export function blurComposer(): void {
   const el = document.activeElement
-  if (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type !== 'file')
-    || (el instanceof HTMLElement && el.matches('[data-composer-input]'))) el.blur()
+  if (el instanceof HTMLInputElement && el.type !== 'file') {
+    el.blur()
+    return
+  }
+  const editor = composerEditor(el)
+  if (editor !== null) editor.blur()
+  else if (el instanceof HTMLTextAreaElement) el.blur()
 }
 
 /**

@@ -27,10 +27,10 @@ Then on the Host: **Settings → Plugins → DSH Mobile** (nav label **Remote**)
 1. **Generate automatically** (temporary Quick Tunnel) or **Enter an address** (a Relay you were given, or [one you deployed](relay/deploy/README.md)).
 2. Refresh the QR. Codes last about five minutes and are single-use.
 
-Android APK (signed **v1.1.0**):
+Android APK (signed **v1.1.2**):
 
-- Release: https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.0
-- APK: https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.0/dsh-mobile-1.1.0.apk
+- Release: https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.2
+- APK: https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.2/dsh-mobile-1.1.2.apk
 
 Install the APK, open the app, scan the Host QR.
 
@@ -39,7 +39,7 @@ Install the APK, open the app, scan the Host QR.
 | [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing) (`@dsh-mobile/pairing`) | [v0.1.6](https://github.com/NOirBRight/dsh-mobile-pairing/releases/tag/v0.1.6) | **Required.** Host plugin: QR, devices, loopback Gateway, Tunnel / Direct. This is **Remote**. |
 | [dsh-e2e-tunnel](https://github.com/NOirBRight/dsh-e2e-tunnel) (`@dsh-mobile/e2e-tunnel`) | [v0.1.3](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.3) | Companion library. Pairing already depends on it. |
 | [dsh-codex-sidebar](https://github.com/NOirBRight/dsh-codex-sidebar) | [v0.3.8](https://github.com/NOirBRight/dsh-codex-sidebar/releases/tag/v0.3.8) | **Optional.** Files / Review / Browser / Terminal in the details seat. |
-| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.0](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.0) | Phone app. Download the APK above. |
+| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.2](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.2) | Phone app. Download the APK above. |
 | Relay | [`relay/deploy`](relay/deploy/README.md) | Optional self-hosted sealed-frame Relay, only if you skip Quick Tunnel. |
 
 Embedding the tunnel in another Host (not a phone install):

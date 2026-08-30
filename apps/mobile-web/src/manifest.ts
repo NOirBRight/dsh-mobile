@@ -13,7 +13,7 @@ export const MODULES_ID = '@deepseek-ai/dsh-client-modules'
 export const RUNTIME_ID = '@deepseek-ai/dsh-cordis-client-runner'
 export const DSH_HOST_BRIDGE_CAPABILITY = '__DSH_HOST_BRIDGE__'
 const CLIENT_HMR_ID = '@deepseek-ai/dsh-client-hmr'
-const MOBILE_LAYOUT_REV = '0.1.45'
+const MOBILE_LAYOUT_REV = '0.1.47'
 const INTERACTION_OPERATIONS_REV = '0.1.14'
 const MOBILE_CONNECTION_REV = '0.1.23'
 const MOBILE_CONNECTION_URL = '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=' + MOBILE_CONNECTION_REV
@@ -303,23 +303,70 @@ async function mapPool<T, R>(items: readonly T[], limit: number, fn: (item: T) =
 
 export type SameOriginFetch = (
   input: string,
-  init: { credentials: 'same-origin'; cache: 'no-store' },
+  init: { credentials: 'same-origin'; cache: 'no-store'; redirect: RequestRedirect },
 ) => Promise<Response>
 
-/**
- * Probe an operator-provided same-origin Host bridge and derive its mobile
- * roster. A missing bridge is not an error: public static shells fall back to
- * their paired tunnel instead. Other failures are surfaced rather than booting
- * an empty AppWebEntry without a manifest.
- */
-export async function loadSameOriginMobileBootManifest(
-  fetcher: SameOriginFetch = fetch,
-): Promise<BootManifest | null> {
-  const response = await fetcher('/__dsh_boot', { credentials: 'same-origin', cache: 'no-store' })
-  if (response.status === 404) return null
-  if (!response.ok) throw new Error('same-origin boot manifest fetch failed: HTTP ' + response.status)
-  if (response.headers.get('x-dsh-host-bridge') !== '1') return null
+/** Host authorizeIndex bounced this origin; the shell must navigate, not follow as fetch. */
+export class SameOriginHostRedirectError extends Error {
+  readonly location: string
+  constructor(location: string) {
+    super('same-origin host redirect')
+    this.name = 'SameOriginHostRedirectError'
+    this.location = location
+  }
+}
 
+export function sameOriginHostRedirectLocation(error: unknown): string | null {
+  if (error instanceof SameOriginHostRedirectError) return error.location
+  if (error instanceof Error && error.name === 'SameOriginHostRedirectError' && 'location' in error) {
+    const location = (error as { location?: unknown }).location
+    return typeof location === 'string' && location !== '' ? location : null
+  }
+  return null
+}
+
+/** Host authorizeIndex accepts this query only on GET /. */
+export const HOST_LAUNCH_TOKEN_QUERY = 'token'
+
+/** Read a Host launch token from a location search string. */
+export function launchTokenFromSearch(search: string): string | null {
+  const query = search.startsWith('?') ? search.slice(1) : search
+  const token = new URLSearchParams(query).get(HOST_LAUNCH_TOKEN_QUERY)
+  return token !== null && token !== '' ? token : null
+}
+
+/**
+ * Send the launch token through the Host-bridge path so authorizeIndex can
+ * mint the session cookie. A static GET / would swallow it.
+ */
+export function hostLaunchTokenExchangeUrl(origin: string, token: string): string {
+  const url = new URL('/__dsh_boot', origin)
+  url.searchParams.set(HOST_LAUNCH_TOKEN_QUERY, token)
+  return url.href
+}
+
+/** Browser copy when same-origin boot fails instead of falling through to pairing. */
+export function sameOriginBootFailureTitle(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return /HTTP 401/.test(message)
+    ? '请用电脑 dsh web 打印的带 token 链接打开此页'
+    : '无法加载 Custom Endpoint Host bridge'
+}
+
+function bootProbePath(response: Response): string {
+  if (response.url === '') return '/__dsh_boot'
+  try {
+    return new URL(response.url).pathname
+  } catch {
+    return '/__dsh_boot'
+  }
+}
+
+function isHostBridgeDocument(response: Response): boolean {
+  return response.ok && response.headers.get('x-dsh-host-bridge') === '1' && bootProbePath(response) === '/__dsh_boot'
+}
+
+async function parseHostBridgeManifest(response: Response): Promise<BootManifest> {
   const manifest = validateBootManifest(extractBootManifestJson(await response.text(), 'boot manifest not found in same-origin Host index'))
   return {
     ...manifest,
@@ -329,13 +376,70 @@ export async function loadSameOriginMobileBootManifest(
   }
 }
 
+/**
+ * Probe an operator-provided same-origin Host bridge and derive its mobile
+ * roster. A missing bridge is not an error: public static shells fall back to
+ * their paired tunnel instead. Other failures are surfaced rather than booting
+ * an empty AppWebEntry without a manifest. Host authorizeIndex may bounce
+ * through `/?token=` onto static `/`; follow that chain, retry once after
+ * the cookie lands, then ask the caller to navigate if it still did not stick.
+ */
+export const SAME_ORIGIN_BOOT_NAV_KEY = 'dsh-mobile:host-boot-nav'
+
+export async function loadSameOriginMobileBootManifest(
+  fetcher: SameOriginFetch = fetch,
+): Promise<BootManifest | null> {
+  const probe = { credentials: 'same-origin' as const, cache: 'no-store' as const, redirect: 'follow' as const }
+  const response = await fetcher('/__dsh_boot', probe)
+  if (response.status === 404) return null
+  if (isHostBridgeDocument(response)) return parseHostBridgeManifest(response)
+  if (!response.ok) {
+    throw new Error('same-origin boot manifest fetch failed: HTTP ' + response.status + ' at ' + (response.url || '/__dsh_boot'))
+  }
+  if (bootProbePath(response) !== '/__dsh_boot') throw new SameOriginHostRedirectError('/__dsh_boot')
+  if (response.headers.get('x-dsh-host-bridge') !== '1') return null
+  return parseHostBridgeManifest(response)
+}
+
 /** Host index embeddings seen in the wild: `window.` (legacy) and `globalThis` (dot + bracket) forms. */
-const BOOT_MANIFEST_SCRIPT = /(?:window|globalThis)(?:\.|\[["'])__DSH_BOOT__(?:["']\]|\.)?\s*=\s*(\{.*?\})<\/script>/s
+const BOOT_MANIFEST_ASSIGN = /(?:window|globalThis)(?:\.|\[["'])__DSH_BOOT__(?:["']\]|\.)?\s*=\s*/
+
+function extractJsonObjectLiteral(source: string, start: number, missing: string): string {
+  if (source[start] !== '{') throw new Error(missing)
+  let depth = 0
+  let inString = false
+  let escape = false
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index]
+    if (inString) {
+      if (escape) {
+        escape = false
+        continue
+      }
+      if (char === '\\') {
+        escape = true
+        continue
+      }
+      if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') {
+      inString = true
+      continue
+    }
+    if (char === '{') depth += 1
+    else if (char === '}') {
+      depth -= 1
+      if (depth === 0) return source.slice(start, index + 1)
+    }
+  }
+  throw new Error(missing)
+}
 
 export function extractBootManifestJson(html: string, missing = 'boot manifest not found'): unknown {
-  const match = BOOT_MANIFEST_SCRIPT.exec(html)
+  const match = BOOT_MANIFEST_ASSIGN.exec(html)
   if (match === null) throw new Error(missing)
-  return JSON.parse(match[1])
+  return JSON.parse(extractJsonObjectLiteral(html, match.index + match[0].length, missing))
 }
 
 const NARROW_LAYOUT_DEPENDENCIES = [
