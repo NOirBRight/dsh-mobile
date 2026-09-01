@@ -46,4 +46,16 @@
 
 ## Release installation
 
-This package is shipped as part of the signed [dsh-mobile v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) APK and matching Host release. Download https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile.apk, verify SHA-256 from SHA256SUMS, and install the Host pairing artifact separately from the dsh-mobile-pairing release.
+The signed [dsh-mobile v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) APK carries this layout locally. It replaces the official root only in the mobile shell's narrow boot manifest; do not add it to a desktop-only WebUI profile, where that would replace the official desktop root.
+
+For a custom mobile shell, the fixed-name artifact is available from the same Release:
+
+```sh
+# Latest (version-free)
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile-ui-layout-mobile.tgz
+
+# Fixed version
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile-ui-layout-mobile.tgz
+```
+
+Verify with `dsh plugin --profile web list` and `dsh plugin --profile web doctor`; uninstall with `dsh plugin --profile web remove @dsh-mobile/ui-layout-mobile`. This private mobile-shell package targets DeepSeek Harness `0.1.2-alpha.1` or newer and intentionally has no sibling source, `link:`, `workspace:`, or absolute-path dependency. Release bytes and checksums are in [v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) and [`SHA256SUMS`](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/SHA256SUMS). Roll back by restoring the prior mobile-shell bundle and rerunning its fixed command; restart only after the shell manifest validates.

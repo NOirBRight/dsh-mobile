@@ -24,4 +24,18 @@ npm test -w @dsh-mobile/interaction-operations
 
 ## Release installation
 
-This package is shipped as part of the signed [dsh-mobile v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) APK and matching Host release. Download https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile.apk, verify SHA-256 from SHA256SUMS, and install the Host pairing artifact separately from the dsh-mobile-pairing release.
+The package is independently installable as a Host Client plugin and is also bundled locally by the signed [dsh-mobile v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) APK. It owns input, popup, and surface interaction adapters only; it does not own provider settings, business mutations, or the mobile root layout.
+
+Latest (version-free):
+
+```sh
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile-interaction-operations.tgz
+```
+
+Fixed version:
+
+```sh
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile-interaction-operations.tgz
+```
+
+Update with the Latest command. Verify with `dsh plugin --profile web list` and `dsh plugin --profile web doctor`; uninstall with `dsh plugin --profile web remove @dsh-mobile/interaction-operations`. The package targets DeepSeek Harness `0.1.2-alpha.1` or newer and has no sibling-repository, `link:`, `workspace:`, or absolute-path dependency. Release bytes and checksums are in [v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) and [`SHA256SUMS`](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/SHA256SUMS). Roll back by rerunning the fixed command, then restart the Web service once after verifying the profile.
