@@ -776,6 +776,19 @@ test('core baseline keeps exact order and duplicate official entries', () => {
   ] })), /contains non-core boot entry/)
 })
 
+test('mobile layout replacement retains every official core entry except the root layout', () => {
+  const desktopLayout = '@deepseek-ai/dsh-client-ui-layout'
+  const mobileLayout = '@dsh-mobile/ui-layout-mobile'
+  const roster = [desktopLayout, '@deepseek-ai/dsh-client-ui-renderer']
+  const html = JSON.stringify({ entries: [
+    { id: mobileLayout, url: '/mobile-layout.js' },
+    { id: '@deepseek-ai/dsh-client-ui-renderer', url: '/renderer.js' },
+  ] })
+  assert.deepEqual(assertBootEntries(html, [mobileLayout], mobileLayout, 'mobile', roster, desktopLayout), {
+    [mobileLayout]: '/mobile-layout.js',
+  })
+})
+
 test('manual redirects remain same-origin, bounded, and body-cancelled', async () => {
   const originalFetch = globalThis.fetch
   const calls = []

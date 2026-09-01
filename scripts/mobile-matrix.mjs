@@ -871,13 +871,20 @@ export function captureOfficialCoreRoster(html, name = 'official baseline') {
   return core
 }
 
-function assertCoreRoster(html, expectedCoreRoster, name) {
+function assertCoreRoster(html, expectedCoreRoster, name, replacedOfficialEntryId) {
   if (!Array.isArray(expectedCoreRoster) || expectedCoreRoster.length === 0) {
     throw new Error(name + ' requires a nonempty official core roster')
   }
+  if (replacedOfficialEntryId !== undefined && !expectedCoreRoster.includes(replacedOfficialEntryId)) {
+    throw new Error(name + ' replacement entry ' + replacedOfficialEntryId + ' is not present in the baseline roster')
+  }
+  const expected = replacedOfficialEntryId === undefined
+    ? expectedCoreRoster
+    : expectedCoreRoster.filter(id => id !== replacedOfficialEntryId)
   const actual = entryRecords(html).filter(record => isOfficialCoreEntry(record.id)).map(record => record.id)
-  if (actual.length !== expectedCoreRoster.length || actual.some((id, index) => id !== expectedCoreRoster[index])) {
-    throw new Error(name + ' official core roster differs from baseline (expected ' + expectedCoreRoster.join(', ') + ', got ' + actual.join(', ') + ')')
+  if (actual.length !== expected.length || actual.some((id, index) => id !== expected[index])) {
+    const replacement = replacedOfficialEntryId === undefined ? '' : '; replaced ' + replacedOfficialEntryId
+    throw new Error(name + ' official core roster differs from baseline (expected ' + expected.join(', ') + replacement + ', got ' + actual.join(', ') + ')')
   }
 }
 
@@ -888,9 +895,10 @@ function assertCoreRoster(html, expectedCoreRoster, name) {
  * @param mobileEntryId Required mobile entry ID.
  * @param name Diagnostic label.
  * @param expectedCoreRoster Baseline official core IDs.
+ * @param replacedOfficialEntryId Optional official entry replaced by a mobile entry.
  * @returns Expected entry URL map.
  */
-export function assertBootEntries(html, expectedEntries, mobileEntryId, name, expectedCoreRoster = undefined) {
+export function assertBootEntries(html, expectedEntries, mobileEntryId, name, expectedCoreRoster = undefined, replacedOfficialEntryId = undefined) {
   const expected = new Set(expectedEntries)
   if (expected.size !== expectedEntries.length) throw new Error(name + ' expectedEntries must be unique')
   const records = entryRecords(html)
@@ -901,7 +909,7 @@ export function assertBootEntries(html, expectedEntries, mobileEntryId, name, ex
       }
     }
   } else {
-    assertCoreRoster(html, expectedCoreRoster, name)
+    assertCoreRoster(html, expectedCoreRoster, name, replacedOfficialEntryId)
     for (const record of records) {
       if (!isOfficialCoreEntry(record.id) && !expected.has(record.id)) {
         throw new Error(name + ' unexpected non-core boot entry ' + record.id)
@@ -926,7 +934,7 @@ export function assertBootEntries(html, expectedEntries, mobileEntryId, name, ex
  * @param options Profile, package, CLI, and manifest verification settings.
  * @returns The verified profile record.
  */
-export async function bootProfile({ name, packages, expectedEntries, mobileEntryId, bundleAssertions = {}, root, cli, expectedCliHash, beforeInstall, expectedCoreRoster, captureOfficialCore = false }) {
+export async function bootProfile({ name, packages, expectedEntries, mobileEntryId, bundleAssertions = {}, root, cli, expectedCliHash, beforeInstall, expectedCoreRoster, replacedOfficialEntryId, captureOfficialCore = false }) {
   const home = resolve(root, name)
   let child
   let result
@@ -961,10 +969,10 @@ export async function bootProfile({ name, packages, expectedEntries, mobileEntry
       ? captureOfficialCoreRoster(html, name)
       : expectedCoreRoster === undefined
         ? undefined
-        : (assertCoreRoster(html, expectedCoreRoster, name), expectedCoreRoster)
+        : (assertCoreRoster(html, expectedCoreRoster, name, replacedOfficialEntryId), expectedCoreRoster)
     const urls = captureOfficialCore
       ? {}
-      : assertBootEntries(html, expectedEntries, mobileEntryId, name, expectedCoreRoster)
+      : assertBootEntries(html, expectedEntries, mobileEntryId, name, expectedCoreRoster, replacedOfficialEntryId)
     for (const entry of expectedEntries) {
       const source = await fetchText(urls[entry], name + ' bundle for ' + entry, cookie, url)
       for (const assertion of bundleAssertions[entry] ?? []) assertion(source)
