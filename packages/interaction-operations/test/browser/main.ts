@@ -66,6 +66,28 @@ function run(): void {
   const nestedScroll = nested.querySelector<HTMLElement>('[data-nested-scroll]')!
   document.body.append(nestedTrigger, nested)
 
+  // The official model root is a two-row menu, but each row contains both a
+  // label and a current value. Treating it as a generic short menu shrinks the
+  // authored 240px width to 144px on phones.
+  const modelTrigger = document.createElement('button')
+  modelTrigger.setAttribute('aria-haspopup', 'menu')
+  modelTrigger.setAttribute('aria-expanded', 'false')
+  modelTrigger.setAttribute('aria-controls', 'model-root-popup')
+  modelTrigger.setAttribute('aria-label', 'Select model, current GPT-5.6 Sol, reasoning effort Medium')
+  modelTrigger.getBoundingClientRect = () => DOMRect.fromRect({ x: 220, y: 720, width: 88, height: 40 })
+  const modelRoot = document.createElement('div')
+  modelRoot.id = 'model-root-popup'
+  modelRoot.setAttribute('role', 'menu')
+  modelRoot.setAttribute('aria-label', 'Model and reasoning effort')
+  modelRoot.setAttribute('aria-hidden', 'true')
+  modelRoot.style.width = '240px'
+  modelRoot.style.minWidth = '240px'
+  modelRoot.innerHTML = [
+    '<button role="menuitem" style="display:flex;width:100%;gap:12px"><span data-model-label style="white-space:nowrap">Model</span><span style="margin-left:auto">GPT-5.6 Sol</span><span>›</span></button>',
+    '<button role="menuitem" style="display:flex;width:100%;gap:12px"><span style="white-space:nowrap">Effort</span><span style="margin-left:auto">Medium</span><span>›</span></button>',
+  ].join('')
+  document.body.append(modelTrigger, modelRoot)
+
   // Official alpha.1 slash/@ menus live in the first, zero-height overlay
   // anchor inside the composer card. They have no aria-controls trigger and
   // must retain the Host's card-relative absolute geometry.
@@ -156,6 +178,17 @@ function run(): void {
   trigger.remove()
   replacement.remove()
   popup.remove()
+
+  modelTrigger.setAttribute('aria-expanded', 'true')
+  modelRoot.setAttribute('aria-hidden', 'false')
+  window.dispatchEvent(new Event('resize'))
+  const modelLabel = modelRoot.querySelector<HTMLElement>('[data-model-label]')!
+  document.body.dataset.modelRootKind = modelRoot.dataset.dshMobilePopup ?? ''
+  document.body.dataset.modelRootWidth = String(Math.round(modelRoot.getBoundingClientRect().width))
+  document.body.dataset.modelLabelSingleLine = String(
+    modelLabel.getBoundingClientRect().height <= Number.parseFloat(getComputedStyle(modelLabel).lineHeight) ||
+      getComputedStyle(modelLabel).whiteSpace === 'nowrap',
+  )
 
   document.body.dataset.choiceKind = choice.dataset.dshMobilePopup ?? ''
   document.body.dataset.choiceWidth = String(Math.round(choice.getBoundingClientRect().width))

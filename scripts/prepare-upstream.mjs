@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readlinkSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
+import { existsSync, lstatSync, readlinkSync, realpathSync, symlinkSync, unlinkSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -24,10 +24,15 @@ if (target === undefined) {
   throw new Error('dsh-mobile: set DSH_UPSTREAM to a DSH >=0.1.2 checkout containing ' + required)
 }
 if (existing === target) process.exit(0)
-if (existsSync(link)) {
-  const stat = lstatSync(link)
-  if (!stat.isSymbolicLink()) throw new Error('dsh-mobile: .dsh-upstream exists and is not a symlink')
-  rmSync(link)
+let existingStat
+try {
+  existingStat = lstatSync(link)
+} catch (error) {
+  if (error?.code !== 'ENOENT') throw error
+}
+if (existingStat !== undefined) {
+  if (!existingStat.isSymbolicLink()) throw new Error('dsh-mobile: .dsh-upstream exists and is not a symlink')
+  unlinkSync(link)
 }
 symlinkSync(target, link, 'dir')
 console.log('dsh-mobile: .dsh-upstream -> ' + target)

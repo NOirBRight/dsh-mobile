@@ -19,7 +19,7 @@
 
 1. **`ctx.layout` 服务面**(IMobileLayout,与上游 ILayout 逐方法一致):`toggleSidebar()` / `openDetails()` / `closeDetails()`。ui-sidebar 的折叠按钮、ui-conversation 的详情开关都调它;`app-shell` 伪入口 `inject: ['slots', 'sessions', 'layout']` —— **不提供该服务则 shell 永不就绪**(packages/client/web/src/app-shell.ts)。经 `ctx.reflect.provide('layout', controller)` 提供,bound actions 由 register 的 inject hook 接回。
 2. **ThemePresenter**:ui-theme 只持有快照,把快照写到 document(body 的 palette 属性、token 内联变量、theme-color meta)的职责随根布局走。本包 `theme-presenter.ts` 是上游同名文件的逐字拷贝;两个布局同时挂载会导致双写,所以 bundle 必须禁用上游 ui-layout 行。
-3. **插件 inject**:`['slots', 'theme']`(`dsh.client.inject` 清单为 informational,与此保持一致)。
+3. **插件 inject**:`['slots', 'theme', 'sessions', 'settingsScope', 'remote.agentPresets']`；静态 `dsh.client.inject` 同时声明提供这些服务的 Host 客户端模块。
 
 ## 与上游的行为差异(有意为之)
 
@@ -29,6 +29,7 @@
 - 上游暂未提供语义 seam、只能桥接本地化 ARIA 时，不得只匹配一种语言；当前上游中英文词典必须同时匹配，并由真实浏览器 fixture 固定两种 label 下的同一布局结果。
 - 不得用控件已有的伪元素承载移动端文案；例如 View tab 的 `::after` 属于选中下划线，移动布局必须保留真实 tab 文本并通过间距分配解决宽度。
 - 已知内置 preset 被用户层覆盖后可能携带非本地化 metadata；移动端只可按可证明的内置身份（`standard` / `ptc` / `minimal` / `cordis` 及其官方中英文全名）补齐紧凑文案。中文为「标准 / PTC / 极简 / 创造」，英文为「Standard / PTC / Minimal / Creator」；任意用户 preset 名称保持原样。
+- 复用 Agent Presets 启用前遗留的空白会话时，移动端把 Host 默认 preset 写入该空白会话，使官方 Hero 模式选择器恢复显示；已有 preset 或已开始的会话不改动。
 
 ## 静态加载修订号
 
@@ -41,3 +42,8 @@
 ## 同步策略
 
 跟随 PLAN.md §4a:pin 上游版本;升级时 diff 上游 ui-layout 的 `src/client/index.ts`(四条声明)、`theme-presenter.ts`、`service.ts` 的 ILayout;加载期的 fail-loud 校验保证漂移立刻暴露。
+
+
+## Release installation
+
+This package is shipped as part of the signed [dsh-mobile v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) APK and matching Host release. Download https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile.apk, verify SHA-256 from SHA256SUMS, and install the Host pairing artifact separately from the dsh-mobile-pairing release.

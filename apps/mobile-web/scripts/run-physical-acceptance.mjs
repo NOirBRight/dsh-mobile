@@ -84,8 +84,11 @@ export function runPhysicalAcceptancePreflight() {
   })
   if (!facts.physical) throw new Error('selected target reports ro.kernel.qemu=1; the Campaign requires physical-device acceptance')
 
-  const apk = resolve(import.meta.dirname, '../../../artifacts/dsh-mobile-1.1.1-test.20260824.9.apk')
-  const expectedHash = '56682bee16d22dee180c1806a0462374decf2f7f55ffed70b8f85bc720162670'
+  const apk = resolve(import.meta.dirname, '../../../artifacts/' + (process.env.DSH_MOBILE_APK ?? 'dsh-mobile-1.1.3.apk'))
+  const expectedHash = process.env.DSH_MOBILE_APK_SHA256
+  if (expectedHash === undefined || !/^[0-9a-f]{64}$/u.test(expectedHash)) {
+    throw new Error('set DSH_MOBILE_APK_SHA256 to the SHA-256 of the signed release APK')
+  }
   const actualHash = sha256(apk)
   if (actualHash !== expectedHash) throw new Error('APK SHA-256 mismatch: ' + actualHash)
 
@@ -93,7 +96,7 @@ export function runPhysicalAcceptancePreflight() {
   console.log(adb(device.serial, ['install', '-r', apk]))
   const packageDump = adb(device.serial, ['shell', 'dumpsys', 'package', 'top.noirbright.dshmobile'])
   const installed = parsePackageVersion(packageDump)
-  if (installed.versionCode !== 11 || installed.versionName !== '1.1.1-test.20260824.9') {
+  if (installed.versionCode !== 14 || installed.versionName !== '1.1.3') {
     throw new Error('installed APK version mismatch: ' + JSON.stringify(installed))
   }
   adb(device.serial, ['shell', 'am', 'force-stop', 'top.noirbright.dshmobile'])

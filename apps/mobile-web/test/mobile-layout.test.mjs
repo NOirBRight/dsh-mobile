@@ -8,6 +8,12 @@ import { build } from 'vite'
 
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/mobile-layout')
 
+test('mobile layout bundle disables the official root before registering its replacement', async () => {
+  const patch = await readFile(resolve(import.meta.dirname, '../../../packages/ui-layout-mobile/cordis.patch.yml'), 'utf8')
+  assert.match(patch, /^- id: ui-layout\n  disabled: true$/m)
+  assert.match(patch, /^    - id: mobile-ui-layout\n      name: '@dsh-mobile\/ui-layout-mobile'$/m)
+})
+
 test('mobile layout does not paginate older history during session changes', async () => {
   const source = await readFile(resolve(import.meta.dirname, '../../../packages/ui-layout-mobile/src/client/index.ts'), 'utf8')
   assert.doesNotMatch(source, /history-prefetch|loadOlder/, 'session changes must not start background history pagination')

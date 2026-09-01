@@ -19,6 +19,7 @@ import { ThemePresenter } from './theme-presenter.ts'
 import { ComposerAttach } from './ComposerAttach.tsx'
 import { CompactStatsLine } from './CompactStatsLine.tsx'
 import { installHistoryContinuityAdapter } from './history-continuity.ts'
+import { installLegacyBlankPresetAdapter } from './legacy-blank-preset.ts'
 import { installTurnTailPresenter } from './turn-tail-presenter.ts'
 import { installModelPickerPresenter } from './model-picker-presenter.ts'
 import { installPermissionLabelPresenter } from './permission-label-presenter.ts'
@@ -96,7 +97,7 @@ export interface ConvOwnerProps {}
 export interface DetailsOwnerProps {}
 
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
-export const inject = ['slots', 'theme', 'sessions', 'settingsScope']
+export const inject = ['slots', 'theme', 'sessions', 'settingsScope', 'remote.agentPresets']
 
 function interactionOperationsFrom(ctx: ClientContext): MobileInteractionOperations | undefined {
   const holder = ctx as ClientContext & { get?(name: string, strict?: boolean): unknown; interactionOperations?: unknown }
@@ -168,6 +169,10 @@ export function apply(ctx: ClientContext): void {
   }, 'ui-layout-mobile: theme presenter')
 
   ctx.effect(() => installHistoryContinuityAdapter(ctx), 'ui-layout-mobile: expanded history continuity')
+  ctx.effect(
+    () => installLegacyBlankPresetAdapter(ctx as ClientContext & import('./legacy-blank-preset.ts').LegacyBlankPresetContext),
+    'ui-layout-mobile: legacy blank preset recovery',
+  )
   ctx.effect(() => installTurnTailPresenter(), 'ui-layout-mobile: compact turn tail')
   ctx.effect(() => installModelPickerPresenter(), 'ui-layout-mobile: compact model details')
   ctx.effect(() => installPermissionLabelPresenter(), 'ui-layout-mobile: compact permission labels')

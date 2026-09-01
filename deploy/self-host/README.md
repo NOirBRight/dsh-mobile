@@ -20,8 +20,10 @@ export ENDPOINT_HOST=pair.example.com
 docker compose up -d
 ```
 
-On the Host, copy `frpc.toml.example`, set `serverAddr` / token / domain, and
-run `frpc -c frpc.toml`. Then set the pairing plugin to
+On the Host, install the published Pairing package
+(`github:NOirBRight/dsh-mobile-pairing#v0.1.11`), copy `frpc.toml.example`, set
+`serverAddr` / token / domain, and run `frpc -c frpc.toml`. Then set the pairing
+plugin to
 
 ```yaml
 endpointMode: custom

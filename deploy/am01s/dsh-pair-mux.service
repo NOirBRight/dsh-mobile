@@ -9,7 +9,7 @@ Environment=PATH=/home/noirbright/.nvm/versions/node/v22.22.2/bin:/home/noirbrig
 Environment=DSH_PAIR_MUX_BIND=127.0.0.1
 Environment=DSH_PAIR_MUX_PORT=43168
 Environment=DSH_PAIR_MUX_BACKENDS=43170,43169
-ExecStart=/home/noirbright/.nvm/versions/node/v22.22.2/bin/node /home/noirbright/Workstation/dsh-mobile/plugins/pairing/lib/mux-cli.js
+ExecStart=/usr/bin/env dsh-pair-mux
 Restart=always
 RestartSec=3
 

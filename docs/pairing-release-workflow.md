@@ -1,12 +1,12 @@
 # Pairing / e2e-tunnel release workflow
 
-This workflow keeps the production profile read-only while evolving the two independent published packages.
+This workflow keeps the production profile read-only while evolving the two independent published packages. The mobile repository owns the artifact integration and verification for the published inputs it consumes.
 
 ## Release order
 
-1. **@dsh-mobile/e2e-tunnel**: run `npm test` and `npm run build` in `/home/noirbright/Workstation/dsh-e2e-tunnel`; publish/tag (current: **v0.1.3**).
-2. **@dsh-mobile/pairing**: bump the published dependency to `github:NOirBRight/dsh-e2e-tunnel#v0.1.3`; run full `tsc && tsdown`, tests, and `test/published-e2e-contract.test.mjs`; publish/tag (current: **v0.1.6**).
-3. **Lab validation**: keep `~/.dsh-lab/profiles/web` on `link:` to the monorepo checkout while iterating. For release validation, switch only the lab profile to the two GitHub tags and restart **3082**.
+1. **@dsh-mobile/e2e-tunnel**: in the e2e-tunnel checkout run `npm test` and `npm run build`; publish/tag (current: **v0.1.4**).
+2. **@dsh-mobile/pairing**: in the pairing checkout bump the dependency to `github:NOirBRight/dsh-e2e-tunnel#v0.1.4`; run `npm run build`, tests, `npm run verify:packed`, and `test/published-e2e-contract.test.mjs`; publish/tag (current: **v0.1.11**).
+3. **Lab validation**: keep `~/.dsh-lab/profiles/web` on the published tags for release validation and restart **3082**. Local iteration may use a temporary checkout, but committed manifests must not contain `link:` or Workstation-absolute paths.
 
 No build output is copied into `~/.dsh`; production changes only through an explicit promote operation.
 
@@ -14,22 +14,37 @@ No build output is copied into `~/.dsh`; production changes only through an expl
 
 At runtime: `imports(@dsh-mobile/pairing Host lib) ⊆ exports(@dsh-mobile/e2e-tunnel published tag)`.
 
-The test is `test/published-e2e-contract.test.mjs` in the published pairing checkout (mirrored in the monorepo lab tree). It parses built Host imports and the selected published `e2e-tunnel/lib/index.js` exports without executing dependencies.
+The test is `test/published-e2e-contract.test.mjs` in the pairing checkout. It parses built Host imports and the selected published `e2e-tunnel/lib/index.js` exports without executing dependencies.
 
 Old-tag audit:
 
-```sh
+~~~sh
 DSH_E2E_TUNNEL_MODULE=/path/to/v0.1.0/lib/index.js node --test test/published-e2e-contract.test.mjs
+~~~
+
+That command must fail while the Host imports a symbol absent from v0.1.0; the same command pointed at the v0.1.4 build must pass.
+
+## Source of truth
+
+- `dsh-mobile-pairing` is the only source of truth for `@dsh-mobile/pairing`.
+- `dsh-mobile` consumes the published package via an immutable tarball (`MOBILE_PAIRING_TARBALL`) and its expected lowercase SHA-256 digest (`MOBILE_PAIRING_SHA256`) for release verification; it does not maintain a second source mirror or sibling fallback.
+- Verify the packed artifact with `npm run verify:packed` in the pairing checkout and `npm run verify:pairing` / `npm run verify:clean-alpha1-mobile-matrix` in `dsh-mobile` using the same immutable input and digest. Strict verification requires both variables, checks the digest before reading the tarball, and rechecks it after use. No `link:` or Workstation-absolute paths appear in committed manifests or docs.
+
+```sh
+MOBILE_PAIRING_TARBALL=/path/to/pairing.tgz \
+MOBILE_PAIRING_SHA256=$(sha256sum /path/to/pairing.tgz | cut -d' ' -f1) \
+npm run verify:pairing
 ```
 
-That command must fail while the Host imports a symbol absent from v0.1.0; the same command pointed at the v0.1.3 build must pass.
+- Local iteration may use an explicit `MOBILE_PAIRING_ROOT` with `npm run verify:pairing:dev` or `npm run verify:clean-alpha1-mobile-matrix:dev`; that path prints that its locally packed result is not release evidence and is never called by `verify:release`.
 
-## Source of truth and synchronization
+## Official baseline
 
-- `/home/noirbright/Workstation/dsh-mobile-pairing` is the release source of truth for the published Host package.
-- `/home/noirbright/Workstation/dsh-mobile/plugins/pairing` is the monorepo lab/integration mirror. Every released Host change must be mirrored into the release checkout `src/` before tagging.
-- Build both repositories from their own source with the full build command. Never synchronize by copying `lib/`.
-- Before a pairing tag, compare `src/` trees, then run the contract test against the declared dependency tag.
+Compatibility checks inspect the pinned official **dsh-v0.1.2-alpha.1** provenance checkout (`cd5ef8148158c3a752a658978873241fdf8e2bbc`) via `DSH_UPSTREAM`; the tag, commit, remote, and clean worktree must match exactly. The mobile matrix copies only regular files and directories into an isolated temporary directory, skips source links, recreates ignored dependencies with offline frozen `pnpm install --ignore-scripts`, then runs `pnpm run clean` and `pnpm run build` there. It hashes the resulting regular CLI and executes only that copied CLI. Mobile owns only its own interaction-operations and ui-layout-mobile workspaces; those are packed from source inside this repository.
+
+## Host Connection seam
+
+The pairing Host plugin uses the official `HostConnectionHandle` from `@deepseek-ai/dsh-client-connection` (`>=0.1.2-alpha.1`) via a type-only import. When the Host connection capability is absent (fixtures or older compositions), the plugin logs a warning and continues without the loopback browser-session cookie; pairing and tunnels remain usable.
 
 ## 3082 acceptance
 
