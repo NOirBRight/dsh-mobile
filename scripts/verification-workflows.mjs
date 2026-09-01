@@ -424,6 +424,7 @@ export async function runCleanAlpha1MobileMatrix({ mode, resolvePairing }) {
         cli,
         expectedCliHash,
         expectedCoreRoster: baseline.coreRoster,
+        replacedOfficialEntryId: DESKTOP_LAYOUT_ID,
         beforeInstall: () => assertArtifactHash(artifact.tarball, artifact.expectedHash, isStrict(mode) ? 'MOBILE_PAIRING_TARBALL' : 'Pairing development artifact'),
       })]
       assertArtifactHash(artifact.tarball, artifact.expectedHash, isStrict(mode) ? 'MOBILE_PAIRING_TARBALL' : 'Pairing development artifact')

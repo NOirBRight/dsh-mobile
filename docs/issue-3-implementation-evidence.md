@@ -38,12 +38,12 @@ npm run verify:clean-alpha1-mobile-matrix
 
 ## Strict mobile matrix
 
-The matrix verifies the exact tagged official source, copies the complete checkout into an isolated temporary directory, runs `pnpm run clean` followed by `pnpm run build` in that copy, records the resulting regular CLI's SHA-256 digest, and requires the same digest before each CLI execution. It creates isolated temporary `DSH_HOME` profiles, runs dsh-mobile typecheck/tests/architecture audit/build, packs the interaction and mobile-layout workspaces, installs the supplied Pairing copy, boots an unmodified official baseline first, and requires the mobile profile to retain its exact ordered `@deepseek-ai/*` roster while adding only the three expected non-core entries. It checks served bundles, removes the copied checkout, and never writes the provenance checkout.
+The matrix verifies the exact tagged official source, copies the complete checkout into an isolated temporary directory, runs `pnpm run clean` followed by `pnpm run build` in that copy, records the resulting regular CLI's SHA-256 digest, and requires the same digest before each CLI execution. It creates isolated temporary `DSH_HOME` profiles, runs dsh-mobile typecheck/tests/architecture audit/build, packs the interaction and mobile-layout workspaces, installs the supplied Pairing copy, boots an unmodified official baseline first, and requires the mobile profile to retain its exact ordered `@deepseek-ai/*` roster except for the official root-layout entry replaced by the mobile layout, while adding only the three expected mobile entries. It checks served bundles, removes the copied checkout, and never writes the provenance checkout.
 
 | profile | required entries |
 |---|---|
 | official-baseline | the nonempty ordered official `@deepseek-ai/*` roster captured from a fresh profile |
-| mobile | the baseline roster unchanged, plus `@dsh-mobile/pairing`, `@dsh-mobile/interaction-operations`, and `@dsh-mobile/ui-layout-mobile`, exactly once each |
+| mobile | the baseline roster with `@deepseek-ai/dsh-client-ui-layout` replaced by `@dsh-mobile/ui-layout-mobile`, plus `@dsh-mobile/pairing` and `@dsh-mobile/interaction-operations`, exactly once each |
 
 The final matrix must be run only with the final immutable Pairing tarball, its matching SHA-256 digest, and the exact official checkout above. A source root or automatically discovered sibling artifact is not release evidence.
 
