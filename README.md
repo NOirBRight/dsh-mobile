@@ -8,44 +8,44 @@
 
 ## 安装
 
-需要本机已经在跑 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.0-rc.6** 或更高，手机要连的就是这台。
+需要本机已经在跑 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.2-alpha.1** 或更高，手机要连的就是这台。
 
 这是 **多份已发布的包**，不是 `npm i dsh-mobile`。Host 上先装 **远程**（配对插件），它会带上公开的隧道库。Codex Sidebar 可选，建议装。然后再装 APK。
 
 ```sh
-dsh plugin --profile web add github:NOirBRight/dsh-mobile-pairing#v0.1.6
-dsh plugin --profile web add github:NOirBRight/dsh-codex-sidebar#v0.3.8
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile-pairing/releases/latest/download/dsh-mobile-pairing.tgz
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-codex-sidebar/releases/latest/download/dsh-codex-sidebar.tgz
 dsh web
 ```
 
 第二行是 Codex Sidebar（Files / Review / Browser / Terminal）。只要聊天可以不装。
 
-配对插件 **v0.1.6** 依赖 [`@dsh-mobile/e2e-tunnel` v0.1.3](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.3)。不要把隧道库再加进 DSH 插件列表。
+配对插件 **v0.1.12** 依赖 [`@dsh-mobile/e2e-tunnel` v0.1.4](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.4)。不要把隧道库再加进 DSH 插件列表。
 
 然后在 Host 上打开 **设置 → 插件 → 插件配置 → DSH Mobile**（导航里叫 **远程**）。
 
 1. **自动生成**（临时 Quick Tunnel）或 **填写地址**（你拿到的，或[自己部署](relay/deploy/README.md) 的 Relay）。
 2. 刷新二维码。约 5 分钟有效，且一次性。
 
-Android APK（已签名 **v1.1.2**）：
+Android APK（已签名 **v1.1.3**）：
 
-- 发布页：https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.2
-- APK：https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.2/dsh-mobile-1.1.2.apk
+- 最新 APK：https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile.apk
+- 固定 APK：https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile.apk
 
 装上应用，打开后扫描 Host 二维码。
 
 | 部件 | 当前版本 | 角色 |
 |---|---|---|
-| [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing)（`@dsh-mobile/pairing`） | [v0.1.6](https://github.com/NOirBRight/dsh-mobile-pairing/releases/tag/v0.1.6) | **必装。** Host 插件：二维码、设备、回环 Gateway、Tunnel / Direct。这就是 **远程**。 |
-| [dsh-e2e-tunnel](https://github.com/NOirBRight/dsh-e2e-tunnel)（`@dsh-mobile/e2e-tunnel`） | [v0.1.3](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.3) | 配套库。pairing 已经依赖它。 |
-| [dsh-codex-sidebar](https://github.com/NOirBRight/dsh-codex-sidebar) | [v0.3.8](https://github.com/NOirBRight/dsh-codex-sidebar/releases/tag/v0.3.8) | **可选。** details 席位上的 Files / Review / Browser / Terminal。 |
-| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.2](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.2) | 手机应用。用上面的 APK 链接。 |
+| [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing)（`@dsh-mobile/pairing`） | [v0.1.12](https://github.com/NOirBRight/dsh-mobile-pairing/releases/tag/v0.1.12) | **必装。** Host 插件：二维码、设备、回环 Gateway、Tunnel / Direct。这就是 **远程**。 |
+| [dsh-e2e-tunnel](https://github.com/NOirBRight/dsh-e2e-tunnel)（`@dsh-mobile/e2e-tunnel`） | [v0.1.4](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.4) | 配套库。pairing 已经依赖它。 |
+| [dsh-codex-sidebar](https://github.com/NOirBRight/dsh-codex-sidebar) | [v0.5.10](https://github.com/NOirBRight/dsh-codex-sidebar/releases/tag/v0.5.10) | **可选。** details 席位上的 Files / Review / Browser / Terminal。 |
+| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) | 手机应用。下载固定名称 `dsh-mobile.apk`。 |
 | Relay | [`relay/deploy`](relay/deploy/README.md) | 可选自托管密文转发。只用 Quick Tunnel 就跳过。 |
 
 把隧道嵌进别的 Host 时才单独钉库（装手机不用跑）：
 
 ```sh
-npm i github:NOirBRight/dsh-e2e-tunnel#v0.1.3
+npm i github:NOirBRight/dsh-e2e-tunnel#v0.1.4
 ```
 
 ## 能做什么
@@ -126,7 +126,7 @@ npm run android:debug --workspace @dsh-mobile/mobile-web
 
 调试 APK：`apps/mobile-web/android/app/build/outputs/apk/debug/app-debug.apk`。签名发布包：`npm run android:release --workspace @dsh-mobile/mobile-web`。
 
-配对配置见 [plugins/pairing/README.md](plugins/pairing/README.md) 和已发布的 [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing)。自托管 Relay 见 [relay/deploy/README.md](relay/deploy/README.md)。布局契约见 [docs/adr/0004-responsive-layout-and-design-ownership.md](docs/adr/0004-responsive-layout-and-design-ownership.md)。维护者架构见 [docs/architecture.md](docs/architecture.md)。
+配对配置见已发布的 [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing)（唯一来源，`dsh-mobile` 通过 tag/tarball 消费，不维护本地源码镜像）。自托管 Relay 见 [relay/deploy/README.md](relay/deploy/README.md)。布局契约见 [docs/adr/0004-responsive-layout-and-design-ownership.md](docs/adr/0004-responsive-layout-and-design-ownership.md)。维护者架构见 [docs/architecture.md](docs/architecture.md)。
 
 ## 许可证
 

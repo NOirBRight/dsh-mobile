@@ -97,8 +97,14 @@ function authoredPopupWidth(popup: HTMLElement, originalStyle: string | null): n
   return width
 }
 
-function popupKind(element: HTMLElement): MobilePopupKind {
+function isOfficialModelTrigger(anchor: HTMLElement | null): boolean {
+  const label = anchor?.getAttribute('aria-label')?.trim() ?? ''
+  return label.startsWith('Select model') || label.startsWith('选择模型')
+}
+
+function popupKind(element: HTMLElement, anchor: HTMLElement | null): MobilePopupKind {
   if (element.getAttribute('role') === 'listbox') return 'listbox'
+  if (isOfficialModelTrigger(anchor)) return 'rich'
   if (element.querySelector('input, textarea, [role="menuitemradio"], [role="menuitemcheckbox"]') !== null) return 'rich'
   const rows = element.querySelectorAll('[role="menuitem"]')
   if (rows.length > 8 || (element.textContent?.trim().length ?? 0) > 96) return 'rich'
@@ -266,7 +272,7 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
       originals.set(popup, original)
     }
     const viewport = readViewportMetrics(view)
-    const kind = popupKind(popup)
+    const kind = popupKind(popup, anchor)
     const maxHeight = popupHeightLimit(kind, viewport.height)
     const authoredWidth = authoredPopupWidth(popup, original.style)
 

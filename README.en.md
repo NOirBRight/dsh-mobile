@@ -8,44 +8,44 @@ This is not a second DSH, not a browser that exposes `:3080`, and not a hosted p
 
 ## Install
 
-Need [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.0-rc.6** or later, already running on the machine the phone should reach.
+Need [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.2-alpha.1** or later, already running on the machine the phone should reach.
 
 This is **several published packages**, not `npm i dsh-mobile`. On the Host, install **Remote** (the pairing plugin). It pulls the public tunnel library. Codex Sidebar is optional and recommended. Then install the APK.
 
 ```sh
-dsh plugin --profile web add github:NOirBRight/dsh-mobile-pairing#v0.1.6
-dsh plugin --profile web add github:NOirBRight/dsh-codex-sidebar#v0.3.8
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile-pairing/releases/latest/download/dsh-mobile-pairing.tgz
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-codex-sidebar/releases/latest/download/dsh-codex-sidebar.tgz
 dsh web
 ```
 
 The second line is Codex Sidebar (Files / Review / Browser / Terminal). Skip it if you only want chat.
 
-Pairing **v0.1.6** depends on [`@dsh-mobile/e2e-tunnel` v0.1.3](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.3). Do not add the tunnel library to the DSH plugin list.
+Pairing **v0.1.12** depends on [`@dsh-mobile/e2e-tunnel` v0.1.4](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.4). Do not add the tunnel library to the DSH plugin list.
 
 Then on the Host: **Settings → Plugins → DSH Mobile** (nav label **Remote**).
 
 1. **Generate automatically** (temporary Quick Tunnel) or **Enter an address** (a Relay you were given, or [one you deployed](relay/deploy/README.md)).
 2. Refresh the QR. Codes last about five minutes and are single-use.
 
-Android APK (signed **v1.1.2**):
+Android APK (signed **v1.1.3**):
 
-- Release: https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.2
-- APK: https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.2/dsh-mobile-1.1.2.apk
+- Latest APK: https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile.apk
+- Fixed APK: https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile.apk
 
 Install the APK, open the app, scan the Host QR.
 
 | Piece | Latest | Role |
 |---|---|---|
-| [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing) (`@dsh-mobile/pairing`) | [v0.1.6](https://github.com/NOirBRight/dsh-mobile-pairing/releases/tag/v0.1.6) | **Required.** Host plugin: QR, devices, loopback Gateway, Tunnel / Direct. This is **Remote**. |
-| [dsh-e2e-tunnel](https://github.com/NOirBRight/dsh-e2e-tunnel) (`@dsh-mobile/e2e-tunnel`) | [v0.1.3](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.3) | Companion library. Pairing already depends on it. |
-| [dsh-codex-sidebar](https://github.com/NOirBRight/dsh-codex-sidebar) | [v0.3.8](https://github.com/NOirBRight/dsh-codex-sidebar/releases/tag/v0.3.8) | **Optional.** Files / Review / Browser / Terminal in the details seat. |
-| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.2](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.2) | Phone app. Download the APK above. |
+| [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing) (`@dsh-mobile/pairing`) | [v0.1.12](https://github.com/NOirBRight/dsh-mobile-pairing/releases/tag/v0.1.12) | **Required.** Host plugin: QR, devices, loopback Gateway, Tunnel / Direct. This is **Remote**. |
+| [dsh-e2e-tunnel](https://github.com/NOirBRight/dsh-e2e-tunnel) (`@dsh-mobile/e2e-tunnel`) | [v0.1.4](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.4) | Companion library. Pairing already depends on it. |
+| [dsh-codex-sidebar](https://github.com/NOirBRight/dsh-codex-sidebar) | [v0.5.10](https://github.com/NOirBRight/dsh-codex-sidebar/releases/tag/v0.5.10) | **Optional.** Files / Review / Browser / Terminal in the details seat. |
+| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) | Phone app. Download the fixed-name `dsh-mobile.apk`. |
 | Relay | [`relay/deploy`](relay/deploy/README.md) | Optional self-hosted sealed-frame Relay, only if you skip Quick Tunnel. |
 
 Embedding the tunnel in another Host (not a phone install):
 
 ```sh
-npm i github:NOirBRight/dsh-e2e-tunnel#v0.1.3
+npm i github:NOirBRight/dsh-e2e-tunnel#v0.1.4
 ```
 
 ## What it does
@@ -126,7 +126,7 @@ npm run android:debug --workspace @dsh-mobile/mobile-web
 
 Debug APK: `apps/mobile-web/android/app/build/outputs/apk/debug/app-debug.apk`. Signed release: `npm run android:release --workspace @dsh-mobile/mobile-web`.
 
-Pairing configuration: [plugins/pairing/README.md](plugins/pairing/README.md) and the published [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing) repo. Self-hosted Relay: [relay/deploy/README.md](relay/deploy/README.md). Layout contract: [docs/adr/0004-responsive-layout-and-design-ownership.md](docs/adr/0004-responsive-layout-and-design-ownership.md). Maintainer architecture: [docs/architecture.md](docs/architecture.md).
+Pairing configuration: the published [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing) repo (single source of truth; `dsh-mobile` consumes the tag/tarball without a local source mirror). Self-hosted Relay: [relay/deploy/README.md](relay/deploy/README.md). Layout contract: [docs/adr/0004-responsive-layout-and-design-ownership.md](docs/adr/0004-responsive-layout-and-design-ownership.md). Maintainer architecture: [docs/architecture.md](docs/architecture.md).
 
 ## License
 

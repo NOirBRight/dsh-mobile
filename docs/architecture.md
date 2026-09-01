@@ -14,11 +14,11 @@ DeepSeek Harness 的 Android 客户端，独立于上游 deepseek-harness 开发
 - **带宽预算**：隧道只承载封装协议帧;素材全部打包在 APK,插件 bundle 按内容哈希缓存。
 - **一个 DSH writer per Host**：正式版 `@dsh-mobile/pairing` 可安装到日常 `:3080` 或 lab `:3082`，各自回环到自己的 DSH。两套都安装时必须保持独立的 `DSH_HOME`、Host Identity、Gateway 端口和 Public Endpoint，不得共用同一个 `43169` 或自定义域名，也不得启动共享同一 `DSH_HOME` 的第二个 DSH。
 
-Host 的插件清单和业务插件 bundle 经已认证会话获取；移动壳在窄屏把桌面布局条目替换为 APK 内置的 @dsh-mobile/ui-layout-mobile。boot 永远走官方 boot graph（alpha.1 起是 `@deepseek-ai/dsh-cordis-client-runner` + store/session/theme/renderer，不再存在单体 `dsh-client-runtime`）；会话增强 hydration 管线已拆除，源码见 [docs/archived/session-hydration](archived/session-hydration/README.md)。
+Host 的插件清单和业务插件 bundle 经已认证会话获取；移动壳在窄屏把桌面布局条目替换为 APK 内置的 @dsh-mobile/ui-layout-mobile。boot 永远走官方 boot graph（alpha.1 起是 `@deepseek-ai/dsh-cordis-client-runner` + store/session/theme/renderer，不再存在单体 `dsh-client-runtime`）；会话增强 hydration 管线已拆除，源码见 [docs/archived/session-hydration](archived/session-hydration/README.md)。有缓存的冷启动先挂载缓存插件图以尽快显示界面；活动 Host carrier 就绪后，即使清单 revision 未变化也会重挂载一次，确保所有插件设置页的一次性 RPC 在可用连接上初始化。
 
 ## 官方兼容
 
-软件运行在 **兼容模式**：Core pairing 插件可直接安装到原版 DSH，不替换或修改官方 core / boot graph。QR 配对、设备管理、Tunnel/Relay 与官方 UI 默认可用。连接状态明确显示不提供权威刷新确认，不会把 transport-open 冒充数据就绪。
+软件运行在 **兼容模式**：Core pairing 插件可直接安装到原版 DSH，不替换或修改官方 core / boot graph。QR 配对、设备管理、Tunnel/Relay 与官方 UI 默认可用。连接状态明确显示不提供权威刷新确认，不会把 transport-open 冒充数据就绪。设置导航的远程图标通过临时 DOM patch 替换官方齿轮（官方 `settings.section` 暂无 icon 字段），属于已接受的临时兼容性限制，变更时静默回落。
 
 “设备连接”还提供默认关闭的 **后台连接保护（实验）**。开启后 Android 会请求通知权限、启动 remote-messaging Foreground Service、持有 CPU wake lock，并用常驻通知明确告知用户。它可显著减少 WebView 连接在后台被暂停，但当前加密 Tunnel 仍由 WebView 拥有；Android 强杀进程、厂商省电策略或 WebView 冻结仍可能中断接收，因此不得把该模式描述为绝对可靠的后台推送。彻底可靠需要后续将加密 transport 所有权迁入 native 层，或增加 Host 到设备的系统 Push 唤醒路径。
 
@@ -29,7 +29,7 @@ Host 的插件清单和业务插件 bundle 经已认证会话获取；移动壳�
 - `apps/mobile-web`：Android shell、扫码入口、fetch/WebSocket shim。
 - `packages/e2e-tunnel`：可发布的 NaCl tunnel、WebRTC 信令、连接策略与不超过 60 KiB 的 DataChannel 分片。
 - `packages/ui-layout-mobile`：单栏抽屉移动布局。
-- `plugins/pairing`：可发布的 Cordis Host 插件（Host Gateway、werift answerer、回环 tunnel endpoint）。
+- `@dsh-mobile/pairing`（发布于 `dsh-mobile-pairing` 仓库，唯一来源）：可发布的 Cordis Host 插件（Host Gateway、werift answerer、回环 tunnel endpoint）；`dsh-mobile` 本身不是该 Host 插件的运行时消费者（由 DSH Host 进程加载），因此 `package.json` 不声明对其的依赖，集成通过打包矩阵消费 tarball 完成，不维护本地镜像。
 - `relay`：多用户、独立 Room 的 opaque sealed-frame Relay；Docker/Caddy 配方位于 `relay/deploy/`。
 
 ## 构建与测试

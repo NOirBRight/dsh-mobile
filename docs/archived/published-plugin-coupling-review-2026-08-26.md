@@ -144,7 +144,7 @@ Model Switch publishes the plugin-owned child slot `external-agents.plan-review.
 
 - `dsh-model-switch/lib/client.js:2033,2417-2483`
 - `dsh-model-switch/PRODUCT.md:27-29`
-- canonical ownership: `docs/enhancement-seams.md:44-56,125-128`
+- canonical ownership: [enhancement seams](./enhancement-seams.md)
 
 The defect is dormant in today's production profile because External Agents is not installed there, but it breaks the published combined contract and makes the child slot ineffective.
 

@@ -66,6 +66,7 @@ The App Shell does not decide UI state and the plugin does not receive `App.exit
 | Android Back has no DSH surface arbitration | App Shell previously listened only for URL and app-state events | cancelable `dsh-mobile:platform-back` request; plugin consumes handled/blocked outcomes, shell owns history/exit fallback |
 | Navigation has buttons but no phone gesture | Mobile Layout drawer state is already exposed by plugin-owned attributes | conservative 24px left-edge swipe opens; horizontal swipe inside the open drawer closes; 56px distance, angle, time, and primary-touch gates avoid vertical-scroll claims |
 | Plain Enter sends from the official composer | `InputBar.tsx` submits after its IME/Shift arbitration | trusted plain Enter is stopped before React without `preventDefault`, so the textarea inserts a newline; `enterkeyhint=enter` is installed and restored on teardown |
+| The two-row model root is shorter than generic rich-choice heuristics | `ModelSelect.tsx` keeps a 240px root menu for labels, current values, and chevrons | the semantic model trigger classifies its owned root as rich, preserving the authored width and one-line labels without widening unrelated short menus |
 
 ### P1: next compatibility slice
 

@@ -126,7 +126,10 @@ export class HostSession {
         if (generation !== this.generation) throw new TunnelError('closed', HOST_SESSION_STOPPED_MESSAGE)
         if (bootGeneration !== this.bootGeneration) return null
         manager.armHeartbeat()
-        await this.paint(selection, prepared.profile.hostId, bootGeneration)
+        // Cached plugin graphs may mount before the transport can answer their
+        // one-shot settings RPCs. Recreate the same graph once the live tunnel
+        // is ready so every Host plugin initializes against a usable carrier.
+        await this.paint(selection, prepared.profile.hostId, bootGeneration, cached !== null)
         if (superseded()) return null
         if (generation !== this.generation) throw new TunnelError('closed', HOST_SESSION_STOPPED_MESSAGE)
         return bootGeneration === this.bootGeneration ? selection : null
@@ -189,10 +192,10 @@ export class HostSession {
     this.lastHostId = null
   }
 
-  private paint(selection: ResponsiveBootSelection, nextHostId: string, bootGeneration: number): Promise<void> {
+  private paint(selection: ResponsiveBootSelection, nextHostId: string, bootGeneration: number, force = false): Promise<void> {
     const run = async (): Promise<void> => {
       if (bootGeneration !== this.bootGeneration) return
-      if (!shellNeedsPaint(this.lastSelection, selection, { previousHostId: this.lastHostId, nextHostId })) {
+      if (!force && !shellNeedsPaint(this.lastSelection, selection, { previousHostId: this.lastHostId, nextHostId })) {
         this.lastSelection = selection
         return
       }

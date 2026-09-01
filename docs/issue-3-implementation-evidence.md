@@ -1,85 +1,59 @@
 # Issue #3 implementation evidence
 
-This record preserves filenames and acceptance results, not a replayable DSH Core patch.
+This record documents the current dsh-mobile release inputs and verification gates. It does not provide or require a replayable DSH Core patch.
 
-## Pinned upstream
+## Current official baseline
 
-- Tag: `dsh-v0.1.1-rc.2`
-- Commit: `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`
-- Required origin: `deepseek-ai/deepseek-harness`
+- Required tag: `dsh-v0.1.2-alpha.1`
+- Required commit: `cd5ef8148158c3a752a658978873241fdf8e2bbc`
+- Required remote: the official `deepseek-ai/deepseek-harness` repository
+- Required checkout state: exact tag and commit with a clean worktree
 
-Both official checkouts ended at the pinned commit with empty `git status --porcelain`:
+All active build consumers use the exact official baseline through `DSH_UPSTREAM`; the mobile matrix verifies that clean tagged source, copies only regular files and directories into an isolated temporary directory, skips source links, reinstalls ignored dependencies offline, and runs the official `pnpm run clean` and `pnpm run build` only in that copy. The verifier rejects a different revision, a missing exact tag, a non-official remote, or local changes; the provenance checkout is never written.
 
-- `/home/noirbright/Workstation/dsh-question-lab`
-- `/home/noirbright/.local/opt/dsh-staging/dsh-v0.1.1-rc.2-b150a551b8d4`
+## Strict Pairing artifact input
 
-## Pre-restore tracked file inventory
+Release verification consumes the published `@dsh-mobile/pairing@0.1.11` tarball. It requires both `MOBILE_PAIRING_TARBALL` and its exact lowercase 64-character SHA-256 digest in `MOBILE_PAIRING_SHA256`; it rejects `MOBILE_PAIRING_ROOT`. The caller path is opened with `O_NOFOLLOW`, validated as a regular file, and copied through the descriptor into private `0600` temporary storage. Manifest inspection, packed-entry checks, hashing, and installation use only that copy. A later caller-path hash check is evidence for TOCTOU detection and is never an execution input; cleanup preserves the primary failure and aggregates secondary errors.
 
-The question lab had these 18 modified files:
+The packed manifest must declare `@dsh-mobile/pairing`, version `0.1.11`, and the exact dependency `github:NOirBRight/dsh-e2e-tunnel#v0.1.4` under `dependencies`. Packed paths, including credential-bearing filenames, entry targets, runtime text, and served bundles reject source aliases, official source copies, Core patches, and fork-only contracts. Pairing's strict pack gate owns runtime dependency closure; the Mobile gate does not claim to prove it.
 
-~~~text
-packages/client/connection/src/client/fixture.ts
-packages/client/runtime/src/client/sessions/session.ts
-packages/client/runtime/tests/manager.client.spec.ts
-packages/client/runtime/tests/session.client.spec.ts
-packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css
-packages/client/ui-user-questions/src/client/PlanReviewPanel.tsx
-packages/client/ui-user-questions/src/client/QuestionComposer.module.css
-packages/client/ui-user-questions/src/client/QuestionComposer.tsx
-packages/client/ui-user-questions/src/client/contract/slots.ts
-packages/client/ui-user-questions/src/client/index.ts
-packages/client/ui-user-questions/tests/browser-plugin.client.spec.ts
-packages/client/ui-user-questions/tests/plan-review-panel.client.spec.tsx
-packages/client/ui-user-questions/tests/user-questions-composer.client.spec.tsx
-packages/host/apiproxy/src/api-proxy.ts
-packages/host/apiproxy/src/api/events.schema.ts
-packages/host/apiproxy/src/api/events.ts
-packages/host/apiproxy/tests/api-proxy-question.spec.ts
-packages/host/apiproxy/tests/rpc-schemas.spec.ts
-~~~
-
-Staging had the same 18 files plus:
-
-~~~text
-packages/plan/plan-mode/src/index.ts
-packages/plan/plan-mode/tests/plan-mode.spec.ts
-~~~
-
-The directories documented in `enhancement-seams.md` were restored from `HEAD`; no patch file or replay bundle was retained.
-
-## Rebuild and stock-surface evidence
-
-- `pnpm run build:official` completed with exit 0 in both official checkouts.
-- `http://127.0.0.1:3080/` returned HTTP 200 after restoration.
-- The served stock `@deepseek-ai/dsh-client-ui-user-questions` bundle contained none of:
-  - `conversation.composer.plan-review.execution-model`
-  - `setApprovalPreparation`
-- A clean rc.2 lab boot on 3082 returned HTTP 200 and its boot manifest contained both plugin entries. Served bundles used `external-agents.plan-review.continue-in-dsh`, exposed the fail-closed explanation, and contained neither the old Core slot nor `EXTERNAL_PLAN_HANDOFF_SENTINEL`.
-
-The repeatable release gate now replaces the one-off 3082 observation:
+Run the complete strict gate with the final published tarball and the matching official checkout:
 
 ~~~sh
-DSH_UPSTREAM=/home/noirbright/.local/opt/dsh-staging/dsh-v0.1.1-rc.2-b150a551b8d4 \
-  npm run verify:release
+export DSH_UPSTREAM=/absolute/path/to/dsh-v0.1.2-alpha.1
+export MOBILE_PAIRING_TARBALL=/absolute/path/to/dsh-mobile-pairing-0.1.11.tgz
+export MOBILE_PAIRING_SHA256="$(sha256sum "$MOBILE_PAIRING_TARBALL" | cut -d" " -f1)"
+npm run verify:release
 ~~~
 
-## Packed clean-rc.2 matrix
+The individual strict gates use the same variables:
 
-`npm run verify:clean-rc2-matrix` completed with exit 0. It packed current plugin artifacts, installed them into fresh temporary `DSH_HOME` profiles, booted each profile through the pinned official CLI, fetched the served artifacts, and removed the profiles afterward.
+~~~sh
+npm run verify:pairing
+npm run verify:compatibility
+npm run verify:clean-alpha1-mobile-matrix
+~~~
 
-| profile | observed boot entries |
+`verify:release` runs strict compatibility verification and the strict mobile matrix. Development commands with a `:dev` suffix are explicitly non-release checks; they may use an explicit `MOBILE_PAIRING_ROOT`, print `releaseEvidence: false`, and are never called by the release gate.
+
+## Strict mobile matrix
+
+The matrix verifies the exact tagged official source, copies the complete checkout into an isolated temporary directory, runs `pnpm run clean` followed by `pnpm run build` in that copy, records the resulting regular CLI's SHA-256 digest, and requires the same digest before each CLI execution. It creates isolated temporary `DSH_HOME` profiles, runs dsh-mobile typecheck/tests/architecture audit/build, packs the interaction and mobile-layout workspaces, installs the supplied Pairing copy, boots an unmodified official baseline first, and requires the mobile profile to retain its exact ordered `@deepseek-ai/*` roster while adding only the three expected non-core entries. It checks served bundles, removes the copied checkout, and never writes the provenance checkout.
+
+| profile | required entries |
 |---|---|
-| composer-only | `dsh-composer-picker` exactly once |
-| external-only | `dsh-external-agents` exactly once |
-| combined | both entries exactly once |
-| mobile | `@dsh-mobile/pairing`, `@dsh-mobile/interaction-operations`, and `@dsh-mobile/ui-layout-mobile` exactly once each |
+| official-baseline | the nonempty ordered official `@deepseek-ai/*` roster captured from a fresh profile |
+| mobile | the baseline roster unchanged, plus `@dsh-mobile/pairing`, `@dsh-mobile/interaction-operations`, and `@dsh-mobile/ui-layout-mobile`, exactly once each |
 
-Before packing, the gate runs composer/external `check`, dsh-mobile typecheck/tests/architecture audit/build, and standalone pairing typecheck/tests/build. Installs use fresh profiles and a pre-populated local pnpm content store in offline mode; this avoids network variance but does not claim bit-for-bit dependency resolution without a future profile lockfile. Commands, HTTP requests, and shutdown all have bounded timeouts. Every produced tarball is then opened and scanned for source maps/source paths, checkout aliases, Core patches, vendored official packages, and fork-only runtime/declaration contracts.
+The final matrix must be run only with the final immutable Pairing tarball, its matching SHA-256 digest, and the exact official checkout above. A source root or automatically discovered sibling artifact is not release evidence.
 
-The packed external-only run initially exposed a missing runtime dependency on `@deepseek-ai/dsh-sdk-protocol`; the dependency is now explicit and the matrix passes.
+## Verification performed for this implementation
 
-## Test evidence
+- `npm test`: all workspace and gate suites passed (215 mobile-web tests; 34 matrix tests).
+- `npm run audit:architecture`: passed.
+- `npm run typecheck`: passed.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+- Focused official-checkout and mobile-matrix tests: 42 passed.
 
-- `dsh-composer-picker`: public package-root Plan Review contract, priority `-5`, rendered pending/error/enabled retry behavior, commit-before-answer, external child Adapter, build, full tests, and pack gate.
-- `dsh-external-agents`: priority `-6`, public child-slot contract, rendered external-only disabled targets, rendered combined single card/selector/approval with commit-before-response, fail-closed RPC without side effects, foreground/background delegation, Job settlement/cancellation, build, full tests, and pack gate.
-- `dsh-mobile`: typecheck, full tests, architecture audit, exact clean-rc.2 compatibility gate, clean-rc.2 build, and packed profile matrix.
+These checks cover strict input rejection, exact tag and commit selection, Pairing metadata negatives, artifact immutability, temporary profile cleanup, and PATH-based AM01S mux execution. The final release matrix remains a release-only gate rather than a substitute for these source checks.

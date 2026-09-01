@@ -1,4 +1,7 @@
-# Register the browser mobile layout; Host apply is intentionally a no-op.
+# Replace the official browser root layout; Host apply is intentionally a no-op.
+- id: ui-layout
+  disabled: true
+
 - insert:
     - id: mobile-ui-layout
       name: '@dsh-mobile/ui-layout-mobile'

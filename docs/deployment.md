@@ -9,7 +9,14 @@ npm ci
 DSH_HOME="$DSH_HOME" npm run build
 ```
 
-`npm run build` compiles the pairing plugin and the mobile web shell used by the Android package. It does not install a Host-side browser shell. The mobile shell must compile against a Host-compatible client checkout: set `DSH_UPSTREAM` (default: sibling `dsh-wt-02` if present, otherwise `deepseek-harness`). The default sibling `deepseek-harness` tree is not sufficient when it still contains static Host plugin modules such as `@deepseek-ai/dsh-client-ui-attachment`.
+`npm run build` prepares the official checkout and compiles the mobile-owned e2e-tunnel, interaction-operations, ui-layout-mobile, and mobile web shell used by the Android package. It does not build or install the published Host Pairing package or a Host-side browser shell. The mobile shell must compile against the pinned Host-compatible client checkout selected by `DSH_UPSTREAM` (default: the repository `.dsh-upstream` checkout). The verifier requires the official `dsh-v0.1.2-alpha.1` tag and revision before building.
+
+Install the published Pairing package separately when a Host needs the Host plugin and `dsh-pair-mux` executable:
+
+```bash
+npm install --global github:NOirBRight/dsh-mobile-pairing#v0.1.11
+command -v dsh-pair-mux
+```
 
 Build the Android package with `npm run android:sync -w @dsh-mobile/mobile-web` followed by `npm run android:debug -w @dsh-mobile/mobile-web`. The debug APK is written to `apps/mobile-web/android/app/build/outputs/apk/debug/app-debug.apk`. Signed release builds use `npm run android:release -w @dsh-mobile/mobile-web`; operator keystore and `signing.properties` live under `~/.config/dsh-mobile/` (see `apps/mobile-web/android/signing.properties.example`).
 
