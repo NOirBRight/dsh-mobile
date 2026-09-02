@@ -14,8 +14,8 @@ test('physical device facts reject emulators and derive CSS width', () => {
   assert.equal(physicalDeviceFacts({ qemu: '1', sdk: '35', model: 'sdk_gphone', size: '1080x2400', density: '420' }).physical, false)
 })
 
-test('installed package metadata must match the campaign APK', () => {
-  assert.deepEqual(parsePackageVersion('versionCode=11 minSdk=26 targetSdk=36\nversionName=1.1.1-test.20260824.9\n'), {
-    versionCode: 11, versionName: '1.1.1-test.20260824.9',
+test('installed package metadata must match the Alpha.4 APK', () => {
+  assert.deepEqual(parsePackageVersion('versionCode=15 minSdk=26 targetSdk=36\nversionName=1.1.4\n'), {
+    versionCode: 15, versionName: '1.1.4',
   })
 })

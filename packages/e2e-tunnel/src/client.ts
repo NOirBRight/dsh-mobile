@@ -105,6 +105,12 @@ export async function connect(offerUrl: string, options: ConnectOptions = {}): P
     // A paired device's persistent token outlives the short QR window.
     // Still parse the offer shape, but let the host authenticate the token.
     const offer = parseOffer(offerUrl, { allowExpired: options.deviceToken !== undefined })
+    if (offer.mode === 'relay' && options.connectionPolicy === 'direct-only') {
+      throw new TunnelError('no-route', 'connection policy direct-only has no Direct route for a Relay offer')
+    }
+    if (offer.mode === 'direct' && options.connectionPolicy === 'tunnel-only') {
+      throw new TunnelError('no-route', 'connection policy tunnel-only has no Tunnel route for a Direct offer')
+    }
     const hostPub = b64urlDecode(offer.pubkey)
     const maxAttempts = Math.max(1, options.connectRetries ?? 3)
     for (let attempt = 1; ; attempt++) {

@@ -19,7 +19,7 @@
 
 1. **`ctx.layout` 服务面**(IMobileLayout,与上游 ILayout 逐方法一致):`toggleSidebar()` / `openDetails()` / `closeDetails()`。ui-sidebar 的折叠按钮、ui-conversation 的详情开关都调它;`app-shell` 伪入口 `inject: ['slots', 'sessions', 'layout']` —— **不提供该服务则 shell 永不就绪**(packages/client/web/src/app-shell.ts)。经 `ctx.reflect.provide('layout', controller)` 提供,bound actions 由 register 的 inject hook 接回。
 2. **ThemePresenter**:ui-theme 只持有快照,把快照写到 document(body 的 palette 属性、token 内联变量、theme-color meta)的职责随根布局走。本包 `theme-presenter.ts` 是上游同名文件的逐字拷贝;两个布局同时挂载会导致双写,所以 bundle 必须禁用上游 ui-layout 行。
-3. **插件 inject**:`['slots', 'theme', 'sessions', 'settingsScope', 'remote.agentPresets']`；静态 `dsh.client.inject` 同时声明提供这些服务的 Host 客户端模块。
+3. **插件 inject**:`['slots', 'theme', 'sessions', 'settingsScope', 'remote.agentPresets', 'modelDirectories']`；静态 `dsh.client.inject` 同时声明提供这些服务的 Host 客户端模块。
 
 ## 与上游的行为差异(有意为之)
 
@@ -30,6 +30,7 @@
 - 不得用控件已有的伪元素承载移动端文案；例如 View tab 的 `::after` 属于选中下划线，移动布局必须保留真实 tab 文本并通过间距分配解决宽度。
 - 已知内置 preset 被用户层覆盖后可能携带非本地化 metadata；移动端只可按可证明的内置身份（`standard` / `ptc` / `minimal` / `cordis` 及其官方中英文全名）补齐紧凑文案。中文为「标准 / PTC / 极简 / 创造」，英文为「Standard / PTC / Minimal / Creator」；任意用户 preset 名称保持原样。
 - 复用 Agent Presets 启用前遗留的空白会话时，移动端把 Host 默认 preset 写入该空白会话，使官方 Hero 模式选择器恢复显示；已有 preset 或已开始的会话不改动。
+- 切换 Host 后若当前空白会话的默认模型 Provider 已不可路由，移动端优先把同名模型重映射到唯一有效 Provider，否则选择该 Host 目录中的首个有效模型；已开始的会话不自动改写。
 
 ## 静态加载修订号
 
@@ -58,4 +59,4 @@ dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/re
 dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile-ui-layout-mobile.tgz
 ```
 
-Verify with `dsh plugin --profile web list` and `dsh plugin --profile web doctor`; uninstall with `dsh plugin --profile web remove @dsh-mobile/ui-layout-mobile`. This private mobile-shell package targets DeepSeek Harness `0.1.2-alpha.1` or newer and intentionally has no sibling source, `link:`, `workspace:`, or absolute-path dependency. Release bytes and checksums are in [v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) and [`SHA256SUMS`](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/SHA256SUMS). Roll back by restoring the prior mobile-shell bundle and rerunning its fixed command; restart only after the shell manifest validates.
+Verify with `dsh plugin --profile web list` and `dsh plugin --profile web doctor`; uninstall with `dsh plugin --profile web remove @dsh-mobile/ui-layout-mobile`. This private mobile-shell package targets DeepSeek Harness `0.1.2-alpha.4` and intentionally has no sibling source, `link:`, `workspace:`, or absolute-path dependency. Release bytes and checksums are emitted with the Alpha.4 mobile release. Roll back by restoring the prior mobile-shell bundle and rerunning its fixed command; restart only after the shell manifest validates.

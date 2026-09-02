@@ -28,8 +28,8 @@ import { requireNoFollowFlag, resolvePairingManifestStrict } from './pairing-art
 import { assertFreshOfficialCli } from './verify-official-dsh-checkout.mjs'
 
 const root = resolve(new URL('..', import.meta.url).pathname)
-const strictPath = resolve(root, 'scripts/verify-clean-alpha1-mobile-matrix.mjs')
-const devPath = resolve(root, 'scripts/verify-clean-alpha1-mobile-matrix.dev.mjs')
+const strictPath = resolve(root, 'scripts/verify-clean-alpha4-mobile-matrix.mjs')
+const devPath = resolve(root, 'scripts/verify-clean-alpha4-mobile-matrix.dev.mjs')
 const sharedPath = resolve(root, 'scripts/verification-workflows.mjs')
 const strictPairingPath = resolve(root, 'scripts/verify-pairing-artifact.mjs')
 const devPairingPath = resolve(root, 'scripts/verify-pairing-artifact.dev.mjs')
@@ -46,8 +46,8 @@ const muxServicePath = resolve(root, 'deploy/am01s/dsh-pair-mux.service')
 const activeScripts = [
   'mobile-matrix.mjs',
   'pairing-artifact-resolver.mjs',
-  'verify-clean-alpha1-mobile-matrix.mjs',
-  'verify-clean-alpha1-mobile-matrix.dev.mjs',
+  'verify-clean-alpha4-mobile-matrix.mjs',
+  'verify-clean-alpha4-mobile-matrix.dev.mjs',
   'verification-workflows.mjs',
   'verify-official-dsh-checkout.mjs',
   'verify-pairing-artifact.mjs',
@@ -120,7 +120,7 @@ async function createSyntheticPairingArchive(manifest, extraEntries = [], includ
 function strictPairingManifest(overrides = {}) {
   return {
     name: '@dsh-mobile/pairing',
-    version: '0.1.12',
+    version: '0.1.14',
     main: 'lib/index.js',
     types: 'lib/index.d.ts',
     exports: {
@@ -130,7 +130,7 @@ function strictPairingManifest(overrides = {}) {
     },
     bin: { 'dsh-pair-mux': './lib/mux-cli.js' },
     dsh: { bundle: { patch: './cordis.patch.yml' } },
-    dependencies: { '@dsh-mobile/e2e-tunnel': 'github:NOirBRight/dsh-e2e-tunnel#v0.1.4' },
+    dependencies: { '@dsh-mobile/e2e-tunnel': 'github:NOirBRight/dsh-e2e-tunnel#v0.1.5' },
     ...overrides,
   }
 }
@@ -238,11 +238,11 @@ test('strict verification requires the fixed official revision', async () => {
   assert.equal(official.includes(override), false)
 })
 
-test('active evidence pins alpha1 strict verification', async () => {
+test('active evidence pins Alpha.4 strict verification', async () => {
   const evidence = await readFile(evidenceDocPath, 'utf8')
   const currentEvidence = evidence
-  assert.match(currentEvidence, /dsh-v0\.1\.2-alpha\.1/)
-  assert.match(currentEvidence, /cd5ef8148158c3a752a658978873241fdf8e2bbc/)
+  assert.match(currentEvidence, /dsh-v0\.1\.2-alpha\.4/)
+  assert.match(currentEvidence, /4e84901e6471b79ec0338099867ebb4606d12bb5/)
   assert.match(currentEvidence, /MOBILE_PAIRING_TARBALL/)
   assert.match(currentEvidence, /MOBILE_PAIRING_SHA256/)
   assert.doesNotMatch(currentEvidence, /dsh-v0\.1\.1-rc\.2|b150a551b8d465e31e418e1b2eaf5e79bbb7d28e|DSH_EXPECTED_REVISION|verify-clean-rc2-matrix/)
@@ -287,11 +287,12 @@ test('matrix roots and npm/DSH children use isolated operational state', async (
   assert.match(workflow, /unlinkSync\(tempRoot\)/)
   assert.match(workflow, /prepareOfficialDshCheckout\(provenanceCheckout, tempRoot\)/)
   assert.match(workflow, /DSH_UPSTREAM: checkoutResult\.sourceCheckout/)
-  assert.match(strict, /runCleanAlpha1MobileMatrix/)
-  assert.match(dev, /runCleanAlpha1MobileMatrix/)
+  assert.match(strict, /runCleanAlpha4MobileMatrix/)
+  assert.match(dev, /runCleanAlpha4MobileMatrix/)
   assert.doesNotMatch(strict, /mkdtempSync/)
   assert.doesNotMatch(dev, /mkdtempSync/)
   assert.match(matrix, /env: sanitizedChildEnv\(env\)/)
+  assert.match(matrix, /offline \? \['--offline'\]/)
   assert.match(matrix, /spawnChild\(/)
   assert.match(resolver, /env: sanitizedChildEnv\(\)/)
   assert.match(resolver, /unlinkSync\(tempDir\)/)
@@ -306,8 +307,9 @@ test('matrix roots and npm/DSH children use isolated operational state', async (
   assert.match(official, /run\('pnpm', \[\'install\', \'--offline\', \'--frozen-lockfile\'/)
   assert.match(official, /run\('pnpm', \['run', 'clean'/)
   assert.match(official, /run\('pnpm', \['run', 'build'/)
+  assert.match(workflow, /offline: isStrict\(mode\)/)
   assert.match(official, /sha256File\(cli\)/)
-  assert.doesNotMatch(official, /DSH_OFFICIAL_CLI_ARTIFACT|dsh-alpha1-clean/)
+  assert.doesNotMatch(official, /DSH_OFFICIAL_CLI_ARTIFACT|dsh-alpha[123]-clean/)
   assert.doesNotMatch(workflow, /env: \{ \.\.\.process\.env/)
 
   const names = [
@@ -380,7 +382,7 @@ function normalizeWrapper(source) {
 
 test('strict and development wrappers share each orchestration runner', async () => {
   const pairs = [
-    [strictPath, devPath, 'runCleanAlpha1MobileMatrix'],
+    [strictPath, devPath, 'runCleanAlpha4MobileMatrix'],
     [strictPairingPath, devPairingPath, 'runPairingArtifactVerification'],
     [strictTwoTierPath, devTwoTierPath, 'runTwoTierCompatibility'],
   ]
@@ -472,18 +474,18 @@ test('artifact metadata validates string and object bin targets', () => {
 test('packed Pairing metadata rejects wrong name, version, and tunnel dependency', async () => {
   const base = {
     name: '@dsh-mobile/pairing',
-    version: '0.1.12',
+    version: '0.1.14',
     main: 'lib/index.js',
     exports: { '.': './lib/index.js' },
     dependencies: {
-      '@dsh-mobile/e2e-tunnel': 'github:NOirBRight/dsh-e2e-tunnel#v0.1.4',
+      '@dsh-mobile/e2e-tunnel': 'github:NOirBRight/dsh-e2e-tunnel#v0.1.5',
     },
   }
   const cases = [
     ['name', { ...base, name: '@dsh-mobile/not-pairing' }, /must have name @dsh-mobile\/pairing/],
-    ['version', { ...base, version: '0.1.10' }, /must have exact version 0.1.12/],
-    ['dependency', { ...base, dependencies: { '@dsh-mobile/e2e-tunnel': 'github:NOirBRight/dsh-e2e-tunnel#v0.1.3' } }, /must depend on @dsh-mobile\/e2e-tunnel exactly github:NOirBRight\/dsh-e2e-tunnel#v0.1.4/],
-    ['dependency section', { ...base, dependencies: {}, peerDependencies: { '@dsh-mobile/e2e-tunnel': 'github:NOirBRight/dsh-e2e-tunnel#v0.1.4' } }, /must depend on @dsh-mobile\/e2e-tunnel exactly/],
+    ['version', { ...base, version: '0.1.10' }, /must have exact version 0.1.14/],
+    ['dependency', { ...base, dependencies: { '@dsh-mobile/e2e-tunnel': 'github:NOirBRight/dsh-e2e-tunnel#v0.1.3' } }, /must depend on @dsh-mobile\/e2e-tunnel exactly github:NOirBRight\/dsh-e2e-tunnel#v0.1.5/],
+    ['dependency section', { ...base, dependencies: {}, peerDependencies: { '@dsh-mobile/e2e-tunnel': 'github:NOirBRight/dsh-e2e-tunnel#v0.1.5' } }, /must depend on @dsh-mobile\/e2e-tunnel exactly/],
   ]
   for (const [label, manifest, expected] of cases) {
     const { archive, directory } = await createSyntheticPairingArchive(manifest)
@@ -667,7 +669,7 @@ test('empty strict tarball input fails before build', () => {
 
 test('release workflow tracks the e2e-tunnel artifact consumed by Pairing', async () => {
   const workflow = await readFile(workflowDocPath, 'utf8')
-  assert.match(workflow, /v0\.1\.4/)
+  assert.match(workflow, /v0\.1\.5/)
   assert.doesNotMatch(workflow, /v0\.1\.3/)
 })
 

@@ -16,8 +16,8 @@ export const responseMaxBytes = 16 * 1024 * 1024
 /** Mobile-only contracts that must never be present in a release artifact. */
 export const MOBILE_FORBIDDEN_CONTRACTS = ['session-hydration', 'dsh-client-runtime']
 export const PAIRING_PACKAGE_NAME = '@dsh-mobile/pairing'
-export const PAIRING_PACKAGE_VERSION = '0.1.12'
-export const PAIRING_E2E_TUNNEL_DEPENDENCY = 'github:NOirBRight/dsh-e2e-tunnel#v0.1.4'
+export const PAIRING_PACKAGE_VERSION = '0.1.14'
+export const PAIRING_E2E_TUNNEL_DEPENDENCY = 'github:NOirBRight/dsh-e2e-tunnel#v0.1.5'
 
 const sourceDirectoryPattern = /(?:^|\/)(?:src|test|tests|scripts|node_modules|patches)(?:\/|$)/u
 const sourceMapPattern = /\.map$/iu
@@ -934,7 +934,7 @@ export function assertBootEntries(html, expectedEntries, mobileEntryId, name, ex
  * @param options Profile, package, CLI, and manifest verification settings.
  * @returns The verified profile record.
  */
-export async function bootProfile({ name, packages, expectedEntries, mobileEntryId, bundleAssertions = {}, root, cli, expectedCliHash, beforeInstall, expectedCoreRoster, replacedOfficialEntryId, captureOfficialCore = false }) {
+export async function bootProfile({ name, packages, expectedEntries, mobileEntryId, bundleAssertions = {}, root, cli, expectedCliHash, beforeInstall, expectedCoreRoster, replacedOfficialEntryId, captureOfficialCore = false, offline = false }) {
   const home = resolve(root, name)
   let child
   let result
@@ -943,7 +943,7 @@ export async function bootProfile({ name, packages, expectedEntries, mobileEntry
     for (const packagePath of packages) {
       assertOfficialCliDigest(cli, expectedCliHash)
       beforeInstall?.()
-      run(process.execPath, [cli, 'plugin', '--profile', 'web', 'add', packagePath], {
+      run(process.execPath, [cli, 'plugin', '--profile', 'web', 'add', ...(offline ? ['--offline'] : []), packagePath], {
         env: { DSH_HOME: home },
         timeout: installTimeoutMs,
       })

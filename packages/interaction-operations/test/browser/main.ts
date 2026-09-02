@@ -88,7 +88,7 @@ function run(): void {
   ].join('')
   document.body.append(modelTrigger, modelRoot)
 
-  // Official alpha.1 slash/@ menus live in the first, zero-height overlay
+  // Official Alpha.4 slash/@ menus live in the first, zero-height overlay
   // anchor inside the composer card. They have no aria-controls trigger and
   // must retain the Host's card-relative absolute geometry.
   const composerCard = document.createElement('div')

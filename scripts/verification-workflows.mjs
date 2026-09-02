@@ -362,11 +362,11 @@ function mobileMatrixSelection(selection, mode, packDirectory) {
 }
 
 /**
- * Run the isolated alpha1 mobile matrix for either strict release or development input.
+ * Run the isolated Alpha.4 mobile matrix for either strict release or development input.
  * @param options Resolver and verification mode selected by the thin wrapper.
  * @returns A promise that resolves after the isolated profile is removed.
  */
-export async function runCleanAlpha1MobileMatrix({ mode, resolvePairing }) {
+export async function runCleanAlpha4MobileMatrix({ mode, resolvePairing }) {
   assertMode(mode)
   const selection = resolvePairing()
   return await withSelectionCleanup(selection, async () => {
@@ -426,6 +426,7 @@ export async function runCleanAlpha1MobileMatrix({ mode, resolvePairing }) {
         expectedCoreRoster: baseline.coreRoster,
         replacedOfficialEntryId: DESKTOP_LAYOUT_ID,
         beforeInstall: () => assertArtifactHash(artifact.tarball, artifact.expectedHash, isStrict(mode) ? 'MOBILE_PAIRING_TARBALL' : 'Pairing development artifact'),
+        offline: isStrict(mode),
       })]
       assertArtifactHash(artifact.tarball, artifact.expectedHash, isStrict(mode) ? 'MOBILE_PAIRING_TARBALL' : 'Pairing development artifact')
       console.log(JSON.stringify({

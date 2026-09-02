@@ -12,13 +12,12 @@ interface SessionListSnapshotLike {
 }
 
 interface AgentPresetRemoteLike {
-  list(): Promise<{
-    readonly ok: boolean
-    readonly value?: {
-      readonly presets: readonly { readonly id: string; readonly isDefault: boolean }[]
-    }
+  list(...args: readonly [] | readonly [{}]): Promise<{
+    readonly ok?: boolean
+    readonly value?: { readonly presets: readonly { readonly id: string; readonly isDefault: boolean }[] }
+    readonly result?: { readonly ok: boolean; readonly value?: { readonly presets: readonly { readonly id: string; readonly isDefault: boolean }[] } }
   }>
-  select(sessionId: string, agentPreset: string): Promise<{ readonly ok: boolean }>
+  select(...args: readonly [string, string] | readonly [{ readonly sessionId: string; readonly agentPreset: string }]): Promise<{ readonly ok?: boolean; readonly result?: { readonly ok: boolean } }>
 }
 
 export interface LegacyBlankPresetContext {
@@ -49,13 +48,15 @@ export function installLegacyBlankPresetAdapter(ctx: LegacyBlankPresetContext): 
 
   const repair = async (sessionId: string): Promise<void> => {
     try {
-      const roster = await ctx.remote.agentPresets.list()
-      if (!roster.ok || roster.value === undefined) {
+      let roster = await ctx.remote.agentPresets.list()
+      if (roster.result === undefined && roster.ok === undefined) roster = await ctx.remote.agentPresets.list({})
+      const envelope = roster.result ?? roster
+      if (!envelope.ok || envelope.value === undefined) {
         attempted.delete(sessionId)
         return
       }
-      const preset = roster.value.presets.find(candidate => candidate.isDefault)
-        ?? roster.value.presets[0]
+      const preset = envelope.value.presets.find(candidate => candidate.isDefault)
+        ?? envelope.value.presets[0]
       if (preset === undefined || disposed) return
 
       const snapshot = ctx.sessions.list.getSnapshot()
@@ -63,8 +64,11 @@ export function installLegacyBlankPresetAdapter(ctx: LegacyBlankPresetContext): 
         attempted.delete(sessionId)
         return
       }
-      const selected = await ctx.remote.agentPresets.select(sessionId, preset.id)
-      if (!selected.ok) attempted.delete(sessionId)
+      let selected = await ctx.remote.agentPresets.select(sessionId, preset.id)
+      if (!(selected.result?.ok ?? selected.ok ?? false)) {
+        selected = await ctx.remote.agentPresets.select({ sessionId, agentPreset: preset.id })
+      }
+      if (!(selected.result?.ok ?? selected.ok ?? false)) attempted.delete(sessionId)
     } catch {
       // A connection reset or later list update is the retry signal.
       attempted.delete(sessionId)

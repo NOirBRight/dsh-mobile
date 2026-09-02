@@ -10,7 +10,7 @@ const base = {
   selectionPopupOpen: false,
 }
 
-test('adapter targets the alpha1 contenteditable composer instead of only legacy textarea', async () => {
+test('adapter targets the Alpha.4 contenteditable composer instead of only legacy textarea', async () => {
   const source = await readFile(resolve(import.meta.dirname, '../src/client/composer-input-adapter.ts'), 'utf8')
   assert.match(source, /\[data-composer-input\]\[data-phase\]/)
   assert.match(source, /contenteditable/)

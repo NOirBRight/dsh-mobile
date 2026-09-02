@@ -1,10 +1,10 @@
 # DSH Mobile Targeted Repair — 3082 Physical Acceptance Matrix
 
-Artifact: [DSH Mobile 1.1.1 test.20260824.9](https://github.com/NOirBRight/dsh-mobile/releases/download/mobile-interactions-test-20260824/dsh-mobile-1.1.1-test.20260824.apk)
+Artifact: DSH Mobile Alpha.4 release APK (`dsh-mobile-1.1.4.apk`; signed artifact and digest are recorded at release time)
 
-Android: versionCode 11 · versionName 1.1.1-test.20260824.9
+Android: versionCode 15 · versionName 1.1.4
 
-SHA-256: 56682bee16d22dee180c1806a0462374decf2f7f55ffed70b8f85bc720162670
+SHA-256: record the signed `dsh-mobile-1.1.4.apk` digest before running the acceptance command.
 Target Host: the existing 3082 lab service (verified active and HTTP 200 on 2026-08-24).
 
 Automated preflight now covers 320/360/390/412px, Chinese/English labels, visible feedback, equal action columns, command ownership, Back transitions, popup gutters, statistics visibility, and history restoration. The unchecked rows below intentionally require a physical Android device.

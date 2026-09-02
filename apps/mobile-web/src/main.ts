@@ -58,6 +58,10 @@ const MOBILE_ACTION_STYLE = `
   outline: 2px solid var(--dsw-alias-state-business-primary, Highlight);
   outline-offset: 2px;
 }
+
+body .dsh-assistant-pet {
+  bottom: 96px !important;
+}
 `
 
 function installMobileActionStyles(): void {
@@ -67,6 +71,8 @@ function installMobileActionStyles(): void {
   style.textContent = MOBILE_ACTION_STYLE
   ;(document.head ?? document.documentElement).append(style)
 }
+
+installMobileActionStyles()
 
 /**
  * Depth of in-flight Host shell paints. AppWebEntry mounts into the shell root
@@ -90,6 +96,7 @@ async function bootDshShell(selection: ResponsiveBootSelection | null): Promise<
     concealShellNativeBridges()
     webEntry = new AppWebEntry(el)
     await webEntry.run()
+    installMobileActionStyles()
     const health = inspectChromeAnchors()
     if (!health.ok) console.warn('[dsh-mobile]', health.message, health.missing.join(','))
     return selection

@@ -27,6 +27,9 @@ export function resetDshClientBoot(): void {
   const win = globalThis as typeof globalThis & DshBootWindow
   delete win.__ModuleLoader__
   delete win.__DSH_MODULES__
+  if (typeof document !== 'undefined') {
+    for (const style of document.querySelectorAll('style[data-plugin]')) style.remove()
+  }
 }
 
 /** Official queue facade installed by Host HTML before parser-preload scripts. */
