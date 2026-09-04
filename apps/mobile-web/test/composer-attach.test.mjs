@@ -5,8 +5,11 @@ import {
   attachFiles,
   attachUnavailableMessage,
   composerEditor,
+  composerSendIsBusy,
   dismissOfficialMenus,
+  draftPayload,
   plusMenuAlreadyOpen,
+  resolveMobileSendMode,
   unsupportedImageMessage,
 } from '../../../packages/ui-layout-mobile/src/client/composer-attach.ts'
 
@@ -80,4 +83,39 @@ test('plusMenuAlreadyOpen follows aria-expanded', () => {
 test('composerEditor ignores non-elements and is the IME target helper', () => {
   assert.equal(composerEditor(null), null)
   assert.equal(composerEditor({}), null)
+})
+
+function sendButton({ marked = false, stopLabel = undefined, aria = '发送消息' } = {}) {
+  return {
+    hasAttribute: (name) => marked && name === 'data-mobile-send-draft',
+    dataset: stopLabel === undefined ? {} : { mobileStopLabel: stopLabel },
+    getAttribute: (name) => name === 'aria-label' ? aria : null,
+  }
+}
+
+test('composerSendIsBusy follows the painted Stop seat, not only session.running', () => {
+  assert.equal(composerSendIsBusy(sendButton(), false), false)
+  assert.equal(composerSendIsBusy(sendButton({ marked: true }), false), true)
+  assert.equal(composerSendIsBusy(sendButton({ stopLabel: '停止生成' }), false), true)
+  assert.equal(composerSendIsBusy(sendButton(), true), true)
+})
+
+test('resolveMobileSendMode follows busyEnter; idle and subagent stay queue', () => {
+  assert.equal(resolveMobileSendMode({ busy: false, steeringAvailable: true, busyEnter: 'steer' }), 'queue')
+  assert.equal(resolveMobileSendMode({ busy: true, steeringAvailable: false, busyEnter: 'steer' }), 'queue')
+  assert.equal(resolveMobileSendMode({ busy: true, steeringAvailable: true, busyEnter: 'steer' }), 'steer')
+  assert.equal(resolveMobileSendMode({ busy: true, steeringAvailable: true, busyEnter: 'queue' }), 'queue')
+  assert.equal(resolveMobileSendMode({ busy: true, steeringAvailable: true }), 'queue')
+})
+
+test('draftPayload prefers live editor text and keeps snapshot image ids', () => {
+  assert.deepEqual(
+    draftPayload({ textContent: 'from-dom' }, { draft: 'from-store', imageIds: ['a'] }),
+    { text: 'from-dom', imageIds: ['a'] },
+  )
+  assert.deepEqual(
+    draftPayload({ textContent: '' }, { draft: 'from-store', imageIds: ['a'] }),
+    { text: 'from-store', imageIds: ['a'] },
+  )
+  assert.deepEqual(draftPayload({ textContent: 'from-dom' }), { text: 'from-dom', imageIds: [] })
 })

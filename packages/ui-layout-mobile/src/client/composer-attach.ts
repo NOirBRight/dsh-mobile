@@ -24,6 +24,10 @@ export interface DraftConversation {
     imageIds: readonly string[],
     mode: 'queue' | 'steer',
   ): Promise<unknown>
+  /** Official input hub; `shell(id).submit(mode)` keeps draft images on the machine. */
+  input?: {
+    shell?(id: string): { submit(mode?: 'queue' | 'steer'): void }
+  }
 }
 
 export interface DraftInputActions {
@@ -37,6 +41,16 @@ export interface DraftInputActions {
 export type AttachOutcome =
   | { ok: true }
   | { ok: false; reason: 'unavailable' | 'busy' | 'unsupported' | 'empty'; message: string }
+
+/** Same values as Host `ui-conversation.busyEnter`. */
+export type BusyEnterBehavior = 'queue' | 'steer'
+
+/** Face used to decide whether the intercepted primary is a busy send. */
+export interface BusySendButton {
+  hasAttribute(name: string): boolean
+  readonly dataset: { readonly mobileStopLabel?: string }
+  getAttribute(name: string): string | null
+}
 
 /** Identify the official composer plus (commands) button without CSS-module class names. */
 export function isComposerPlusButton(target: EventTarget | null): HTMLButtonElement | null {
@@ -110,6 +124,41 @@ export function composerDraftActionButton(target: EventTarget | null): HTMLButto
 export function composerDraftInput(button: HTMLButtonElement): ComposerDraftElement | null {
   const card = composerCardForButton(button)
   return card === null ? null : composerDraftForCard(card)
+}
+
+/**
+ * Busy send on mobile is the Stop seat painted as Send (`data-mobile-send-draft`),
+ * not only `session.running` — that snapshot can lag the button.
+ */
+export function composerSendIsBusy(button: BusySendButton, running?: boolean): boolean {
+  return button.hasAttribute('data-mobile-send-draft')
+    || isComposerStopLabel(button.dataset.mobileStopLabel ?? null)
+    || running === true
+}
+
+/**
+ * Same rule as official `resolve(running, 'enter', steeringAvailable)`:
+ * idle or subagent → queue; busy ordinary session → the Settings preference.
+ */
+export function resolveMobileSendMode(args: {
+  busy: boolean
+  steeringAvailable: boolean
+  busyEnter?: BusyEnterBehavior
+}): BusyEnterBehavior {
+  if (!args.busy || !args.steeringAvailable) return 'queue'
+  return args.busyEnter ?? 'queue'
+}
+
+/** Live editor text plus snapshot image ids (fallback when machine submit is unavailable). */
+export function draftPayload(
+  editor: HTMLElement,
+  input?: { readonly draft: string; readonly imageIds: readonly string[] },
+): { text: string; imageIds: readonly string[] } {
+  const liveText = typeof HTMLTextAreaElement !== 'undefined' && editor instanceof HTMLTextAreaElement
+    ? editor.value
+    : (editor.textContent ?? '')
+  if (input === undefined) return { text: liveText, imageIds: [] }
+  return { text: liveText !== '' ? liveText : input.draft, imageIds: input.imageIds }
 }
 
 /** Plus is already holding the slash menu open — let the official toggle close it. */

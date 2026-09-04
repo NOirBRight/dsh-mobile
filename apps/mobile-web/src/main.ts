@@ -178,6 +178,7 @@ async function showProfileMenu(
   onBackgroundConnectionChange: (enabled: boolean) => Promise<void>,
   onPairOffer: (offerUrl: string) => Promise<void>,
   connection: () => DeviceConnectionSummary,
+  onAbortSwitch?: () => void,
 ): Promise<void> {
   if (document.querySelector('[data-dsh-profile-menu]') !== null) return
   const [profiles, active] = await Promise.all([repository.list(), repository.getActive()])
@@ -193,6 +194,7 @@ async function showProfileMenu(
       setActive: id => repository.setActiveHost(id),
       reconnect: () => onActiveHostChanged(true),
     }),
+    onAbortSwitch,
     onPolicyChange: async (profile, policy) => {
       await repository.upsert({ ...profile, connectionPolicy: policy, updatedAt: new Date().toISOString() })
       if (profile.hostId === active?.hostId) await onActiveHostChanged()
@@ -404,7 +406,7 @@ void (async () => {
         route,
         profile: activeConnection.profile,
         ...(native ? { backgroundConnection: { enabled: backgroundConnectionEnabled } } : {}),
-      }))
+      }), () => { session?.stop() })
     }
     own(installProfileAction(openProfileMenu))
     const setTopbarNotice = (
@@ -523,7 +525,7 @@ void (async () => {
       if (retrying) details.push('连接中断，正在自动重试…')
       if (endpointRefreshAvailable) details.push('电脑连接地址已失效，请重新扫码。')
       let connectionOptions: HTMLButtonElement | undefined
-      if (retrying || needsRecovery || showError) {
+      if (retrying || needsRecovery || showError || activity.phase === 'connecting') {
         installMobileActionStyles()
         connectionOptions = document.createElement('button')
         connectionOptions.type = 'button'
@@ -631,7 +633,10 @@ void (async () => {
         await session?.connect(next)
         markTransportReady()
       } catch (error) {
-        if (isHostSessionStoppedError(error)) return
+        if (isHostSessionStoppedError(error)) {
+          if (propagateError) throw error
+          return
+        }
         lastError = error instanceof Error ? error.message : String(error)
         if (lastError === 'no Active Host Profile') {
           await enterOnboardingAfterRemoval()

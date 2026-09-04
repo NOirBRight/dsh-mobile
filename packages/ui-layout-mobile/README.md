@@ -47,7 +47,7 @@
 
 ## Release installation
 
-The signed [dsh-mobile v1.1.5](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.5) APK carries this layout locally. It replaces the official root only in the mobile shell's narrow boot manifest; do not add it to a desktop-only WebUI profile, where that would replace the official desktop root.
+The signed [dsh-mobile v1.1.6](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.6) APK carries this layout locally. It replaces the official root only in the mobile shell's narrow boot manifest; do not add it to a desktop-only WebUI profile, where that would replace the official desktop root.
 
 For a custom mobile shell, the fixed-name artifact is available from the same Release:
 
@@ -56,7 +56,7 @@ For a custom mobile shell, the fixed-name artifact is available from the same Re
 dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile-ui-layout-mobile.tgz
 
 # Fixed version
-dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.5/dsh-mobile-ui-layout-mobile.tgz
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.6/dsh-mobile-ui-layout-mobile.tgz
 ```
 
 Verify with `dsh plugin --profile web list` and `dsh plugin --profile web doctor`; uninstall with `dsh plugin --profile web remove @dsh-mobile/ui-layout-mobile`. This private mobile-shell package targets DeepSeek Harness `0.1.2-alpha.4` and intentionally has no sibling source, `link:`, `workspace:`, or absolute-path dependency. Release bytes and checksums are emitted with the Alpha.4 mobile release. Roll back by restoring the prior mobile-shell bundle and rerunning its fixed command; restart only after the shell manifest validates.

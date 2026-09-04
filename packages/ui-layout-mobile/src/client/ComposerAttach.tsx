@@ -16,7 +16,10 @@ import {
   composerControlButton,
   composerDraftActionButton,
   composerDraftInput,
+  composerSendIsBusy,
   dismissOfficialMenus,
+  draftPayload,
+  resolveMobileSendMode,
   isComposerStopLabel,
   filesFromInput,
   isComposerPlusButton,
@@ -31,7 +34,7 @@ export interface ComposerAttachProps {
   session?: { readonly running: boolean; readonly subagent: unknown | null }
   input?: { readonly draft: string; readonly imageIds: readonly string[] }
   busyEnter?: () => 'queue' | 'steer'
-  submitSteer?: (text: string, imageIds: readonly string[]) => Promise<void>
+  submitDraft?: (text: string, imageIds: readonly string[], mode: 'queue' | 'steer') => Promise<'machine' | 'copied'>
   createDraftImages: DraftConversation['createDraftImages']
   releaseDraftImage?: DraftConversation['releaseDraftImage']
   releaseDraftImages?: DraftConversation['releaseDraftImages']
@@ -55,7 +58,7 @@ export function ComposerAttach({
   session,
   input,
   busyEnter,
-  submitSteer,
+  submitDraft,
   createDraftImages,
   releaseDraftImage,
   releaseDraftImages,
@@ -63,7 +66,7 @@ export function ComposerAttach({
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const plusRef = useRef<HTMLButtonElement | null>(null)
   const skipNextPlusRef = useRef(false)
-  const steerPendingRef = useRef(false)
+  const sendPendingRef = useRef(false)
   const [open, setOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
@@ -127,31 +130,32 @@ export function ComposerAttach({
         event.stopImmediatePropagation()
         const textarea = composerDraftInput(draftAction)
         if (textarea !== null) {
-          const directSteer = session?.running === true
-            && session.subagent === null
-            && busyEnter?.() === 'steer'
-            && submitSteer !== undefined
-            && input !== undefined
-          if (directSteer) {
-            if (steerPendingRef.current) return
-            steerPendingRef.current = true
-            const text = input.draft
-            const imageIds = [...input.imageIds]
-            void submitSteer(text, imageIds).then(() => {
+          const busy = composerSendIsBusy(draftAction, session?.running)
+          const mode = resolveMobileSendMode({
+            busy,
+            steeringAvailable: session?.subagent == null,
+            busyEnter: busyEnter?.(),
+          })
+          if (busy && submitDraft !== undefined) {
+            if (sendPendingRef.current) return
+            sendPendingRef.current = true
+            const { text, imageIds } = draftPayload(textarea, input)
+            void submitDraft(text, [...imageIds], mode).then((how) => {
+              if (how !== 'copied') return
               inputActions?.setDraft?.('')
               for (const id of imageIds) inputActions?.removeImage?.(id)
-            }).finally(() => { steerPendingRef.current = false })
+            }).catch((error: unknown) => {
+              setToast(error instanceof Error ? error.message : '发送失败')
+            }).finally(() => { sendPendingRef.current = false })
             blurComposer()
             return
           }
-          // Synthetic handlers must see an enabled control while the tap is
-          // captured; restore the Host-owned disabled flag once React settles.
+          // Older Host without sendSession: synthetic Enter may still hit
+          // resolveSubmitMode. inputActions.submit() is queue-only — skip it
+          // when Settings asked for steer.
           const restoreDisabled = draftAction.disabled
           if (restoreDisabled) draftAction.disabled = false
           textarea.focus({ preventScroll: true })
-          // Ordinary Enter routes through the Host's resolveSubmitMode, so the
-          // tap follows Settings (排队发送 / 插话发送); the default submit()
-          // shortcut would hard-code queue delivery.
           const notCanceled = textarea.dispatchEvent(new KeyboardEvent('keydown', {
             key: 'Enter',
             code: 'Enter',
@@ -160,10 +164,9 @@ export function ComposerAttach({
             bubbles: true,
             cancelable: true,
           }))
-          // dispatchEvent=false means the official Enter policy handled and
-          // canceled the event. Queue fallback is only for an older Host with
-          // no keyboard handler, where the event remains uncanceled.
-          if (notCanceled && typeof inputActions?.submit === 'function') inputActions.submit()
+          if (notCanceled && mode === 'queue' && typeof inputActions?.submit === 'function') {
+            inputActions.submit()
+          }
           if (restoreDisabled) draftAction.disabled = true
           blurComposer()
         }
@@ -187,7 +190,7 @@ export function ComposerAttach({
       document.removeEventListener('mousedown', onMouseDown, true)
       document.removeEventListener('click', onClick, true)
     }
-  }, [busyEnter, input, inputActions, session, submitSteer])
+  }, [busyEnter, input, inputActions, session, submitDraft])
 
   useEffect(() => {
     const setDraftGlyph = (button: HTMLButtonElement, active: boolean): void => {

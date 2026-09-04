@@ -254,22 +254,30 @@ function draftImageInject(
   releaseDraftImage: DraftConversation['releaseDraftImage']
   releaseDraftImages: DraftConversation['releaseDraftImages']
   busyEnter: () => 'queue' | 'steer'
-  submitSteer: (text: string, imageIds: readonly string[]) => Promise<void>
+  submitDraft: (text: string, imageIds: readonly string[], mode: 'queue' | 'steer') => Promise<'machine' | 'copied'>
 } {
   const live = (): DraftConversation | undefined => liveConversation(ctx)
   return {
     busyEnter,
-    submitSteer: async (text, imageIds) => {
+    submitDraft: async (text, imageIds, mode) => {
       const conversation = live()
+      // Official machine submit keeps draft + image ids together. sendSession
+      // with a reconstructed payload drops images when the left-slot snapshot lags.
+      const shell = conversation?.input?.shell?.(sessionId)
+      if (shell !== undefined) {
+        shell.submit(mode)
+        return 'machine'
+      }
       if (conversation?.sendSession === undefined) {
-        throw new Error('ui-layout-mobile: steer submission unavailable')
+        throw new Error('ui-layout-mobile: draft submission unavailable')
       }
       const bound = ctx.sessions as unknown as {
         binding(id: string): { session: unknown } | undefined
       }
       const sessionFace = bound.binding(sessionId)?.session
-      if (sessionFace === undefined) throw new Error('ui-layout-mobile: steer session unavailable')
-      await conversation.sendSession(sessionFace, text, imageIds, 'steer')
+      if (sessionFace === undefined) throw new Error('ui-layout-mobile: draft session unavailable')
+      await conversation.sendSession(sessionFace, text, imageIds, mode)
+      return 'copied'
     },
     createDraftImages: (files) => {
       const conversation = live()

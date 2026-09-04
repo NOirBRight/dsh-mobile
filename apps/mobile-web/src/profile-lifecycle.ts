@@ -18,22 +18,42 @@ export interface HostProfileSwitchSurface {
   showConnecting(displayName: string): void
   showError(message: string): void
   close(): void
+  /** Stop the in-flight connect so a timed-out switch cannot later paint. */
+  abort?(): void
 }
+
+/** Default wait before a hung Host switch is treated as failure. */
+export const HOST_PROFILE_SWITCH_TIMEOUT_MS = 20_000
 
 /** Keep visible switch feedback mounted until the selected Host has connected and painted. */
 export async function runHostProfileSwitch<T>(
   target: HostProfileSwitchTarget<T>,
   activate: (hostId: T) => Promise<void>,
   surface: HostProfileSwitchSurface,
+  timeoutMs = HOST_PROFILE_SWITCH_TIMEOUT_MS,
 ): Promise<boolean> {
   surface.showConnecting(target.displayName)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const run = activate(target.hostId)
   try {
-    await activate(target.hostId)
+    await Promise.race([
+      run,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          surface.abort?.()
+          reject(new Error('连接超时，请扫码重新配对。'))
+        }, timeoutMs)
+      }),
+    ])
     surface.close()
     return true
   } catch (error) {
+    surface.abort?.()
     surface.showError(error instanceof Error ? error.message : String(error))
     return false
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+    void run.catch(() => {})
   }
 }
 

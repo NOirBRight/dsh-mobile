@@ -15,7 +15,7 @@ test('physical device facts reject emulators and derive CSS width', () => {
 })
 
 test('installed package metadata must match the Alpha.4 APK', () => {
-  assert.deepEqual(parsePackageVersion('versionCode=16 minSdk=26 targetSdk=36\nversionName=1.1.5\n'), {
-    versionCode: 16, versionName: '1.1.5',
+  assert.deepEqual(parsePackageVersion('versionCode=19 minSdk=26 targetSdk=36\nversionName=1.1.6\n'), {
+    versionCode: 19, versionName: '1.1.6',
   })
 })

@@ -431,6 +431,8 @@ export interface HostProfileMenuOptions {
   active?: HostProfile
   connection: DeviceConnectionSummary
   onActivate: (hostId: string) => Promise<void>
+  /** Stop an in-flight Host switch (timeout or 取消). */
+  onAbortSwitch?: () => void
   onPolicyChange: (profile: HostProfile, policy: ConnectionPolicy) => Promise<void>
   backgroundConnection?: { enabled: boolean }
   onBackgroundConnectionChange?: (enabled: boolean) => Promise<void>
@@ -609,10 +611,17 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
   }
   const showSwitchConnecting = (displayName: string): void => {
     switching = true
+    const cancel = button('取消', 'data-profile-switch-cancel')
+    cancel.setAttribute('data-mobile-shell-action', '')
+    cancel.addEventListener('click', () => {
+      options.onAbortSwitch?.()
+      close()
+    })
     const progress = mountProgressScreen(overlay, {
       title: '正在连接 ' + displayName,
       detail: '正在切换 Host，请稍候…',
       spinning: true,
+      action: cancel,
     })
     progress.dataset.profileSwitchProgress = ''
     progress.setAttribute('role', 'status')
@@ -620,6 +629,7 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
     progress.setAttribute('aria-busy', 'true')
   }
   const showSwitchError = (displayName: string, message: string): void => {
+    if (closed) return
     const back = button('返回', 'data-profile-switch-back')
     back.setAttribute('data-mobile-shell-action', '')
     back.addEventListener('click', close)
@@ -746,6 +756,7 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
           showConnecting: showSwitchConnecting,
           showError: message => { showSwitchError(profile.displayName, message) },
           close,
+          abort: options.onAbortSwitch,
         })
       })
     }

@@ -49,6 +49,25 @@ test('Host switching keeps a connecting surface visible until activation settles
   assert.deepEqual(events, ['show:3082 · Lab', 'activate:host-lab', 'close'])
 })
 
+test('Host switching times out a hung activation instead of spinning forever', async () => {
+  const events = []
+  const switched = await runHostProfileSwitch(
+    { hostId: 'host-lab', displayName: '3082 · Lab' },
+    async () => new Promise(() => {}),
+    {
+      showConnecting: name => { events.push('show:' + name) },
+      showError: message => { events.push('error:' + message) },
+      close: () => { events.push('close') },
+      abort: () => { events.push('abort') },
+    },
+    20,
+  )
+  assert.equal(switched, false)
+  assert.equal(events[0], 'show:3082 · Lab')
+  assert.ok(events.includes('abort'))
+  assert.match(events.at(-1) ?? '', /连接超时/)
+})
+
 test('Host switching keeps the progress surface open and reports activation failures', async () => {
   const events = []
   const switched = await runHostProfileSwitch(
