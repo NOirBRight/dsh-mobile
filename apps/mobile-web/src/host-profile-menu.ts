@@ -2,6 +2,7 @@ import type { ConnectionPolicy, HostProfile } from './profiles.ts'
 import type { ScanSurface } from './scan-surface.ts'
 import { runHostProfileSwitch } from './profile-lifecycle.ts'
 import { mountProgressScreen } from './progress-screen.ts'
+import { MOBILE_PLATFORM_BACK_EVENT } from './platform-back.ts'
 
 const STYLE_ID = 'dsh-mobile-profile-menu-style'
 const POLICY_OPTIONS: readonly [ConnectionPolicy, string][] = [
@@ -588,9 +589,14 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
   const close = (): void => {
     if (closed) return
     closed = true
+    document.removeEventListener(MOBILE_PLATFORM_BACK_EVENT, onPlatformBack)
     retryResolver?.()
     retryResolver = null
     overlay.remove()
+  }
+  function onPlatformBack(event: Event): void {
+    event.preventDefault()
+    close()
   }
   const setScanBusy = (busy: boolean): void => {
     scanButton.disabled = busy
@@ -663,6 +669,7 @@ export function mountHostProfileMenu(options: HostProfileMenuOptions): HostProfi
   addDevice.addEventListener('click', () => { void runScan() })
   closeButton.addEventListener('click', close)
   overlay.addEventListener('click', event => { if (event.target === overlay) close() })
+  document.addEventListener(MOBILE_PLATFORM_BACK_EVENT, onPlatformBack)
 
   for (const profile of options.profiles) {
     const active = profile.hostId === options.active?.hostId

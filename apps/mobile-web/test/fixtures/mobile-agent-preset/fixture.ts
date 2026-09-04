@@ -1,6 +1,6 @@
 import { installAgentPresetFallback } from '../../../../../packages/ui-layout-mobile/src/client/agent-preset-fallback.ts'
 
-const state = { current: 'blank', byId: { blank: { id: 'blank', blank: true } } }
+const state = { current: undefined, byId: {} }
 const listeners = new Set<() => void>()
 const ctx = {
   remote: {

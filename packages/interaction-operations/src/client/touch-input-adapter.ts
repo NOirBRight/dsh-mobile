@@ -170,8 +170,13 @@ export function installTouchInputAdapter(
     if (!(button instanceof HTMLButtonElement) || button !== lastTouchPopup || Date.now() - lastTouchPopupAt > 750) return
     const wasOpenOnPointerDown = lastTouchPopupWasOpen
     window.queueMicrotask(() => {
-      if (wasOpenOnPointerDown || !button.isConnected || button.getAttribute('aria-expanded') === 'true') return
-      operations.dispatch({ type: 'open-popup', target: button, source: { kind: 'touch', detail: 'tap-fallback' } })
+      if (!button.isConnected) return
+      const stillOpen = button.getAttribute('aria-expanded') === 'true'
+      if (wasOpenOnPointerDown) {
+        if (stillOpen) button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+        return
+      }
+      if (!stillOpen) operations.dispatch({ type: 'open-popup', target: button, source: { kind: 'touch', detail: 'tap-fallback' } })
     })
   }
 

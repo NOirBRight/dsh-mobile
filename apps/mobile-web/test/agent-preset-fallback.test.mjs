@@ -7,7 +7,7 @@ import { build } from 'vite'
 
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/mobile-agent-preset')
 
-test('an empty Hero preset slot gets a visible mobile mode dropdown', async () => {
+test('a cold new-session Hero gets a visible mobile mode dropdown', async () => {
   const outDir = await mkdtemp(join(tmpdir(), 'dsh-mobile-agent-preset-'))
   try {
     await build({ root: fixtureRoot, base: './', configFile: false, logLevel: 'silent', build: { outDir, emptyOutDir: true } })

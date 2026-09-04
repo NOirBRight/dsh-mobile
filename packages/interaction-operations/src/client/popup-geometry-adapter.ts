@@ -341,13 +341,18 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
     if (frame === 0) frame = view.requestAnimationFrame(runFrame)
   }
 
+  const scheduleOuterScroll = (event: Event): void => {
+    if (event.target instanceof Element && event.target.closest('[data-dsh-mobile-popup]') !== null) return
+    schedule()
+  }
+
   if (typeof ResizeObserver === 'function') resizeObserver = new ResizeObserver(schedule)
   document.addEventListener('pointerdown', bridgeTouchOutside, true)
   document.addEventListener('pointerdown', rememberTrigger, true)
   document.addEventListener('click', bridgeClickOutside, true)
   document.addEventListener('click', rememberTrigger, true)
   view.addEventListener('resize', schedule)
-  view.addEventListener('scroll', schedule, true)
+  view.addEventListener('scroll', scheduleOuterScroll, true)
   view.visualViewport?.addEventListener('resize', schedule)
   view.visualViewport?.addEventListener('scroll', schedule)
   const observer = new MutationObserver(() => {
@@ -372,7 +377,7 @@ export function installPopupGeometryAdapter(document: Document = globalThis.docu
     document.removeEventListener('click', bridgeClickOutside, true)
     document.removeEventListener('click', rememberTrigger, true)
     view.removeEventListener('resize', schedule)
-    view.removeEventListener('scroll', schedule, true)
+    view.removeEventListener('scroll', scheduleOuterScroll, true)
     view.visualViewport?.removeEventListener('resize', schedule)
     view.visualViewport?.removeEventListener('scroll', schedule)
     for (const [surface, original] of originals) {
