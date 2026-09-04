@@ -8,7 +8,7 @@ This is not a second DSH, not a browser that exposes `:3080`, and not a hosted p
 
 ## Install
 
-Need [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.2-alpha.1** or later, already running on the machine the phone should reach.
+Need [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.2-alpha.4**, already running on the machine the phone should reach.
 
 This is **several published packages**, not `npm i dsh-mobile`. On the Host, install **Remote** (the pairing plugin). `interaction-operations` is an independently installable Host Client plugin; the mobile APK already ships it and `ui-layout-mobile`, so a phone connection does not require putting layout source or a workstation path in the Host. Codex Sidebar is optional and recommended. Then install the APK.
 
@@ -24,42 +24,42 @@ The second line is the independent `interaction-operations` Host plugin; it only
 Fixed-version (reproducible) installation:
 
 ```sh
-dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile-pairing/releases/download/v0.1.12/dsh-mobile-pairing.tgz
-dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile-interaction-operations.tgz
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile-pairing/releases/download/v0.1.14/dsh-mobile-pairing.tgz
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.5/dsh-mobile-interaction-operations.tgz
 ```
 
 `@dsh-mobile/ui-layout-mobile` ships only with the APK and mobile shell. On narrow screens it replaces the official root; do not add it to a profile that serves the desktop WebUI. Maintainers of a custom mobile shell can download `dsh-mobile-ui-layout-mobile.tgz` from this Release and load it through that shell's bundle instructions.
 
-Pairing **v0.1.12** depends on [`@dsh-mobile/e2e-tunnel` v0.1.4](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.4). Do not add the tunnel library to the DSH plugin list.
+Pairing **v0.1.14** depends on [`@dsh-mobile/e2e-tunnel` v0.1.5](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.5) and is compatible only with DeepSeek Harness **0.1.2-alpha.4**. Do not add the tunnel library to the DSH plugin list; Alpha.1–Alpha.3 users should stay on the old plugin versions for their Runtime.
 
 Then on the Host: **Settings → Plugins → DSH Mobile** (nav label **Remote**).
 
 1. **Generate automatically** (temporary Quick Tunnel) or **Enter an address** (a Relay you were given, or [one you deployed](relay/deploy/README.md)).
 2. Refresh the QR. Codes last about five minutes and are single-use.
 
-Android APK (signed **v1.1.3**):
+Android APK (signed **v1.1.5**):
 
 - Latest APK: https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile.apk
-- Fixed APK: https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile.apk
+- Fixed APK: https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.5/dsh-mobile.apk
 
 Install the APK, open the app, scan the Host QR.
 
 | Piece | Latest | Role |
 |---|---|---|
-| [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing) (`@dsh-mobile/pairing`) | [v0.1.12](https://github.com/NOirBRight/dsh-mobile-pairing/releases/tag/v0.1.12) | **Required.** Host plugin: QR, devices, loopback Gateway, Tunnel / Direct. This is **Remote**. |
-| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) Host interaction artifact (`@dsh-mobile/interaction-operations`) | [Latest](https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile-interaction-operations.tgz) · [v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile-interaction-operations.tgz) | Optional Host Client plugin. Provides input/popup interaction adapters only; the mobile APK uses the same bundle locally. |
-| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) mobile layout artifact (`@dsh-mobile/ui-layout-mobile`) | [Latest](https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile-ui-layout-mobile.tgz) · [v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile-ui-layout-mobile.tgz) | Narrow-screen root layout bundled in the APK; do not install it in a desktop WebUI profile. |
-| [dsh-e2e-tunnel](https://github.com/NOirBRight/dsh-e2e-tunnel) (`@dsh-mobile/e2e-tunnel`) | [v0.1.4](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.4) | Companion library. Pairing already depends on it. |
-| [dsh-codex-sidebar](https://github.com/NOirBRight/dsh-codex-sidebar) | [v0.5.10](https://github.com/NOirBRight/dsh-codex-sidebar/releases/tag/v0.5.10) | **Optional.** Files / Review / Browser / Terminal in the details seat. |
-| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) | Phone app. Download the fixed-name `dsh-mobile.apk`. |
+| [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing) (`@dsh-mobile/pairing`) | [v0.1.14](https://github.com/NOirBRight/dsh-mobile-pairing/releases/tag/v0.1.14) | **Required.** Host plugin: QR, devices, loopback Gateway, Tunnel / Direct. This is **Remote** and supports DSH 0.1.2-alpha.4 only. |
+| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) Host interaction artifact (`@dsh-mobile/interaction-operations`) | [Latest](https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile-interaction-operations.tgz) · [v1.1.5](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.5/dsh-mobile-interaction-operations.tgz) | Optional Host Client plugin. Provides input/popup interaction adapters only; the mobile APK uses the same bundle locally. |
+| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) mobile layout artifact (`@dsh-mobile/ui-layout-mobile`) | [Latest](https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile-ui-layout-mobile.tgz) · [v1.1.5](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.5/dsh-mobile-ui-layout-mobile.tgz) | Narrow-screen root layout bundled in the APK; do not install it in a desktop WebUI profile. |
+| [dsh-e2e-tunnel](https://github.com/NOirBRight/dsh-e2e-tunnel) (`@dsh-mobile/e2e-tunnel`) | [v0.1.5](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.5) | Companion library. Pairing already depends on it. |
+| [dsh-codex-sidebar](https://github.com/NOirBRight/dsh-codex-sidebar) | [v0.5.11](https://github.com/NOirBRight/dsh-codex-sidebar/releases/tag/v0.5.11) | **Optional.** Files / Review / Browser / Terminal in the details seat. |
+| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.5](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.5) | Phone app. Download the fixed-name `dsh-mobile.apk`. |
 | Relay | [`relay/deploy`](relay/deploy/README.md) | Optional self-hosted sealed-frame Relay, only if you skip Quick Tunnel. |
 
-Release integrity: the fixed-name plugin tarballs and APK are listed with SHA-256 in [v1.1.3/SHA256SUMS](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/SHA256SUMS). Latest URLs never contain a version; use fixed URLs for production deployment.
+Release integrity: the fixed-name plugin tarballs and APK are listed with SHA-256 in [v1.1.5/SHA256SUMS](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.5/SHA256SUMS). Latest URLs never contain a version; use fixed URLs for production deployment.
 
 Embedding the tunnel in another Host (not a phone install):
 
 ```sh
-npm i github:NOirBRight/dsh-e2e-tunnel#v0.1.4
+npm i github:NOirBRight/dsh-e2e-tunnel#v0.1.5
 ```
 
 ## What it does

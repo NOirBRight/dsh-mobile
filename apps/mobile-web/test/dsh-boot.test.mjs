@@ -40,3 +40,25 @@ test('resetDshClientBoot deletes ModuleLoader and DSH_MODULES and is a no-op whe
   assert.equal('__ModuleLoader__' in win, false)
   assert.equal('__DSH_MODULES__' in win, false)
 })
+
+test('resetDshClientBoot removes plugin-owned styles before another Host graph materializes', () => {
+  const originalDocument = globalThis.document
+  const removed = []
+  const pluginStyles = [
+    { remove() { removed.push('old-layout') } },
+    { remove() { removed.push('old-theme') } },
+  ]
+  globalThis.document = {
+    querySelectorAll(selector) {
+      assert.equal(selector, 'style[data-plugin]')
+      return pluginStyles
+    },
+  }
+  try {
+    resetDshClientBoot()
+    assert.deepEqual(removed, ['old-layout', 'old-theme'])
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document
+    else globalThis.document = originalDocument
+  }
+})

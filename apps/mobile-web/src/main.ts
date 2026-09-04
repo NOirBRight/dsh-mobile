@@ -58,6 +58,10 @@ const MOBILE_ACTION_STYLE = `
   outline: 2px solid var(--dsw-alias-state-business-primary, Highlight);
   outline-offset: 2px;
 }
+
+body .dsh-assistant-pet {
+  bottom: 96px !important;
+}
 `
 
 function installMobileActionStyles(): void {
@@ -67,6 +71,8 @@ function installMobileActionStyles(): void {
   style.textContent = MOBILE_ACTION_STYLE
   ;(document.head ?? document.documentElement).append(style)
 }
+
+installMobileActionStyles()
 
 /**
  * Depth of in-flight Host shell paints. AppWebEntry mounts into the shell root
@@ -90,6 +96,7 @@ async function bootDshShell(selection: ResponsiveBootSelection | null): Promise<
     concealShellNativeBridges()
     webEntry = new AppWebEntry(el)
     await webEntry.run()
+    installMobileActionStyles()
     const health = inspectChromeAnchors()
     if (!health.ok) console.warn('[dsh-mobile]', health.message, health.missing.join(','))
     return selection
@@ -387,7 +394,7 @@ void (async () => {
     document.addEventListener('dsh:live-data-ready', handleLiveDataReady)
     own(() => document.removeEventListener('dsh:live-data-state', handleLiveDataState))
     own(() => document.removeEventListener('dsh:live-data-ready', handleLiveDataReady))
-    own(installProfileAction(() => {
+    const openProfileMenu = (): void => {
       void showProfileMenu(repository, reconnectActiveHost, enterOnboardingAfterRemoval, async enabled => {
         await backgroundConnection.setEnabled(enabled)
         backgroundConnectionEnabled = enabled
@@ -398,7 +405,8 @@ void (async () => {
         profile: activeConnection.profile,
         ...(native ? { backgroundConnection: { enabled: backgroundConnectionEnabled } } : {}),
       }))
-    }))
+    }
+    own(installProfileAction(openProfileMenu))
     const setTopbarNotice = (
       message: string | null,
       detail = '',
@@ -514,13 +522,14 @@ void (async () => {
       if (route !== '') details.push('当前路径：' + route)
       if (retrying) details.push('连接中断，正在自动重试…')
       if (endpointRefreshAvailable) details.push('电脑连接地址已失效，请重新扫码。')
-      let refresh: HTMLButtonElement | undefined
-      if (endpointRefreshAvailable) {
+      let connectionOptions: HTMLButtonElement | undefined
+      if (retrying || needsRecovery || showError) {
         installMobileActionStyles()
-        refresh = document.createElement('button')
-        refresh.id = 'endpoint-refresh'
-        refresh.setAttribute('data-mobile-shell-action', '')
-        refresh.textContent = '重新扫码'
+        connectionOptions = document.createElement('button')
+        connectionOptions.type = 'button'
+        connectionOptions.setAttribute('data-mobile-shell-action', '')
+        connectionOptions.textContent = '连接选项'
+        connectionOptions.addEventListener('click', openProfileMenu)
       }
       mountProgressScreen(el, {
         title: retrying
@@ -535,28 +544,8 @@ void (async () => {
           }
           : {},
         spinning: activity.phase !== 'terminal',
-        ...refresh === undefined ? {} : { action: refresh },
+        ...connectionOptions === undefined ? {} : { action: connectionOptions },
       })
-      document.getElementById('endpoint-refresh')?.addEventListener('click', async event => {
-        const button = event.currentTarget as HTMLButtonElement
-        button.disabled = true
-        session?.stop()
-        endpointRefreshAvailable = false
-        lastError = ''
-        const offerUrl = await scanUntilPaired()
-        mountProgressScreen(el, { title: '正在更新临时 Endpoint…', spinning: true })
-        try {
-          activeConnection = await prepareProfileConnection({ repository, vault, offerUrl, acknowledgeIdentityChange })
-          setProtectedCacheScope(activeConnection.profile.hostId)
-          await session?.connect(activeConnection)
-          markTransportReady()
-        } catch (error) {
-          if (isHostSessionStoppedError(error)) return
-          lastError = error instanceof Error ? error.message : 'unknown error'
-          endpointRefreshAvailable ||= endpointRefreshRequired(activeConnection.profile.endpoint.kind, lastError)
-          render()
-        }
-      }, { once: true })
     }
     const markTransportReady = (): void => {
       transportReady = true

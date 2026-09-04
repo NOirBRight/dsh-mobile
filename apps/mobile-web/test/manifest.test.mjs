@@ -46,9 +46,9 @@ test('compatible Host boot retracts a compatibility notice left by the prior Hos
   }
 })
 
-test('keeps official multi-entry batches and only adds missing ids', () => {
+test('keeps official Alpha.4 multi-entry batches and only adds missing ids', () => {
   const selected = selectResponsiveBootManifest({
-    rev: 'alpha.1',
+    rev: 'alpha.4',
     entries: [
       { id: '@deepseek-ai/dsh-client-modules', url: '/plugins/modules.js', rev: 'm', inject: [], immediately: true },
       { id: '@deepseek-ai/dsh-cordis-client-runner', url: '/plugins/runner.js', rev: 'r', inject: [] },
@@ -70,13 +70,13 @@ test('keeps official multi-entry batches and only adds missing ids', () => {
   assert.equal(selected.manifest.batches?.some(batch => batch.entries.includes('ghost')), false)
 })
 
-test('accepts alpha.1 entries without inject and rebuilds exact initial-load batches', () => {
+test('accepts Alpha.4 entries without inject and rebuilds exact initial-load batches', () => {
   const selected = selectResponsiveBootManifest({
-    rev: 'alpha.1',
+    rev: 'alpha.4',
     entries: [
       { id: '@deepseek-ai/dsh-client-modules', url: '/plugins/modules.js', rev: 'm', inject: [], immediately: true },
       { id: '@deepseek-ai/dsh-cordis-client-runner', url: '/plugins/runner.js', rev: 'r', inject: [] },
-      // alpha.1 renderer intentionally omits inject.
+      // Alpha.4 renderer intentionally omits inject.
       { id: '@deepseek-ai/dsh-client-ui-renderer', url: '/plugins/renderer.js', rev: 'u', immediately: true },
       { id: '@deepseek-ai/dsh-client-ui-session', url: '/plugins/session.js', rev: 's', inject: [] },
       { id: '@deepseek-ai/dsh-client-ui-theme', url: '/plugins/theme.js', rev: 't', inject: [] },
@@ -118,12 +118,12 @@ test('replaces desktop layout and drops browser HMR without mutating host manife
   const mobile = adaptBootManifestForMobile(host)
 
   assert.deepEqual(host, snapshot)
-  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.48+mobile-interactions-0.1.15')
+  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.50+mobile-interactions-0.1.17')
   assert.deepEqual(mobile.entries.map(entry => entry.id), ['before', MOBILE_LAYOUT_ID, 'after', INTERACTION_OPERATIONS_ID])
   assert.deepEqual(mobile.entries[1], {
     id: MOBILE_LAYOUT_ID,
-    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.48',
-    rev: '0.1.48',
+    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.50',
+    rev: '0.1.50',
     inject: [
       '@deepseek-ai/dsh-client-ui-renderer',
       '@deepseek-ai/dsh-client-ui-session',
@@ -239,8 +239,8 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
     rev: 'mobile',
     entries: [
       { id: 'runtime', url: '/plugins/runtime/client.js?rev=a', rev: 'a', inject: [] },
-      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.48', rev: '0.1.48', inject: [] },
-      { id: INTERACTION_OPERATIONS_ID, url: '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.15', rev: '0.1.15', inject: [] },
+      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.50', rev: '0.1.50', inject: [] },
+      { id: INTERACTION_OPERATIONS_ID, url: '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.17', rev: '0.1.17', inject: [] },
       { id: CONNECTION_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23', rev: '0.1.23', inject: [] },
       { id: 'leaf', url: '/plugins/leaf/client.js?rev=b', rev: 'b', inject: ['runtime'] },
     ],
@@ -274,8 +274,8 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
   }
   assert.deepEqual(manifest.entries.map(entry => entry.url), [
     '/plugins/runtime/client.js?rev=a',
-    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.48',
-    '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.15',
+    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.50',
+    '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.17',
     '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23',
     '/plugins/leaf/client.js?rev=b',
   ])

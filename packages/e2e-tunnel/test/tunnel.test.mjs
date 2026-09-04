@@ -35,6 +35,25 @@ test('parseOffer accepts a valid offer URL', () => {
   assert.equal(o.mode, 'relay')
   assert.match(o.room, /^[0-9a-f]{32}$/)
 })
+
+test('direct-only rejects a relay offer before opening the relay transport', async () => {
+  await assert.rejects(
+    connect(makeOffer({ pubkey: b64urlEncode(new Uint8Array(32)) }), { connectionPolicy: 'direct-only' }),
+    (error) => error instanceof TunnelError
+      && error.code === 'no-route'
+      && /direct-only/.test(error.message),
+  )
+})
+
+test('tunnel-only rejects a direct offer before opening the signaling transport', async () => {
+  await assert.rejects(
+    connect(makeDirectOffer(), { connectionPolicy: 'tunnel-only' }),
+    (error) => error instanceof TunnelError
+      && error.code === 'no-route'
+      && /tunnel-only/.test(error.message),
+  )
+})
+
 test('parseOffer rejects malformed payloads', () => {
   assert.throws(() => parseOffer('https://x/#offer=not-json!!!'), (e) => e instanceof TunnelError && e.code === 'bad-offer')
   assert.throws(() => parseOffer(makeOffer({ v: 1 })), (e) => e.code === 'bad-offer')

@@ -37,9 +37,7 @@ window.setTimeout(() => {
   const popup = document.querySelector('#popup')!
   popup.addEventListener('keydown', event => {
     if ((event as KeyboardEvent).key === 'ArrowDown') popup.setAttribute('aria-expanded', 'true')
-  })
-  popup.addEventListener('click', () => {
-    if (popup.getAttribute('aria-expanded') === 'true') popup.setAttribute('aria-expanded', 'false')
+    if ((event as KeyboardEvent).key === 'Escape') popup.setAttribute('aria-expanded', 'false')
   })
   pointer(popup, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 100 })
   popup.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))

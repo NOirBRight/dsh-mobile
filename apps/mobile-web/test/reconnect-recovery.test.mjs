@@ -36,10 +36,18 @@ test('rescan does not stop the new campaign as Active Host connection stopped', 
   assert.match(source, /shellMounted = false\s+lastError = ''\s+endpointRefreshAvailable = false/)
   assert.ok(source.includes('session?.forgetPaint()'))
   assert.ok(source.includes('isHostSessionStoppedError'))
-  assert.equal(source.split('if (isHostSessionStoppedError(error)) return').length - 1, 5)
+  assert.equal(source.split('if (isHostSessionStoppedError(error)) return').length - 1, 4)
   assert.ok(source.includes('mountProgressScreen'))
   assert.ok(source.includes("'正在连接 ' + activeConnection.profile.displayName"))
   assert.ok(source.includes("'正在加载 ' + activeConnection.profile.displayName"))
+})
+
+test('a disconnected pre-shell retry exposes the existing device menu instead of trapping the user', async () => {
+  const source = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
+  assert.ok(source.includes('const openProfileMenu = (): void =>'))
+  assert.ok(source.includes("connectionOptions.textContent = '连接选项'"))
+  assert.ok(source.includes('if (retrying || needsRecovery || showError)'))
+  assert.equal(source.includes("refresh.id = 'endpoint-refresh'"), false)
 })
 
 test('a cold pairing shows a moving plugin count instead of an unexplained spinner', async () => {

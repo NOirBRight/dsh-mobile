@@ -14,7 +14,7 @@ DeepSeek Harness 的 Android 客户端，独立于上游 deepseek-harness 开发
 - **带宽预算**：隧道只承载封装协议帧;素材全部打包在 APK,插件 bundle 按内容哈希缓存。
 - **一个 DSH writer per Host**：正式版 `@dsh-mobile/pairing` 可安装到日常 `:3080` 或 lab `:3082`，各自回环到自己的 DSH。两套都安装时必须保持独立的 `DSH_HOME`、Host Identity、Gateway 端口和 Public Endpoint，不得共用同一个 `43169` 或自定义域名，也不得启动共享同一 `DSH_HOME` 的第二个 DSH。
 
-Host 的插件清单和业务插件 bundle 经已认证会话获取；移动壳在窄屏把桌面布局条目替换为 APK 内置的 @dsh-mobile/ui-layout-mobile。boot 永远走官方 boot graph（alpha.1 起是 `@deepseek-ai/dsh-cordis-client-runner` + store/session/theme/renderer，不再存在单体 `dsh-client-runtime`）；会话增强 hydration 管线已拆除，源码见 [docs/archived/session-hydration](archived/session-hydration/README.md)。有缓存的冷启动先挂载缓存插件图以尽快显示界面；活动 Host carrier 就绪后，即使清单 revision 未变化也会重挂载一次，确保所有插件设置页的一次性 RPC 在可用连接上初始化。
+Host 的插件清单和业务插件 bundle 经已认证会话获取；移动壳在窄屏把桌面布局条目替换为 APK 内置的 @dsh-mobile/ui-layout-mobile。boot 永远走官方 Alpha.4 boot graph（`@deepseek-ai/dsh-cordis-client-runner` + store/session/theme/renderer，不再存在单体 `dsh-client-runtime`）；会话增强 hydration 管线已拆除，源码见 [docs/archived/session-hydration](archived/session-hydration/README.md)。切换 Host 时先清除上一张插件图拥有的 style 标签，避免相同 CSS 资源标识让新图误用旧样式。有缓存的冷启动先挂载缓存插件图以尽快显示界面；活动 Host carrier 就绪后，即使清单 revision 未变化也会重挂载一次，确保所有插件设置页的一次性 RPC 在可用连接上初始化。移动布局只会为当前空白会话修复 Host 明确报告不可路由的默认模型；已有会话保持其耐久选择。
 
 ## 官方兼容
 

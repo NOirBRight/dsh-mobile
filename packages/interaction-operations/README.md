@@ -24,7 +24,7 @@ npm test -w @dsh-mobile/interaction-operations
 
 ## Release installation
 
-The package is independently installable as a Host Client plugin and is also bundled locally by the signed [dsh-mobile v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) APK. It owns input, popup, and surface interaction adapters only; it does not own provider settings, business mutations, or the mobile root layout.
+The package is independently installable as a Host Client plugin and is also bundled locally by the signed [dsh-mobile v1.1.5](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.5) APK. It owns input, popup, and surface interaction adapters only; it does not own provider settings, business mutations, or the mobile root layout.
 
 Latest (version-free):
 
@@ -35,7 +35,7 @@ dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/re
 Fixed version:
 
 ```sh
-dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/dsh-mobile-interaction-operations.tgz
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.5/dsh-mobile-interaction-operations.tgz
 ```
 
-Update with the Latest command. Verify with `dsh plugin --profile web list` and `dsh plugin --profile web doctor`; uninstall with `dsh plugin --profile web remove @dsh-mobile/interaction-operations`. The package targets DeepSeek Harness `0.1.2-alpha.1` or newer and has no sibling-repository, `link:`, `workspace:`, or absolute-path dependency. Release bytes and checksums are in [v1.1.3](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.3) and [`SHA256SUMS`](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.3/SHA256SUMS). Roll back by rerunning the fixed command, then restart the Web service once after verifying the profile.
+Update with the Latest command. Verify with `dsh plugin --profile web list` and `dsh plugin --profile web doctor`; uninstall with `dsh plugin --profile web remove @dsh-mobile/interaction-operations`. The package targets DeepSeek Harness `0.1.2-alpha.4` and has no sibling-repository, `link:`, `workspace:`, or absolute-path dependency. Release bytes and checksums are emitted with the Alpha.4 mobile release. Roll back by rerunning the fixed command, then restart the Web service once after verifying the profile.

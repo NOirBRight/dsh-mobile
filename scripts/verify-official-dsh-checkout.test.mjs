@@ -8,8 +8,8 @@ import { assessOfficialDshCheckout } from './verify-official-dsh-checkout.mjs'
 
 const official = 'https://github.com/deepseek-ai/deepseek-harness.git'
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const revision = 'cd5ef8148158c3a752a658978873241fdf8e2bbc'
-const tag = 'dsh-v0.1.2-alpha.1'
+const revision = '4e84901e6471b79ec0338099867ebb4606d12bb5'
+const tag = 'dsh-v0.1.2-alpha.4'
 
 test('every active build consumer uses the prepared upstream checkout', async () => {
   const consumers = [
@@ -84,7 +84,7 @@ test('accepts the canonical ssh transport for the official repository', () => {
   }), { ok: true, revision })
 })
 
-test('pins the official v0.1.2-alpha.1 baseline when no override is supplied', () => {
+test('pins the official v0.1.2-alpha.4 baseline when no override is supplied', () => {
   assert.deepEqual(assessOfficialDshCheckout({
     remote: 'git@github.com:deepseek-ai/deepseek-harness.git',
     status: '',
@@ -101,9 +101,9 @@ test('rejects the required revision without the exact release tag', () => {
     remote: official,
     status: '',
     head: revision,
-    tag: 'v0.1.2-alpha.1',
+    tag: 'v0.1.2-alpha.4',
   }), {
     ok: false,
-    reasons: ['official DSH checkout is not exactly tagged dsh-v0.1.2-alpha.1'],
+    reasons: ['official DSH checkout is not exactly tagged dsh-v0.1.2-alpha.4'],
   })
 })

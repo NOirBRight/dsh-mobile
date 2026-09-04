@@ -20,10 +20,12 @@ import { ComposerAttach } from './ComposerAttach.tsx'
 import { CompactStatsLine } from './CompactStatsLine.tsx'
 import { installHistoryContinuityAdapter } from './history-continuity.ts'
 import { installLegacyBlankPresetAdapter } from './legacy-blank-preset.ts'
+import { installHostModelFallbackAdapter, type HostModelFallbackContext } from './host-model-fallback.ts'
 import { installTurnTailPresenter } from './turn-tail-presenter.ts'
 import { installModelPickerPresenter } from './model-picker-presenter.ts'
 import { installPermissionLabelPresenter } from './permission-label-presenter.ts'
 import { installPresetLabelPresenter } from './preset-label-presenter.ts'
+import { installAgentPresetFallback, type AgentPresetFallbackContext } from './agent-preset-fallback.ts'
 import type { DraftConversation } from './composer-attach.ts'
 
 // Contract exports only. IMobileLayout: the ctx.layout face consumers and test
@@ -97,7 +99,7 @@ export interface ConvOwnerProps {}
 export interface DetailsOwnerProps {}
 
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
-export const inject = ['slots', 'theme', 'sessions', 'settingsScope', 'remote.agentPresets']
+export const inject = ['slots', 'theme', 'sessions', 'settingsScope', 'remote.agentPresets', 'modelDirectories']
 
 function interactionOperationsFrom(ctx: ClientContext): MobileInteractionOperations | undefined {
   const holder = ctx as ClientContext & { get?(name: string, strict?: boolean): unknown; interactionOperations?: unknown }
@@ -172,6 +174,14 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(
     () => installLegacyBlankPresetAdapter(ctx as ClientContext & import('./legacy-blank-preset.ts').LegacyBlankPresetContext),
     'ui-layout-mobile: legacy blank preset recovery',
+  )
+  ctx.effect(
+    () => installAgentPresetFallback(ctx as ClientContext & AgentPresetFallbackContext),
+    'ui-layout-mobile: missing hero preset recovery',
+  )
+  ctx.effect(
+    () => installHostModelFallbackAdapter(ctx as ClientContext & HostModelFallbackContext),
+    'ui-layout-mobile: unroutable Host model fallback',
   )
   ctx.effect(() => installTurnTailPresenter(), 'ui-layout-mobile: compact turn tail')
   ctx.effect(() => installModelPickerPresenter(), 'ui-layout-mobile: compact model details')

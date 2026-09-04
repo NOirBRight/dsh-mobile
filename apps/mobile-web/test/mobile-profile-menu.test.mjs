@@ -4,6 +4,14 @@ import { readFile } from 'node:fs/promises'
 
 const sourceUrl = new URL('../src/host-profile-menu.ts', import.meta.url)
 
+test('native Back closes the shell-owned device menu before exiting', async () => {
+  const source = await readFile(sourceUrl, 'utf8')
+  assert.ok(source.includes("import { MOBILE_PLATFORM_BACK_EVENT } from './platform-back.ts'"))
+  assert.ok(source.includes("document.addEventListener(MOBILE_PLATFORM_BACK_EVENT, onPlatformBack)"))
+  assert.ok(source.includes('function onPlatformBack(event: Event): void {\n    event.preventDefault()\n    close()\n  }'))
+  assert.ok(source.includes("document.removeEventListener(MOBILE_PLATFORM_BACK_EVENT, onPlatformBack)"))
+})
+
 test('successful QR pairing closes the menu instead of leaving the camera-opening state visible', async () => {
   const main = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8')
   assert.match(main, /menu\?\.close\(\)\s*await onPairOffer\(offer\)/)

@@ -4,8 +4,8 @@ This record documents the current dsh-mobile release inputs and verification gat
 
 ## Current official baseline
 
-- Required tag: `dsh-v0.1.2-alpha.1`
-- Required commit: `cd5ef8148158c3a752a658978873241fdf8e2bbc`
+- Required tag: `dsh-v0.1.2-alpha.4`
+- Required commit: `4e84901e6471b79ec0338099867ebb4606d12bb5`
 - Required remote: the official `deepseek-ai/deepseek-harness` repository
 - Required checkout state: exact tag and commit with a clean worktree
 
@@ -20,7 +20,7 @@ The packed manifest must declare `@dsh-mobile/pairing`, version `0.1.11`, and th
 Run the complete strict gate with the final published tarball and the matching official checkout:
 
 ~~~sh
-export DSH_UPSTREAM=/absolute/path/to/dsh-v0.1.2-alpha.1
+export DSH_UPSTREAM=/absolute/path/to/dsh-v0.1.2-alpha.4
 export MOBILE_PAIRING_TARBALL=/absolute/path/to/dsh-mobile-pairing-0.1.11.tgz
 export MOBILE_PAIRING_SHA256="$(sha256sum "$MOBILE_PAIRING_TARBALL" | cut -d" " -f1)"
 npm run verify:release
@@ -31,7 +31,7 @@ The individual strict gates use the same variables:
 ~~~sh
 npm run verify:pairing
 npm run verify:compatibility
-npm run verify:clean-alpha1-mobile-matrix
+npm run verify:clean-alpha4-mobile-matrix
 ~~~
 
 `verify:release` runs strict compatibility verification and the strict mobile matrix. Development commands with a `:dev` suffix are explicitly non-release checks; they may use an explicit `MOBILE_PAIRING_ROOT`, print `releaseEvidence: false`, and are never called by the release gate.

@@ -8,8 +8,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { aggregateErrors, run, sanitizedChildEnv, sha256File } from './mobile-matrix.mjs'
 
 const OFFICIAL_REPOSITORY = 'deepseek-ai/deepseek-harness'
-export const REQUIRED_DSH_REVISION = 'cd5ef8148158c3a752a658978873241fdf8e2bbc'
-export const REQUIRED_DSH_TAG = 'dsh-v0.1.2-alpha.1'
+export const REQUIRED_DSH_REVISION = '4e84901e6471b79ec0338099867ebb4606d12bb5'
+export const REQUIRED_DSH_TAG = 'dsh-v0.1.2-alpha.4'
 
 function repositoryOf(remote) {
   return remote

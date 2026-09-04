@@ -19,7 +19,10 @@ test('mobile composer closes other menus and never focuses input from send or st
       resolve: {
         dedupe: ['react', 'react-dom'],
         alias: {
-          '@deepseek-ai/dsh-client-ui-primitives': resolve('/home/noirbright/Workstation/dsh-wt-02/packages/client/ui-primitives/src/index.ts'),
+          '@deepseek-ai/dsh-client-ui-primitives': resolve(
+            import.meta.dirname,
+            '../../../../deepseek-harness/packages/client/ui-primitives/src/index.ts',
+          ),
         },
       },
       build: { outDir, emptyOutDir: true },

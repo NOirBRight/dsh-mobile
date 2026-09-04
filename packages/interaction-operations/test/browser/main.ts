@@ -53,6 +53,18 @@ function run(): void {
   ).join('')
   document.body.append(choiceTrigger, choice)
 
+  const workspacePortal = document.createElement('div')
+  workspacePortal.setAttribute('role', 'menu')
+  workspacePortal.setAttribute('aria-hidden', 'true')
+  workspacePortal.style.position = 'fixed'
+  workspacePortal.style.left = '12px'
+  workspacePortal.style.top = '80px'
+  workspacePortal.style.maxHeight = 'calc(100vh - 24px)'
+  workspacePortal.innerHTML = '<div data-workspace-scroll style="max-height:240px;overflow-y:auto">' +
+    Array.from({ length: 24 }, (_, index) => '<button role="menuitem">Workspace ' + index + '</button>').join('') +
+    '</div>'
+  document.body.append(workspacePortal)
+
   const nestedTrigger = document.createElement('button')
   nestedTrigger.setAttribute('aria-expanded', 'true')
   nestedTrigger.setAttribute('aria-controls', 'nested-popup')
@@ -88,7 +100,7 @@ function run(): void {
   ].join('')
   document.body.append(modelTrigger, modelRoot)
 
-  // Official alpha.1 slash/@ menus live in the first, zero-height overlay
+  // Official Alpha.4 slash/@ menus live in the first, zero-height overlay
   // anchor inside the composer card. They have no aria-controls trigger and
   // must retain the Host's card-relative absolute geometry.
   const composerCard = document.createElement('div')
@@ -129,8 +141,13 @@ function run(): void {
   document.body.dataset.simpleOverflowX = getComputedStyle(popup).overflowX
   document.body.dataset.choiceOverflowY = getComputedStyle(choice).overflowY
   document.body.dataset.choiceOverflowX = getComputedStyle(choice).overflowX
+  choice.scrollTop = 80
+  choice.dispatchEvent(new Event('scroll'))
+  document.body.dataset.choiceScrollTop = String(choice.scrollTop)
   document.body.dataset.nestedOuterOverflowY = getComputedStyle(nested).overflowY
   document.body.dataset.nestedInnerOverflowY = getComputedStyle(nestedScroll).overflowY
+  document.body.dataset.workspacePortalMarker = workspacePortal.dataset.dshMobilePopup ?? ''
+  document.body.dataset.workspacePortalMaxHeight = getComputedStyle(workspacePortal).maxHeight
   document.body.dataset.composerOverlayPosition = getComputedStyle(composerOverlay).position
   document.body.dataset.composerOverlayMarker = composerOverlay.dataset.dshMobilePopup ?? ''
   document.body.dataset.composerOverlayZIndex = getComputedStyle(composerOverlay).zIndex
