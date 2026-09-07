@@ -361,8 +361,9 @@ test('localization reports a monotonic progress count so a cold pairing is not a
     concurrency: 4,
     onProgress: (loaded, reportedTotal) => seen.push([loaded, reportedTotal]),
   })
-  assert.equal(seen.length, total)
-  assert.deepEqual(seen.map(row => row[0]), Array.from({ length: total }, (_unused, i) => i + 1))
+  assert.equal(seen.length, total + 1)
+  assert.deepEqual(seen[0], [0, total])
+  assert.deepEqual(seen.map(row => row[0]), [0, ...Array.from({ length: total }, (_unused, i) => i + 1)])
   assert.deepEqual(seen.at(-1), [total, total])
 })
 

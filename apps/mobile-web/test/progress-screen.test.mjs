@@ -14,16 +14,38 @@ test('progress screen is a full-viewport centered spinner status', async () => {
 })
 
 function fakeElement(tagName) {
-  return {
+  const el = {
     tagName,
     dataset: {},
     className: '',
     textContent: '',
     children: [],
+    style: { props: {}, setProperty(k, v) { this.props[k] = v }, removeProperty(k) { delete this.props[k] } },
+    get firstElementChild() { return this.children[0] ?? null },
     append(...nodes) { this.children.push(...nodes) },
+    prepend(...nodes) { this.children.unshift(...nodes) },
     replaceChildren(...nodes) { this.children = nodes },
     setAttribute() {},
+    removeAttribute() {},
+    remove() {},
+    querySelector(sel) {
+      if (sel === '[data-mobile-progress]') return this.children.find(c => Object.prototype.hasOwnProperty.call(c.dataset, 'mobileProgress')) ?? null
+      if (sel.startsWith('.')) {
+        const cls = sel.slice(1)
+        const walk = nodes => {
+          for (const n of nodes) {
+            if (n.className === cls) return n
+            const hit = walk(n.children ?? [])
+            if (hit) return hit
+          }
+          return null
+        }
+        return walk(this.children)
+      }
+      return null
+    },
   }
+  return el
 }
 
 function withFakeDocument(run) {
@@ -52,6 +74,19 @@ test('mounting a progress screen destroys whatever already owns the shell root',
     assert.equal(root.children.length, 1)
     assert.equal(root.children.includes(bootedShell), false)
     assert.equal(root.children[0].dataset.mobileProgress, '')
+  })
+})
+
+test('plugin-load ticks reuse the ring and set a determinate arc', () => {
+  withFakeDocument(() => {
+    const root = fakeElement('div')
+    const first = mountProgressScreen(root, { title: '正在加载', spinning: true, ratio: 0 })
+    const spinner = first.children[0].querySelector('.dsh-progress-spinner')
+    const second = mountProgressScreen(root, { title: '正在加载', detail: '正在拉取 Host 界面 3/10…', spinning: true, ratio: 0.3 })
+    assert.equal(second, first)
+    assert.equal(second.children[0].querySelector('.dsh-progress-spinner'), spinner)
+    assert.equal(spinner.style.props['--dsh-progress-arc'], '108deg')
+    assert.equal(Object.prototype.hasOwnProperty.call(spinner.dataset, 'determinate'), true)
   })
 })
 

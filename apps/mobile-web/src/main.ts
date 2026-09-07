@@ -513,6 +513,7 @@ void (async () => {
           title: '正在加载 ' + activeConnection.profile.displayName,
           detail: lines.join('\n'),
           spinning: true,
+          ...bootProgress === null || bootProgress.total <= 0 ? {} : { ratio: bootProgress.loaded / bootProgress.total },
         })
         return
       }

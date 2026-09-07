@@ -41,6 +41,17 @@ html, body, #root {
   animation: dsh-progress-spin .8s linear infinite;
 }
 
+[data-mobile-progress] .dsh-progress-spinner[data-determinate] {
+  animation: none;
+  border-color: transparent;
+  background: conic-gradient(
+    var(--dsw-alias-state-business-primary, #4e78cc) var(--dsh-progress-arc, 0deg),
+    var(--dsw-alias-border-l1, #dfe5ef) 0
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0);
+}
+
 [data-mobile-progress] .dsh-progress-title {
   margin: 0;
   font-size: 18px;
@@ -54,6 +65,7 @@ html, body, #root {
   color: var(--dsw-alias-label-tertiary, #718096);
   font-size: 14px;
   line-height: 1.6;
+  white-space: pre-wrap;
 }
 
 [data-mobile-progress] .dsh-progress-error {
@@ -79,6 +91,8 @@ export interface ProgressScreenOptions {
   detail?: string
   error?: string
   spinning?: boolean
+  /** 0–1 plugin-load fraction. When set, the ring is determinate and is not remounted on each tick. */
+  ratio?: number
   action?: HTMLElement
 }
 
@@ -90,34 +104,68 @@ export function installProgressScreenStyles(): void {
   ;(document.head ?? document.documentElement).append(style)
 }
 
+function showSpinner(options: ProgressScreenOptions): boolean {
+  if (options.error === undefined) return options.spinning !== false
+  return options.spinning === true
+}
+
+function applyProgress(root: HTMLElement, options: ProgressScreenOptions): void {
+  const card = root.firstElementChild as HTMLElement
+  let spinner = card.querySelector<HTMLElement>('.dsh-progress-spinner')
+  if (showSpinner(options)) {
+    if (spinner === null) {
+      spinner = document.createElement('div')
+      spinner.className = 'dsh-progress-spinner'
+      spinner.setAttribute('aria-hidden', 'true')
+      card.prepend(spinner)
+    }
+    if (options.ratio === undefined) {
+      spinner.removeAttribute('data-determinate')
+      spinner.style.removeProperty('--dsh-progress-arc')
+    } else {
+      const ratio = Number.isFinite(options.ratio) ? Math.min(1, Math.max(0, options.ratio)) : 0
+      spinner.dataset.determinate = ''
+      spinner.style.setProperty('--dsh-progress-arc', String(Math.round(ratio * 360)) + 'deg')
+    }
+  } else {
+    spinner?.remove()
+  }
+  let title = card.querySelector<HTMLElement>('.dsh-progress-title')
+  if (title === null) {
+    title = document.createElement('p')
+    title.className = 'dsh-progress-title'
+    card.append(title)
+  }
+  title.textContent = options.title
+  let detail = card.querySelector<HTMLElement>('.dsh-progress-detail')
+  if (options.detail !== undefined && options.detail !== '') {
+    if (detail === null) {
+      detail = document.createElement('p')
+      detail.className = 'dsh-progress-detail'
+      card.append(detail)
+    }
+    detail.textContent = options.detail
+  } else {
+    detail?.remove()
+  }
+}
+
 /** Replace the shell root with a centered progress or recovery screen. */
 export function mountProgressScreen(container: HTMLElement, options: ProgressScreenOptions): HTMLElement {
   installProgressScreenStyles()
+  const reuse = options.error === undefined && options.action === undefined
+    ? container.querySelector<HTMLElement>('[data-mobile-progress]')
+    : null
+  if (reuse !== null && reuse.querySelector('.dsh-progress-error') === null && reuse.querySelector('.dsh-progress-action') === null) {
+    applyProgress(reuse, options)
+    return reuse
+  }
   const root = document.createElement('div')
   root.dataset.mobileProgress = ''
   const card = document.createElement('div')
   card.className = 'dsh-progress-card'
-  if (options.spinning !== false && options.error === undefined) {
-    const spinner = document.createElement('div')
-    spinner.className = 'dsh-progress-spinner'
-    spinner.setAttribute('aria-hidden', 'true')
-    card.append(spinner)
-  } else if (options.spinning === true) {
-    const spinner = document.createElement('div')
-    spinner.className = 'dsh-progress-spinner'
-    spinner.setAttribute('aria-hidden', 'true')
-    card.append(spinner)
-  }
-  const title = document.createElement('p')
-  title.className = 'dsh-progress-title'
-  title.textContent = options.title
-  card.append(title)
-  if (options.detail !== undefined && options.detail !== '') {
-    const detail = document.createElement('p')
-    detail.className = 'dsh-progress-detail'
-    detail.textContent = options.detail
-    card.append(detail)
-  }
+  root.append(card)
+  applyProgress(root, options)
   if (options.error !== undefined && options.error !== '') {
     const error = document.createElement('pre')
     error.className = 'dsh-progress-error'
@@ -130,7 +178,6 @@ export function mountProgressScreen(container: HTMLElement, options: ProgressScr
     action.append(options.action)
     card.append(action)
   }
-  root.append(card)
   container.replaceChildren(root)
   return root
 }

@@ -262,6 +262,7 @@ export async function localizePluginBundles(
 ): Promise<BootManifest> {
   const total = manifest.entries.length
   let loaded = 0
+  options.onProgress?.(0, total)
   const entries = await mapPool(manifest.entries, options.concurrency ?? PLUGIN_LOAD_CONCURRENCY, async (entry) => {
     const localized = await localizeEntry(entry, options)
     loaded += 1
