@@ -18,22 +18,10 @@ export interface DraftConversation {
   createDraftImages(files: readonly File[]): readonly DraftImage[]
   releaseDraftImage?(id: string): void
   releaseDraftImages?(images: readonly DraftImage[]): void
-  sendSession?(
-    session: unknown,
-    text: string,
-    imageIds: readonly string[],
-    mode: 'queue' | 'steer',
-  ): Promise<unknown>
-  /** Official input hub; `shell(id).submit(mode)` keeps draft images on the machine. */
-  input?: {
-    shell?(id: string): { submit(mode?: 'queue' | 'steer'): void }
-  }
 }
 
 export interface DraftInputActions {
   addImages(ids: readonly string[]): boolean
-  setDraft?(text: string): void
-  removeImage?(id: string): void
   /** Official session input action; optional for older Hosts using the fallback bridge. */
   submit?(): void
 }
@@ -41,16 +29,6 @@ export interface DraftInputActions {
 export type AttachOutcome =
   | { ok: true }
   | { ok: false; reason: 'unavailable' | 'busy' | 'unsupported' | 'empty'; message: string }
-
-/** Same values as Host `ui-conversation.busyEnter`. */
-export type BusyEnterBehavior = 'queue' | 'steer'
-
-/** Face used to decide whether the intercepted primary is a busy send. */
-export interface BusySendButton {
-  hasAttribute(name: string): boolean
-  readonly dataset: { readonly mobileStopLabel?: string }
-  getAttribute(name: string): string | null
-}
 
 /** Identify the official composer plus (commands) button without CSS-module class names. */
 export function isComposerPlusButton(target: EventTarget | null): HTMLButtonElement | null {
@@ -98,17 +76,52 @@ function composerDraftForCard(card: HTMLElement): ComposerDraftElement | null {
   return input !== null && composerCardHasDraft(card) ? input : null
 }
 
-function primaryStopButton(card: HTMLElement): HTMLButtonElement | null {
-  const stops = Array.from(card.querySelectorAll<HTMLButtonElement>('button[aria-label]'))
-    .filter(button => isComposerStopLabel(button.dataset.mobileStopLabel ?? button.getAttribute('aria-label')))
-  return stops.at(-1) ?? null
+/** Stop-owned seats in one composer card, in DOM order. */
+function stopOwnedSeats(card: HTMLElement): HTMLButtonElement[] {
+  return Array.from(card.querySelectorAll<HTMLButtonElement>('button[aria-label]'))
+    .filter(button => isStopOwnedSeat(button))
+}
+
+/** True for a Stop-owned seat. */
+function isStopOwnedSeat(button: HTMLButtonElement): boolean {
+  return isComposerStopLabel(button.dataset.mobileStopLabel ?? button.getAttribute('aria-label'))
 }
 
 /**
- * Identify a primary composer action that has a real draft behind it. A busy
- * ordinary session exposes Stop in this seat; on mobile that seat must behave
- * like Send while the draft is non-empty. Continuable child Stop controls are
- * left alone by requiring the last localized Stop button (the primary seat).
+ * Genuine Send seat in one composer card, if any. Core renders a single
+ * primary button: main seats show Send XOR Stop, while a running continuable
+ * child shows Send AND a separate interrupt Stop.
+ */
+export function composerCardSendSeat(card: HTMLElement): HTMLButtonElement | null {
+  const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>('button[aria-label]'))
+  return buttons.find(button =>
+    isComposerSendLabel(button.getAttribute('aria-label')) && !isStopOwnedSeat(button),
+  ) ?? null
+}
+
+/** Owned hiding marker: the one secondary seat the footer keeps out of sight. */
+export const SECONDARY_HIDDEN_MARKER = 'data-mobile-secondary-hidden'
+
+/**
+ * The secondary seat a phone footer hides so one card keeps ONE primary. Only
+ * a running continuable child shows genuine Send AND a separate interrupt
+ * Stop: a disabled Send hides (Stop owns interrupt, also while both are
+ * disabled mid-interrupt), otherwise the Stop hides beside the usable Send.
+ * Main seats show Send XOR Stop and never hide either.
+ */
+export function composerSecondarySeat(card: HTMLElement): HTMLButtonElement | null {
+  const send = composerCardSendSeat(card)
+  if (send === null) return null
+  const stop = stopOwnedSeats(card).at(-1) ?? null
+  if (stop === null) return null
+  return send.disabled ? send : stop
+}
+
+/**
+ * Identify the Send seat that has a real draft behind it. Core already renders
+ * Send as the primary whenever a draft is actionable (busy or idle), so Stop
+ * seats always keep their interrupt role — including a continuable-child Stop
+ * beside its genuine Send, and a blocked main Stop beside a draft.
  */
 export function composerDraftActionButton(target: EventTarget | null): HTMLButtonElement | null {
   const button = composerControlButton(target)
@@ -116,7 +129,6 @@ export function composerDraftActionButton(target: EventTarget | null): HTMLButto
   const card = composerCardForButton(button)
   if (card === null || composerDraftForCard(card) === null) return null
   if (isComposerSendLabel(button.getAttribute('aria-label'))) return button
-  if (isComposerStopLabel(button.getAttribute('aria-label')) && primaryStopButton(card) === button) return button
   return null
 }
 
@@ -124,41 +136,6 @@ export function composerDraftActionButton(target: EventTarget | null): HTMLButto
 export function composerDraftInput(button: HTMLButtonElement): ComposerDraftElement | null {
   const card = composerCardForButton(button)
   return card === null ? null : composerDraftForCard(card)
-}
-
-/**
- * Busy send on mobile is the Stop seat painted as Send (`data-mobile-send-draft`),
- * not only `session.running` — that snapshot can lag the button.
- */
-export function composerSendIsBusy(button: BusySendButton, running?: boolean): boolean {
-  return button.hasAttribute('data-mobile-send-draft')
-    || isComposerStopLabel(button.dataset.mobileStopLabel ?? null)
-    || running === true
-}
-
-/**
- * Same rule as official `resolve(running, 'enter', steeringAvailable)`:
- * idle or subagent → queue; busy ordinary session → the Settings preference.
- */
-export function resolveMobileSendMode(args: {
-  busy: boolean
-  steeringAvailable: boolean
-  busyEnter?: BusyEnterBehavior
-}): BusyEnterBehavior {
-  if (!args.busy || !args.steeringAvailable) return 'queue'
-  return args.busyEnter ?? 'queue'
-}
-
-/** Live editor text plus snapshot image ids (fallback when machine submit is unavailable). */
-export function draftPayload(
-  editor: HTMLElement,
-  input?: { readonly draft: string; readonly imageIds: readonly string[] },
-): { text: string; imageIds: readonly string[] } {
-  const liveText = typeof HTMLTextAreaElement !== 'undefined' && editor instanceof HTMLTextAreaElement
-    ? editor.value
-    : (editor.textContent ?? '')
-  if (input === undefined) return { text: liveText, imageIds: [] }
-  return { text: liveText !== '' ? liveText : input.draft, imageIds: input.imageIds }
 }
 
 /** Plus is already holding the slash menu open — let the official toggle close it. */

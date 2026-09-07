@@ -65,8 +65,8 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
         <textarea aria-label="Prompt" />
         <div role="listbox"><button type="button" data-command-option>/plan</button></div>
         <div className="fixtureComposerToolbar">
-          <div className="fixtureComposerTools"><button data-add-control>+</button><div><button data-plan-control aria-label="Workspace Write" aria-haspopup="menu"><span>Workspace Write</span></button></div></div>
-          <div className="fixtureComposerTrailing"><div><button aria-haspopup="menu"><span>GPT-5.6 SOL</span><span>High</span></button></div><button aria-haspopup="dialog" data-context-control>272K</button><button data-send-control>↑</button></div>
+          <div className="fixtureComposerTools"><button data-add-control>+</button><div style={{ display: 'flex', minWidth: 0 }}><button data-plan-control aria-label="Workspace Write" aria-haspopup="menu" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><svg width="14" height="14" aria-hidden="true"><rect width="14" height="14" rx="3" fill="currentColor" /></svg><span>Workspace Write</span><svg width="12" height="12" aria-hidden="true"><path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg></button></div></div>
+          <div className="fixtureComposerTrailing"><div style={{ minWidth: 0 }}><button aria-haspopup="menu" aria-label="Select model, current Gemini 3.8 Flash" style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, fontSize: 13, lineHeight: '20px', fontWeight: 500 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}><span style={{ display: 'inline-flex', minWidth: 14 }}><svg width="14" height="14" aria-hidden="true"><rect width="14" height="14" rx="3" fill="currentColor" /></svg></span>Gemini 3.8 Flash</span><svg width="14" height="14" /></button></div><button aria-haspopup="dialog" data-context-control>272K</button><button data-send-control>↑</button></div>
         </div>
       </div>
       <div data-dsh-mobile-popup="rich" className="fixtureModelCard">
@@ -267,6 +267,28 @@ function App() {
       document.body.dataset.permissionCompactLabel = planControl.querySelector<HTMLElement>('span')?.dataset.mobilePermissionLabel ?? ''
       document.body.dataset.planControlGap = String(Math.round(planRect.left - addRect.right))
       document.body.dataset.modelControlWidth = String(Math.round(modelRect.width))
+      document.body.dataset.modelLongText = modelControl.querySelector<HTMLElement>('span')?.textContent ?? ''
+      const model390 = document.querySelector<HTMLElement>('#phone390 .fixtureComposerTrailing button[aria-haspopup="menu"]')!
+      const model390Rect = model390.getBoundingClientRect()
+      const model390Label = model390.querySelector<HTMLElement>('span')!
+      document.body.dataset.modelLongWidth = String(Math.round(model390Rect.width))
+      document.body.dataset.modelLongFits = String(model390Label.scrollWidth <= model390Label.clientWidth + 1)
+      const model360 = document.querySelector<HTMLElement>('#official .fixtureComposerTrailing button[aria-haspopup="menu"]')!
+      const model360Rect = model360.getBoundingClientRect()
+      const model360Label = model360.querySelector<HTMLElement>('span')!
+      document.body.dataset.modelMedWidth = String(Math.round(model360Rect.width))
+      document.body.dataset.modelMedFits = String(model360Label.scrollWidth <= model360Label.clientWidth + 1)
+      const toolbarFit = (rootId: string): string => {
+        const bar = document.querySelector<HTMLElement>('#' + rootId + ' .fixtureComposerToolbar')!
+        const p = bar.querySelector<HTMLElement>('[data-plan-control]')!.getBoundingClientRect()
+        const m = bar.querySelector<HTMLElement>('.fixtureComposerTrailing button[aria-haspopup="menu"]')!.getBoundingClientRect()
+        const c = bar.querySelector<HTMLElement>('[data-context-control]')!.getBoundingClientRect()
+        return String(p.right <= m.left && m.right <= c.left)
+      }
+      document.body.dataset.composerFit360 = toolbarFit('official')
+      document.body.dataset.composerFit390 = toolbarFit('phone390')
+      document.body.dataset.composerFit320 = toolbarFit('phone320')
+      document.body.dataset.model320MaxWidth = getComputedStyle(modelControl).maxWidth
       document.body.dataset.modelContextGap = String(Math.round(contextRect.left - modelRect.right))
       document.body.dataset.composerControlsFit = String(planRect.right <= modelRect.left && modelRect.right <= contextRect.left)
       document.body.dataset.turnTailSummary = document.querySelector<HTMLElement>('#phone320 [data-mobile-turn-summary]')?.dataset.mobileTurnSummary ?? ''
@@ -300,7 +322,7 @@ function App() {
   return <>
     <style>{`:root { --dsw-alias-bg-base: #ffffff; --dsw-alias-bg-layer-1: #f3f4f6; }
       .dcs-overlay { position: absolute; inset: 0; } .dcs-toggle { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; } .dcs-root { border-left: 1px solid; border-bottom: 1px solid; background: var(--dsw-alias-bg-layer-1); } .dcs-tabbar { border-bottom: 1px solid; }
-      .fixtureComposerToolbar, .fixtureComposerTools, .fixtureComposerTrailing { display: flex; align-items: center; } .fixtureComposerToolbar { box-sizing: border-box; justify-content: space-between; width: 100%; } .fixtureComposerTools, .fixtureComposerTrailing { min-width: 0; } .fixtureComposerToolbar button { min-width: 28px; height: 28px; } .fixtureModelCard { box-sizing: border-box; display: flex; flex-direction: column; width: 260px; padding: 4px; } .fixtureQuestionFrame { box-sizing: border-box; width: 100%; padding: 6px 32px 10px; } [data-question-card] { width: 100%; } .fixtureQuestionFooter { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 0 10px; } .fixtureQuestionPager, .fixtureQuestionActions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; } .fixtureQuestionFooter button { min-height: 40px; padding: 0 16px; white-space: nowrap; } .fixtureQuestionFooter [role=status] { flex: 1; }`}</style>
+      .fixtureComposerToolbar, .fixtureComposerTools, .fixtureComposerTrailing { display: flex; align-items: center; } .fixtureComposerToolbar { box-sizing: border-box; justify-content: space-between; width: 100%; } .fixtureComposerTools, .fixtureComposerTrailing { min-width: 0; } .fixtureComposerToolbar button { min-width: 28px; height: 28px; } .fixtureComposerTools [data-plan-control] > span { display: none !important; } .fixtureModelCard { box-sizing: border-box; display: flex; flex-direction: column; width: 260px; padding: 4px; } .fixtureQuestionFrame { box-sizing: border-box; width: 100%; padding: 6px 32px 10px; } [data-question-card] { width: 100%; } .fixtureQuestionFooter { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 0 10px; } .fixtureQuestionPager, .fixtureQuestionActions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; } .fixtureQuestionFooter button { min-height: 40px; padding: 0 16px; white-space: nowrap; } .fixtureQuestionFooter [role=status] { flex: 1; }`}</style>
     <FrameHarness id="official" width={360} />
     <FrameHarness id="constrained" width={240} />
     <FrameHarness id="phone320" width={320} english feedback />

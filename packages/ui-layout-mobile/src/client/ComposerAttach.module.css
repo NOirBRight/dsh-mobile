@@ -1,24 +1,15 @@
 /* Host is portaled to document.body so the composer tool row stays empty. */
 
-/* Busy ordinary sessions render Stop in the primary seat. The bridge keeps the
-   official button and event path, but paints the seat as the mobile Send glyph
-   while a follow-up draft is present. */
-:global(button[data-mobile-send-draft]) {
-  font-size: 0 !important;
+/* The seat marker rides in the slot entry; display:contents keeps it out of
+   the composer tool row layout (no extra flex item). */
+.seat {
+  display: contents;
 }
 
-:global(button[data-mobile-send-draft] > svg:not([data-mobile-send-glyph])) {
-  display: none;
-}
-
-:global(button[data-mobile-send-draft] > [data-mobile-send-glyph]) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  font-size: 18px;
-  line-height: 1;
+/* The one secondary seat the footer hides keeps its handlers; the marker is
+   the only hiding state, so transitions and unmount restore by removing it. */
+:global(button[data-mobile-secondary-hidden]) {
+  display: none !important;
 }
 
 .host {

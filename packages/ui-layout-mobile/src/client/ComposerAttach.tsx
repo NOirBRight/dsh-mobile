@@ -1,6 +1,7 @@
 /**
- * Narrow plus-button attach. Renders only through a portal so the composer
- * tool row does not gain extra flex items (which wrap the model picker).
+ * Narrow plus-button attach. A hidden seat marker rides in its own slot entry
+ * (display:contents, never a flex item) so handlers and presentation stay on
+ * this seat's own composer card when main and child composers coexist.
  * The menu uses the official primitives Menu, matching PermissionSelect.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -8,19 +9,17 @@ import type { ChangeEvent, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-store'
 import {
   IMAGE_ACCEPT,
   attachFiles,
   blurComposer,
-  composerCardHasDraft,
   composerControlButton,
   composerDraftActionButton,
   composerDraftInput,
-  composerSendIsBusy,
+  composerSecondarySeat,
+  SECONDARY_HIDDEN_MARKER,
   dismissOfficialMenus,
-  draftPayload,
-  resolveMobileSendMode,
-  isComposerStopLabel,
   filesFromInput,
   isComposerPlusButton,
   plusMenuAlreadyOpen,
@@ -29,12 +28,16 @@ import {
 } from './composer-attach.ts'
 import css from './ComposerAttach.module.css'
 
+/** Minimal session state the attach reads through the public selector hook. */
+export interface ComposerSessionState {
+  readonly running: boolean
+  readonly subagent: unknown | null
+}
+
 export interface ComposerAttachProps {
+  /** Standard session-scope selector hook (Core InputBar reads the same source). */
+  useSession: SnapshotSelectorHook<ComposerSessionState>
   inputActions?: DraftInputActions
-  session?: { readonly running: boolean; readonly subagent: unknown | null }
-  input?: { readonly draft: string; readonly imageIds: readonly string[] }
-  busyEnter?: () => 'queue' | 'steer'
-  submitDraft?: (text: string, imageIds: readonly string[], mode: 'queue' | 'steer') => Promise<'machine' | 'copied'>
   createDraftImages: DraftConversation['createDraftImages']
   releaseDraftImage?: DraftConversation['releaseDraftImage']
   releaseDraftImages?: DraftConversation['releaseDraftImages']
@@ -54,21 +57,24 @@ const ITEMS: readonly MenuEntry[] = [
 ]
 
 export function ComposerAttach({
+  useSession,
   inputActions,
-  session,
-  input,
-  busyEnter,
-  submitDraft,
   createDraftImages,
   releaseDraftImage,
   releaseDraftImages,
 }: ComposerAttachProps) {
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const plusRef = useRef<HTMLButtonElement | null>(null)
+  const seatRef = useRef<HTMLSpanElement | null>(null)
   const skipNextPlusRef = useRef(false)
-  const sendPendingRef = useRef(false)
   const [open, setOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+
+  // Live session facts through the public hook. A busy main seat already
+  // renders Send as its primary (Core primaryStops), so DOM labels alone
+  // cannot tell a busy Send from an idle one.
+  const running = useSession(s => s.running) ?? false
+  const subagent = useSession(s => s.subagent) ?? null
 
   const conversation: DraftConversation = {
     createDraftImages,
@@ -85,8 +91,16 @@ export function ComposerAttach({
   }, [close, createDraftImages, inputActions, releaseDraftImage, releaseDraftImages])
 
   useEffect(() => {
+    // Gestures from another card belong to that card's own seat; ignoring
+    // them here keeps two mounted composers from submitting through each other.
+    const inOwnCard = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Element)) return false
+      const card = seatRef.current?.closest<HTMLElement>('[data-composer-card]')
+      return card !== null && card !== undefined && card.contains(target)
+    }
     const onPointerDown = (event: PointerEvent): void => {
       if (skipNextPlusRef.current) return
+      if (!inOwnCard(event.target)) return
       const plus = isComposerPlusButton(event.target)
       if (plus !== null) {
         if (plusMenuAlreadyOpen(plus)) return
@@ -102,6 +116,7 @@ export function ComposerAttach({
       if (composerControlButton(event.target) !== null) blurComposer()
     }
     const onMouseDown = (event: MouseEvent): void => {
+      if (!inOwnCard(event.target)) return
       if (isComposerPlusButton(event.target) !== null) {
         event.preventDefault()
         event.stopImmediatePropagation()
@@ -126,33 +141,11 @@ export function ComposerAttach({
     const onClick = (event: MouseEvent): void => {
       const draftAction = composerDraftActionButton(event.target)
       if (draftAction !== null) {
+        if (!inOwnCard(event.target)) return
         event.preventDefault()
         event.stopImmediatePropagation()
         const textarea = composerDraftInput(draftAction)
         if (textarea !== null) {
-          const busy = composerSendIsBusy(draftAction, session?.running)
-          const mode = resolveMobileSendMode({
-            busy,
-            steeringAvailable: session?.subagent == null,
-            busyEnter: busyEnter?.(),
-          })
-          if (busy && submitDraft !== undefined) {
-            if (sendPendingRef.current) return
-            sendPendingRef.current = true
-            const { text, imageIds } = draftPayload(textarea, input)
-            void submitDraft(text, [...imageIds], mode).then((how) => {
-              if (how !== 'copied') return
-              inputActions?.setDraft?.('')
-              for (const id of imageIds) inputActions?.removeImage?.(id)
-            }).catch((error: unknown) => {
-              setToast(error instanceof Error ? error.message : '发送失败')
-            }).finally(() => { sendPendingRef.current = false })
-            blurComposer()
-            return
-          }
-          // Older Host without sendSession: synthetic Enter may still hit
-          // resolveSubmitMode. inputActions.submit() is queue-only — skip it
-          // when Settings asked for steer.
           const restoreDisabled = draftAction.disabled
           if (restoreDisabled) draftAction.disabled = false
           textarea.focus({ preventScroll: true })
@@ -164,7 +157,11 @@ export function ComposerAttach({
             bubbles: true,
             cancelable: true,
           }))
-          if (notCanceled && mode === 'queue' && typeof inputActions?.submit === 'function') {
+          // inputActions.submit() is queue-only: the fallback when Core did not
+          // consume the gesture and this session cannot steer (idle or
+          // subagent). A busy ordinary session defers to Core's own queue/steer
+          // policy, which already resolved the synthetic Enter above.
+          if (notCanceled && !(running && subagent == null) && typeof inputActions?.submit === 'function') {
             inputActions.submit()
           }
           if (restoreDisabled) draftAction.disabled = true
@@ -177,7 +174,7 @@ export function ComposerAttach({
         return
       }
       const plus = isComposerPlusButton(event.target)
-      if (plus === null) return
+      if (plus === null || !inOwnCard(event.target)) return
       if (plusMenuAlreadyOpen(plus)) return
       event.preventDefault()
       event.stopImmediatePropagation()
@@ -190,85 +187,31 @@ export function ComposerAttach({
       document.removeEventListener('mousedown', onMouseDown, true)
       document.removeEventListener('click', onClick, true)
     }
-  }, [busyEnter, input, inputActions, session, submitDraft])
+  }, [inputActions, useSession, running, subagent])
 
+  // A running continuable child renders Send AND an interrupt Stop; the phone
+  // footer keeps ONE primary by marking the secondary seat hidden (CSS hides
+  // it, handlers stay intact). The card and the hidden button are captured up
+  // front, so transitions and unmount restore through them instead of a ref
+  // that is already null during teardown. Inline styles are never touched.
   useEffect(() => {
-    const setDraftGlyph = (button: HTMLButtonElement, active: boolean): void => {
-      const glyph = button.querySelector<SVGSVGElement>('[data-mobile-send-glyph]')
-      if (active) {
-        if (glyph !== null) return
-        const sendGlyph = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-        sendGlyph.setAttribute('width', '16')
-        sendGlyph.setAttribute('height', '16')
-        sendGlyph.setAttribute('viewBox', '0 0 16 16')
-        sendGlyph.setAttribute('aria-hidden', 'true')
-        sendGlyph.setAttribute('data-mobile-send-glyph', 'true')
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-        path.setAttribute('d', 'M8.3125 0.980183C8.66767 1.0531 8.97902 1.20418 9.2627 1.43233C9.48724 1.61297 9.73029 1.85793 9.97949 2.10714L14.707 6.83468L13.293 8.24874L9 3.95577V15.0417H7V3.95577L2.70703 8.24874L1.29297 6.83468L6.02051 2.10714C6.26971 1.85793 6.51277 1.61297 6.7373 1.43233C6.97662 1.23986 7.28445 1.04402 7.6875 0.980183C7.8973 0.947006 8.1031 0.95516 8.3125 0.980183Z')
-        path.setAttribute('fill', 'currentColor')
-        sendGlyph.append(path)
-        button.append(sendGlyph)
-        return
-      }
-      glyph?.remove()
+    const card = seatRef.current?.closest<HTMLElement>('[data-composer-card]')
+    if (card === null || card === undefined) return
+    let hidden: HTMLButtonElement | null = null
+    const setHidden = (next: HTMLButtonElement | null): void => {
+      if (hidden === next) return
+      hidden?.removeAttribute(SECONDARY_HIDDEN_MARKER)
+      hidden = next
+      hidden?.setAttribute(SECONDARY_HIDDEN_MARKER, 'true')
     }
-
-    const originalStopLabel = (button: HTMLButtonElement): string | null => {
-      return button.dataset.mobileStopLabel ?? button.getAttribute('aria-label')
-    }
-
-    const restoreStopLabel = (button: HTMLButtonElement): void => {
-      const original = button.dataset.mobileStopLabel
-      if (original === undefined) return
-      button.setAttribute('aria-label', original)
-      delete button.dataset.mobileStopLabel
-    }
-
-    const sendLabelFor = (button: HTMLButtonElement): string => {
-      return /^(?:停止|发送)/.test(originalStopLabel(button) ?? '') ? '发送消息' : 'Send message'
-    }
-
-    const syncDraftPrimaryAction = (): void => {
-      for (const card of document.querySelectorAll<HTMLElement>('[data-composer-card]')) {
-        const hasDraft = composerCardHasDraft(card)
-        const stops = Array.from(card.querySelectorAll<HTMLButtonElement>('button[aria-label]'))
-          .filter(button => isComposerStopLabel(originalStopLabel(button)))
-        const primary = hasDraft ? stops.at(-1) ?? null : null
-        for (const marked of card.querySelectorAll<HTMLButtonElement>('[data-mobile-send-draft]')) {
-          if (marked === primary) continue
-          marked.removeAttribute('data-mobile-send-draft')
-          setDraftGlyph(marked, false)
-          restoreStopLabel(marked)
-        }
-        for (const stop of stops) {
-          const active = stop === primary
-          if (active) {
-            stop.setAttribute('data-mobile-send-draft', 'true')
-            if (stop.dataset.mobileStopLabel === undefined) {
-              stop.dataset.mobileStopLabel = stop.getAttribute('aria-label') ?? ''
-            }
-            const label = sendLabelFor(stop)
-            if (stop.getAttribute('aria-label') !== label) stop.setAttribute('aria-label', label)
-          } else {
-            stop.removeAttribute('data-mobile-send-draft')
-            restoreStopLabel(stop)
-          }
-          setDraftGlyph(stop, active)
-        }
-      }
-    }
-    const observer = new MutationObserver(syncDraftPrimaryAction)
-    observer.observe(document.documentElement, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ['aria-label'],
-    })
-    document.addEventListener('input', syncDraftPrimaryAction, true)
-    syncDraftPrimaryAction()
+    const syncOwnSecondary = (): void => { setHidden(composerSecondarySeat(card)) }
+    const observer = new MutationObserver(syncOwnSecondary)
+    // aria-label flips Core primary seats; disabled flips which seat is usable.
+    observer.observe(card, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-label', 'disabled'] })
+    syncOwnSecondary()
     return () => {
       observer.disconnect()
-      document.removeEventListener('input', syncDraftPrimaryAction, true)
+      setHidden(null)
     }
   }, [])
 
@@ -277,7 +220,9 @@ export function ComposerAttach({
   // edge; clamp only the horizontal overflow, leaving the Host's anchor alone.
   useEffect(() => {
     const clampDialogs = (): void => {
-      for (const panel of document.querySelectorAll<HTMLElement>('[data-composer-card] [role="dialog"]:not([aria-modal])')) {
+      const card = seatRef.current?.closest<HTMLElement>('[data-composer-card]')
+      if (card === null || card === undefined) return
+      for (const panel of card.querySelectorAll<HTMLElement>('[role="dialog"]:not([aria-modal])')) {
         const rect = panel.getBoundingClientRect()
         const overRight = rect.right - (window.innerWidth - 12)
         const overLeft = 12 - rect.left
@@ -325,31 +270,36 @@ export function ComposerAttach({
 
   if (typeof document === 'undefined') return null
 
-  return createPortal(
-    <div className={css.host} aria-hidden={open ? undefined : true}>
-      <input
-        ref={imageInputRef}
-        className={css.fileInput}
-        type="file"
-        accept={IMAGE_ACCEPT}
-        multiple
-        tabIndex={-1}
-        aria-hidden
-        onChange={onPicked}
-      />
-      <Menu
-        open={open}
-        portal
-        side="top"
-        align="start"
-        getAnchorRect={() => plusRef.current?.getBoundingClientRect() ?? null}
-        anchor={<span className={css.anchor} />}
-        items={ITEMS}
-        onSelect={onSelect}
-        onClose={close}
-      />
-      {toast !== null && <div className={css.toast} role="status">{toast}</div>}
-    </div>,
-    document.body,
+  return (
+    <>
+      <span ref={seatRef} className={css.seat} aria-hidden data-mobile-attach-seat />
+      {createPortal(
+        <div className={css.host} aria-hidden={open ? undefined : true}>
+          <input
+            ref={imageInputRef}
+            className={css.fileInput}
+            type="file"
+            accept={IMAGE_ACCEPT}
+            multiple
+            tabIndex={-1}
+            aria-hidden
+            onChange={onPicked}
+          />
+          <Menu
+            open={open}
+            portal
+            side="top"
+            align="start"
+            getAnchorRect={() => plusRef.current?.getBoundingClientRect() ?? null}
+            anchor={<span className={css.anchor} />}
+            items={ITEMS}
+            onSelect={onSelect}
+            onClose={close}
+          />
+          {toast !== null && <div className={css.toast} role="status">{toast}</div>}
+        </div>,
+        document.body,
+      )}
+    </>
   )
 }

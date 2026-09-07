@@ -71,17 +71,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * layer is click-through; entries opt back into pointer events.
      */
     'shell.overlay': { kind: 'list'; scope: 'root' }
-    /** Occupied by this package's plus-button attach control. Declared by ui-conversation. */
-    'conversation.input.left': { kind: 'list'; scope: 'session'; owner: InputZoneLike }
+    /** Occupied by this package's plus-button attach control. Declared by ui-conversation (no owner: entries read session state through the standard hooks). */
+    'conversation.input.left': { kind: 'list'; scope: 'session' }
     /** Occupied by this package's compact StatsLine. Declared by ui-conversation. */
     'conversation.composer.dock': { kind: 'list'; scope: 'session'; owner: object }
   }
-}
-
-/** Minimal InputZone share consumed by the plus-button attach control. */
-interface InputZoneLike {
-  readonly session: { readonly running: boolean; readonly subagent: unknown | null }
-  readonly input: { readonly draft: string; readonly imageIds: readonly string[] }
 }
 
 /** Sidebar owner share: live drawer state from the frame. */
@@ -99,7 +93,7 @@ export interface ConvOwnerProps {}
 export interface DetailsOwnerProps {}
 
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
-export const inject = ['slots', 'theme', 'sessions', 'settingsScope', 'remote.agentPresets', 'modelDirectories']
+export const inject = ['slots', 'theme', 'sessions', 'remote.agentPresets', 'modelDirectories']
 
 function interactionOperationsFrom(ctx: ClientContext): MobileInteractionOperations | undefined {
   const holder = ctx as ClientContext & { get?(name: string, strict?: boolean): unknown; interactionOperations?: unknown }
@@ -119,20 +113,6 @@ function interactionOperationsFrom(ctx: ClientContext): MobileInteractionOperati
  */
 export function apply(ctx: ClientContext): void {
   const layout = new MobileLayoutController()
-  const settings = (ctx as ClientContext & {
-    settingsScope: {
-      bind<T>(spec: { namespace: string; decode(value: unknown): T | undefined }): {
-        getSnapshot(): { value: T | undefined }
-      }
-    }
-  }).settingsScope.bind({
-    namespace: 'ui-conversation',
-    decode: (value): { busyEnter: 'queue' | 'steer' } | undefined => {
-      if (typeof value !== 'object' || value === null) return undefined
-      const busyEnter = Reflect.get(value, 'busyEnter')
-      return busyEnter === 'queue' || busyEnter === 'steer' ? { busyEnter } : undefined
-    },
-  })
   ctx.effect(() => {
     const disposeService = ctx.reflect.provide('layout', layout)
     const disposeRegistration = ctx.slots.register({
@@ -197,11 +177,7 @@ export function apply(ctx: ClientContext): void {
           name: 'conversation.input.left',
           id: 'composer-attach',
           order: 0,
-          inject: (sessionId: string) => draftImageInject(
-            ctx,
-            sessionId,
-            () => settings.getSnapshot().value?.busyEnter ?? 'queue',
-          ),
+          inject: () => draftImageInject(ctx),
         }, ComposerAttach)
       } catch {
         // ui-conversation declares this slot; retry when that roster lands.
@@ -245,40 +221,18 @@ export function apply(ctx: ClientContext): void {
   }, 'ui-layout-mobile: compact stats')
 }
 
+/** Slot bindings for the plus-button seat: official draft-image intake only.
+ * Submission always travels the programmatic-Enter path in ComposerAttach so
+ * Core's own queue/steer policy (which owns the live preference) resolves it. */
 function draftImageInject(
   ctx: ClientContext,
-  sessionId: string,
-  busyEnter: () => 'queue' | 'steer',
 ): {
   createDraftImages: DraftConversation['createDraftImages']
   releaseDraftImage: DraftConversation['releaseDraftImage']
   releaseDraftImages: DraftConversation['releaseDraftImages']
-  busyEnter: () => 'queue' | 'steer'
-  submitDraft: (text: string, imageIds: readonly string[], mode: 'queue' | 'steer') => Promise<'machine' | 'copied'>
 } {
   const live = (): DraftConversation | undefined => liveConversation(ctx)
   return {
-    busyEnter,
-    submitDraft: async (text, imageIds, mode) => {
-      const conversation = live()
-      // Official machine submit keeps draft + image ids together. sendSession
-      // with a reconstructed payload drops images when the left-slot snapshot lags.
-      const shell = conversation?.input?.shell?.(sessionId)
-      if (shell !== undefined) {
-        shell.submit(mode)
-        return 'machine'
-      }
-      if (conversation?.sendSession === undefined) {
-        throw new Error('ui-layout-mobile: draft submission unavailable')
-      }
-      const bound = ctx.sessions as unknown as {
-        binding(id: string): { session: unknown } | undefined
-      }
-      const sessionFace = bound.binding(sessionId)?.session
-      if (sessionFace === undefined) throw new Error('ui-layout-mobile: draft session unavailable')
-      await conversation.sendSession(sessionFace, text, imageIds, mode)
-      return 'copied'
-    },
     createDraftImages: (files) => {
       const conversation = live()
       if (conversation?.createDraftImages === undefined) {

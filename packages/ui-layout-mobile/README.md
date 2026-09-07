@@ -19,7 +19,7 @@
 
 1. **`ctx.layout` 服务面**(IMobileLayout,与上游 ILayout 逐方法一致):`toggleSidebar()` / `openDetails()` / `closeDetails()`。ui-sidebar 的折叠按钮、ui-conversation 的详情开关都调它;`app-shell` 伪入口 `inject: ['slots', 'sessions', 'layout']` —— **不提供该服务则 shell 永不就绪**(packages/client/web/src/app-shell.ts)。经 `ctx.reflect.provide('layout', controller)` 提供,bound actions 由 register 的 inject hook 接回。
 2. **ThemePresenter**:ui-theme 只持有快照,把快照写到 document(body 的 palette 属性、token 内联变量、theme-color meta)的职责随根布局走。本包 `theme-presenter.ts` 是上游同名文件的逐字拷贝;两个布局同时挂载会导致双写,所以 bundle 必须禁用上游 ui-layout 行。
-3. **插件 inject**:`['slots', 'theme', 'sessions', 'settingsScope', 'remote.agentPresets', 'modelDirectories']`；静态 `dsh.client.inject` 同时声明提供这些服务的 Host 客户端模块。
+3. **插件 inject**:`['slots', 'theme', 'sessions', 'remote.agentPresets', 'modelDirectories']`；静态 `dsh.client.inject` 同时声明提供这些服务的 Host 客户端模块。
 
 ## 与上游的行为差异(有意为之)
 
@@ -31,6 +31,7 @@
 - 已知内置 preset 被用户层覆盖后可能携带非本地化 metadata；移动端只可按可证明的内置身份（`standard` / `ptc` / `minimal` / `cordis` 及其官方中英文全名）补齐紧凑文案。中文为「标准 / PTC / 极简 / 创造」，英文为「Standard / PTC / Minimal / Creator」；任意用户 preset 名称保持原样。
 - 复用 Agent Presets 启用前遗留的空白会话时，移动端把 Host 默认 preset 写入该空白会话，使官方 Hero 模式选择器恢复显示；已有 preset 或已开始的会话不改动。
 - 切换 Host 后若当前空白会话的默认模型 Provider 已不可路由，移动端优先把同名模型重映射到唯一有效 Provider，否则选择该 Host 目录中的首个有效模型；已开始的会话不自动改写。
+- `conversation.input.left` 上游无 owner（渲染 `{}`），attach 经标准 `useSession` 选择器读 busy/subagent，不做 settings 侧读；Send 一律走程序化 Enter 交 Core 的 queue/steer 策略裁决（`inputActions.submit()` 只在 Core 未消费且不可 steer 时回退）。运行中 continuable 子会话的 Send+Stop 双钮只保留一个（`data-mobile-secondary-hidden` 隐藏，handler 不动），各 seat 只作用于自己所在的 `[data-composer-card]`。
 
 ## 静态加载修订号
 

@@ -6,15 +6,28 @@ function dispatch(target: HTMLElement, type: string): void {
   target.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }))
 }
 
+interface SessionFace {
+  readonly running: boolean
+  readonly subagent: unknown | null
+}
+
+// Stable fakes shaped like the public selector hooks Core InputBar consumes.
+function useMainSession<T>(sel: (s: SessionFace) => T): T {
+  return sel({ running: true, subagent: null })
+}
+
+function useChildSession<T>(sel: (s: SessionFace) => T): T {
+  return sel({ running: true, subagent: { address: { mode: 'continuable' } } })
+}
+
 function App() {
-  const inputRef = useRef<HTMLDivElement>(null)
+  const mainInputRef = useRef<HTMLDivElement>(null)
+  const childInputRef = useRef<HTMLDivElement>(null)
   const modeRef = useRef<HTMLDivElement>(null)
   const [modeOpen, setModeOpen] = useState(true)
+  const [childAttached, setChildAttached] = useState(true)
 
   useEffect(() => {
-    // Model-picker replica: an open menu closes on any outside mousedown, like
-    // the official PopupSelect. The mobile bridge must still deliver that signal
-    // even while it swallows the picker trigger's own focus-taking mousedown.
     const outsideModel = (event: MouseEvent): void => {
       if (!(event.target instanceof Element)) return
       if (event.target.closest('#model-menu') !== null) return
@@ -32,96 +45,80 @@ function App() {
       dispatch(plus, 'pointerdown')
       dispatch(plus, 'click')
       window.setTimeout(() => {
-        const send = document.querySelector<HTMLElement>('#send')!
-        const stop = document.querySelector<HTMLElement>('#stop')!
-        inputRef.current?.blur()
-        dispatch(send, 'pointerdown')
-        dispatch(send, 'mousedown')
-        dispatch(send, 'click')
-        const sendFocus = document.activeElement === inputRef.current ? 'input' : 'other'
-        inputRef.current?.blur()
-        dispatch(stop, 'pointerdown')
-        dispatch(stop, 'mousedown')
-        dispatch(stop, 'click')
-        document.body.dataset.clickReachedStop = document.body.dataset.stopClicked ?? 'false'
-        document.body.dataset.stopDispatchResult = String(stop.dataset.mobileSendDraft !== undefined)
-        delete document.body.dataset.stopClicked
-        const stopFocus = document.activeElement === inputRef.current ? 'input' : 'other'
-
-        delete document.body.dataset.stopClicked
-        inputRef.current!.dataset.mobileBusyPolicy = 'steer'
-        inputRef.current!.textContent = 'queued follow-up'
-        dispatch(inputRef.current!, 'input')
-        // Seam guard: the fixture's React handler must see a synthetic Enter,
-        // the same path the mobile bridge uses for the official policy resolver.
-        const directEnter = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true })
-        const directDispatched = inputRef.current!.dispatchEvent(directEnter)
-        document.body.dataset.directEnter = (document.body.dataset.sendViaEnter ?? 'false') + ':' + String(directDispatched)
-        delete document.body.dataset.sendViaEnter
-        const interruptStop = document.querySelector<HTMLElement>('#interrupt-stop')!
-        dispatch(interruptStop, 'pointerdown')
-        dispatch(interruptStop, 'mousedown')
-        dispatch(interruptStop, 'click')
-        const draftMouseDown = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
-        document.body.dataset.stopMarkedBeforeMousedown = String(stop.dataset.mobileSendDraft === 'true')
-        stop.dispatchEvent(draftMouseDown)
-        const draftStopMouseDownPrevented = String(draftMouseDown.defaultPrevented)
-        const draftClick = new MouseEvent('click', { bubbles: true, cancelable: true })
-        stop.dispatchEvent(draftClick)
+        document.body.dataset.modeOpenAfterPlus = String(modeRef.current?.getAttribute('data-open') === 'true')
+        const mainSend = document.querySelector<HTMLElement>('#main-send')!
+        mainInputRef.current?.blur()
+        dispatch(mainSend, 'pointerdown')
+        dispatch(mainSend, 'mousedown')
+        dispatch(mainSend, 'click')
+        document.body.dataset.sendFocus = document.activeElement === mainInputRef.current ? 'input' : 'other'
         window.setTimeout(() => {
-          document.body.dataset.modeOpenAfterPlus = String(modeRef.current?.getAttribute('data-open') === 'true')
-          document.body.dataset.sendFocus = sendFocus
-          document.body.dataset.stopFocus = stopFocus
-          document.body.dataset.draftStopMouseDownPrevented = draftStopMouseDownPrevented
-          document.body.dataset.draftStopMarked = String(stop.dataset.mobileSendDraft === 'true')
-          document.body.dataset.draftStopGlyph = String(stop.querySelector('svg[data-mobile-send-glyph]')?.querySelector('path')?.getAttribute('d')?.startsWith('M8.3125') === true)
-          document.body.dataset.draftStopSvgDisplay = getComputedStyle(stop.querySelector('svg')!).display
-          document.body.dataset.draftStopFontSize = getComputedStyle(stop).fontSize
-          document.body.dataset.draftStopLabel = stop.getAttribute('aria-label') ?? ''
-          document.body.dataset.draftSubmit = document.body.dataset.sendViaSubmit ?? 'false'
-          document.body.dataset.draftEnter = document.body.dataset.sendViaEnter ?? 'false'
-          inputRef.current!.textContent = ''
-          dispatch(inputRef.current!, 'input')
-          const rail = document.createElement('div')
-          rail.setAttribute('role', 'group')
-          const thumbnail = document.createElement('img')
-          thumbnail.alt = 'draft image'
-          rail.append(thumbnail)
-          document.querySelector('[data-composer-card]')!.append(rail)
-          send.disabled = true
-          inputRef.current!.blur()
-          dispatch(send, 'pointerdown')
-          dispatch(send, 'mousedown')
-          dispatch(send, 'click')
+          document.body.dataset.mainEntered = document.body.dataset.mainEnter ?? 'false'
+          document.body.dataset.mainEnterText = document.body.dataset.mainEnterText ?? ''
+          document.body.dataset.mainSubmit = document.body.dataset.mainSubmit ?? 'false'
+          document.body.dataset.mainSendHidden = mainSend.getAttribute('data-mobile-secondary-hidden') ?? ''
+          const childSend = document.querySelector<HTMLElement>('#child-send')! as HTMLButtonElement
+          const childStop = document.querySelector<HTMLElement>('#child-stop')!
+          document.body.dataset.childSendHidden = childSend.getAttribute('data-mobile-secondary-hidden') ?? ''
+          document.body.dataset.childSendInline = childSend.style.display
+          document.body.dataset.childStopHidden = childStop.getAttribute('data-mobile-secondary-hidden') ?? ''
+          document.body.dataset.childStopInline = childStop.style.display
+          document.body.dataset.childStopLabel = childStop.getAttribute('aria-label') ?? ''
+          childInputRef.current!.textContent = 'child follow-up'
+          delete document.body.dataset.interruptStopClicked
+          delete document.body.dataset.childEnter
+          dispatch(childStop, 'pointerdown')
+          dispatch(childStop, 'mousedown')
+          dispatch(childStop, 'click')
+          document.body.dataset.childDraftInterrupt = document.body.dataset.interruptStopClicked ?? 'false'
+          document.body.dataset.childDraftEnter = document.body.dataset.childEnter ?? 'false'
+          document.body.dataset.childDraftStopLabel = childStop.getAttribute('aria-label') ?? ''
+          childSend.disabled = false
           window.setTimeout(() => {
-            document.body.dataset.imageStopMarked = String(stop.dataset.mobileSendDraft === 'true')
-            document.body.dataset.imageStopLabel = stop.getAttribute('aria-label') ?? ''
-            document.body.dataset.imageStopGlyph = String(stop.querySelector('svg[data-mobile-send-glyph]') !== null)
-            document.body.dataset.imageSendDisabledRestored = String(send.disabled)
-            document.body.dataset.imageSendEntered = String(document.body.dataset.sendViaEnter === 'true')
-            delete document.body.dataset.sendViaEnter
-            rail.remove()
+            document.body.dataset.childSendHiddenAfterEnable = childSend.getAttribute('data-mobile-secondary-hidden') ?? ''
+            document.body.dataset.childSendInlineAfterEnable = childSend.style.display
+            document.body.dataset.childStopHiddenAfterEnable = childStop.getAttribute('data-mobile-secondary-hidden') ?? ''
+            document.body.dataset.childStopInlineAfterEnable = childStop.style.display
+            const mainEnterCount = document.body.dataset.mainEnterCount ?? '0'
+            delete document.body.dataset.childEnter
+            delete document.body.dataset.childEnterText
+            dispatch(childSend, 'pointerdown')
+            dispatch(childSend, 'mousedown')
+            dispatch(childSend, 'click')
             window.setTimeout(() => {
-              document.body.dataset.draftCleared = String(stop.dataset.mobileSendDraft === undefined && stop.querySelector('[data-mobile-send-glyph]') === null && send.dataset.mobileSendDraft === undefined)
-              document.body.dataset.draftRestoredLabel = stop.getAttribute('aria-label') ?? ''
-              // Model menu opens, then tapping the context meter must close it
-              // even though the bridge swallows that trigger's mousedown.
-              const model = document.querySelector<HTMLElement>('#model-trigger')!
-              const ctxTrigger = document.querySelector<HTMLElement>('#ctx-trigger')!
-              dispatch(model, 'pointerdown')
-              dispatch(model, 'mousedown')
-              dispatch(model, 'click')
-              dispatch(ctxTrigger, 'pointerdown')
-              dispatch(ctxTrigger, 'mousedown')
-              dispatch(ctxTrigger, 'click')
+              document.body.dataset.childEntered = document.body.dataset.childEnter ?? 'false'
+              document.body.dataset.childEnterText = document.body.dataset.childEnterText ?? ''
+              document.body.dataset.mainEnterCountAfterChild = (document.body.dataset.mainEnterCount ?? '0') + ':' + mainEnterCount
+              childSend.disabled = true
               window.setTimeout(() => {
-                const panel = document.querySelector<HTMLElement>('#ctx-panel')!
-                const panelRect = panel.getBoundingClientRect()
-                document.body.dataset.modelMenuAfterCtx = document.body.dataset.modelMenuOpen ?? 'unset'
-                document.body.dataset.ctxPanelRight = String(Math.round(panelRect.right))
-                document.body.dataset.ctxPanelTransform = panel.style.transform || 'none'
-                document.body.dataset.ctxPanelBottomDelta = String(Math.round(panelRect.bottom - ctxTrigger.getBoundingClientRect().top))
-                document.body.dataset.ready = 'true'
+                document.body.dataset.childSendHiddenBack = childSend.getAttribute('data-mobile-secondary-hidden') ?? ''
+                document.body.dataset.childSendInlineBack = childSend.style.display
+                document.body.dataset.childStopHiddenBack = childStop.getAttribute('data-mobile-secondary-hidden') ?? ''
+                document.body.dataset.childStopInlineBack = childStop.style.display
+                setChildAttached(false)
+                window.setTimeout(() => {
+                  document.body.dataset.childSendHiddenAfterUnmount = childSend.getAttribute('data-mobile-secondary-hidden') ?? ''
+                  document.body.dataset.childSendInlineAfterUnmount = childSend.style.display
+                  document.body.dataset.childStopHiddenAfterUnmount = childStop.getAttribute('data-mobile-secondary-hidden') ?? ''
+                  document.body.dataset.childStopInlineAfterUnmount = childStop.style.display
+                  const model = document.querySelector<HTMLElement>('#model-trigger')!
+                  const ctxTrigger = document.querySelector<HTMLElement>('#ctx-trigger')!
+                  dispatch(model, 'pointerdown')
+                  dispatch(model, 'mousedown')
+                  dispatch(model, 'click')
+                  dispatch(ctxTrigger, 'pointerdown')
+                  dispatch(ctxTrigger, 'mousedown')
+                  dispatch(ctxTrigger, 'click')
+                  window.setTimeout(() => {
+                    const panel = document.querySelector<HTMLElement>('#ctx-panel')!
+                    const panelRect = panel.getBoundingClientRect()
+                    document.body.dataset.modelMenuAfterCtx = document.body.dataset.modelMenuOpen ?? 'unset'
+                    document.body.dataset.ctxPanelRight = String(Math.round(panelRect.right))
+                    document.body.dataset.ctxPanelTransform = panel.style.transform || 'none'
+                    document.body.dataset.ctxPanelBottomDelta = String(Math.round(panelRect.bottom - ctxTrigger.getBoundingClientRect().top))
+                    document.body.dataset.ready = 'true'
+                  }, 0)
+                }, 0)
               }, 0)
             }, 0)
           }, 0)
@@ -131,15 +128,15 @@ function App() {
     return () => {
       window.clearTimeout(timer)
       document.removeEventListener('pointerdown', outsideMode)
-      document.body.dataset.clickReachedStop = undefined
+      document.removeEventListener('mousedown', outsideModel)
     }
   }, [])
 
   return <>
     <div ref={modeRef} data-mode-menu role="menu" data-open={modeOpen ? 'true' : undefined}>Read Only</div>
-    <div data-composer-card>
+    <div data-composer-card id="main-card">
       <div
-        ref={inputRef}
+        ref={mainInputRef}
         contentEditable
         suppressContentEditableWarning
         data-composer-input
@@ -147,45 +144,57 @@ function App() {
         aria-label="message"
         onKeyDown={(event) => {
           if (event.key !== 'Enter') return
-          if (event.ctrlKey || event.metaKey) {
-            document.body.dataset.sendViaSteer = 'true'
-            return
-          }
-          if (inputRef.current?.dataset.mobileBusyPolicy === undefined) return
-          document.body.dataset.sendViaEnter = 'true'
-          // Official Lexical Enter handling cancels the DOM event after it has
-          // resolved Queue/Steer and admitted the submission.
+          document.body.dataset.mainEnterCount = String(Number(document.body.dataset.mainEnterCount ?? '0') + 1)
+          document.body.dataset.mainEnter = 'true'
+          document.body.dataset.mainEnterText = mainInputRef.current?.textContent ?? ''
           event.preventDefault()
         }}
-      />
+      >main follow-up</div>
       <button id="plus" type="button" aria-haspopup="listbox" aria-expanded="false">Plus</button>
-      <button id="send" type="button" aria-label="发送消息">Send</button>
-      {/* Compatibility probe: when a Host exposes an interruptible Stop beside
-          the primary seat, the last localized Stop is the draft target. */}
-      <button id="interrupt-stop" type="button" aria-label="停止生成" onClick={() => { document.body.dataset.interruptStopClicked = 'true' }}><svg width="16" height="16" aria-hidden="true" /></button>
-      <button
-        id="stop"
-        type="button"
-        aria-label="停止生成"
-        onClick={() => { document.body.dataset.stopClicked = 'true' }}
-        ><svg width="16" height="16" aria-hidden="true" />Stop</button>
+      <button id="main-send" type="button" aria-label="Send message">Send</button>
       <button id="model-trigger" type="button" aria-haspopup="menu" aria-expanded="false" onClick={() => { document.body.dataset.modelMenuOpen = 'true' }}>Model</button>
       <div id="model-menu" role="menu" />
-      {/* ContextMeter replica: panel keeps the official 8px-above-trigger
-          anchor; the clamp only pulls an overflowing panel back on-screen. */}
       <span id="ctx-root" style={{ position: 'relative' }}>
         <button id="ctx-trigger" type="button" aria-haspopup="dialog" aria-expanded="true">ctx</button>
         <div id="ctx-panel" role="dialog" className="ctx-panel" />
       </span>
-      <style>{`.ctx-panel { position: absolute; bottom: calc(100% + 8px); right: 0; box-sizing: border-box; width: 264px; height: 100px; display: block; }`}</style>
+      <ComposerAttach
+        useSession={useMainSession}
+        inputActions={{
+          addImages: () => true,
+          submit: () => { document.body.dataset.mainSubmit = 'true' },
+        }}
+        createDraftImages={() => []}
+      />
     </div>
-    <ComposerAttach
-      createDraftImages={() => []}
-      inputActions={{
-        addImages: () => true,
-        submit: () => { document.body.dataset.sendViaSubmit = 'true' },
-      }}
-    />
+    <div data-composer-card id="child-card">
+      <div
+        ref={childInputRef}
+        contentEditable
+        suppressContentEditableWarning
+        data-composer-input
+        data-phase="plain"
+        aria-label="message"
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter') return
+          document.body.dataset.childEnter = 'true'
+          document.body.dataset.childEnterText = childInputRef.current?.textContent ?? ''
+          event.preventDefault()
+        }}
+      />
+      <button id="child-send" type="button" aria-label="Send message" disabled>Send</button>
+      <button id="child-stop" type="button" aria-label="Stop" onClick={() => { document.body.dataset.interruptStopClicked = 'true' }}><svg width="16" height="16" aria-hidden="true" /></button>
+      {childAttached && (
+        <ComposerAttach
+          useSession={useChildSession}
+          inputActions={{
+            addImages: () => true,
+            submit: () => { document.body.dataset.childSubmit = 'true' },
+          }}
+          createDraftImages={() => []}
+        />
+      )}
+    </div>
   </>
 }
 

@@ -4,12 +4,11 @@ import {
   attachBusyMessage,
   attachFiles,
   attachUnavailableMessage,
+  composerCardSendSeat,
   composerEditor,
-  composerSendIsBusy,
+  composerSecondarySeat,
   dismissOfficialMenus,
-  draftPayload,
   plusMenuAlreadyOpen,
-  resolveMobileSendMode,
   unsupportedImageMessage,
 } from '../../../packages/ui-layout-mobile/src/client/composer-attach.ts'
 
@@ -85,37 +84,41 @@ test('composerEditor ignores non-elements and is the IME target helper', () => {
   assert.equal(composerEditor({}), null)
 })
 
-function sendButton({ marked = false, stopLabel = undefined, aria = '发送消息' } = {}) {
+function seatButton({ aria = '发送消息', stopLabel = undefined, disabled = false } = {}) {
   return {
-    hasAttribute: (name) => marked && name === 'data-mobile-send-draft',
     dataset: stopLabel === undefined ? {} : { mobileStopLabel: stopLabel },
     getAttribute: (name) => name === 'aria-label' ? aria : null,
+    disabled,
   }
 }
 
-test('composerSendIsBusy follows the painted Stop seat, not only session.running', () => {
-  assert.equal(composerSendIsBusy(sendButton(), false), false)
-  assert.equal(composerSendIsBusy(sendButton({ marked: true }), false), true)
-  assert.equal(composerSendIsBusy(sendButton({ stopLabel: '停止生成' }), false), true)
-  assert.equal(composerSendIsBusy(sendButton(), true), true)
+function seatCard(buttons) {
+  return { querySelectorAll: () => buttons }
+}
+
+test('composerCardSendSeat finds the genuine Send seat and ignores repainted Stops', () => {
+  const send = seatButton({ aria: '发送消息' })
+  const stop = seatButton({ aria: '停止生成' })
+  assert.equal(composerCardSendSeat(seatCard([send])), send)
+  assert.equal(composerCardSendSeat(seatCard([send, stop])), send)
+  assert.equal(composerCardSendSeat(seatCard([stop])), null)
+  assert.equal(composerCardSendSeat(seatCard([])), null)
+  const repainted = seatButton({ aria: '发送消息', stopLabel: '停止生成' })
+  assert.equal(composerCardSendSeat(seatCard([repainted])), null)
+  assert.equal(composerCardSendSeat(seatCard([repainted, send])), send)
 })
 
-test('resolveMobileSendMode follows busyEnter; idle and subagent stay queue', () => {
-  assert.equal(resolveMobileSendMode({ busy: false, steeringAvailable: true, busyEnter: 'steer' }), 'queue')
-  assert.equal(resolveMobileSendMode({ busy: true, steeringAvailable: false, busyEnter: 'steer' }), 'queue')
-  assert.equal(resolveMobileSendMode({ busy: true, steeringAvailable: true, busyEnter: 'steer' }), 'steer')
-  assert.equal(resolveMobileSendMode({ busy: true, steeringAvailable: true, busyEnter: 'queue' }), 'queue')
-  assert.equal(resolveMobileSendMode({ busy: true, steeringAvailable: true }), 'queue')
-})
-
-test('draftPayload prefers live editor text and keeps snapshot image ids', () => {
-  assert.deepEqual(
-    draftPayload({ textContent: 'from-dom' }, { draft: 'from-store', imageIds: ['a'] }),
-    { text: 'from-dom', imageIds: ['a'] },
-  )
-  assert.deepEqual(
-    draftPayload({ textContent: '' }, { draft: 'from-store', imageIds: ['a'] }),
-    { text: 'from-store', imageIds: ['a'] },
-  )
-  assert.deepEqual(draftPayload({ textContent: 'from-dom' }), { text: 'from-dom', imageIds: [] })
+test('composerSecondarySeat hides one seat when Send and Stop coexist', () => {
+  const disabledSend = seatButton({ aria: '发送消息', disabled: true })
+  const enabledStop = seatButton({ aria: '停止生成', disabled: false })
+  assert.equal(composerSecondarySeat(seatCard([disabledSend, enabledStop])), disabledSend)
+  const enabledSend = seatButton({ aria: '发送消息', disabled: false })
+  assert.equal(composerSecondarySeat(seatCard([enabledSend, enabledStop])), enabledStop)
+  assert.equal(composerSecondarySeat(seatCard([
+    disabledSend,
+    seatButton({ aria: '停止生成', disabled: true }),
+  ])), disabledSend, 'both disabled mid-interrupt still hides the unusable Send')
+  assert.equal(composerSecondarySeat(seatCard([enabledSend])), null, 'a lone Send is never secondary')
+  assert.equal(composerSecondarySeat(seatCard([enabledStop])), null, 'a lone Stop is never secondary')
+  assert.equal(composerSecondarySeat(seatCard([])), null)
 })
