@@ -1,0 +1,44 @@
+.toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  box-sizing: border-box;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 24px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, currentColor);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.toggle:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(0, 0, 0, .06));
+}
+
+.toggle:focus-visible {
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3, Highlight);
+  outline: none;
+}
+
+.toggle:disabled {
+  color: var(--dsw-alias-label-dimmed, GrayText);
+  cursor: default;
+}
+
+.on {
+  background: var(--dsw-alias-state-warn-tertiary, #fff4e5);
+  color: var(--dsw-alias-state-warn-label, #b54708);
+}
+
+.on:hover:not(:disabled) {
+  color: var(--dsw-alias-state-warn-primary, #9a3412);
+}
+
+.toggle svg {
+  width: 14px;
+  height: 14px;
+}

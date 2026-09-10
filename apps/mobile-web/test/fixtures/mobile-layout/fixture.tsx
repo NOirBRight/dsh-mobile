@@ -16,7 +16,7 @@ const statsProjections: Record<string, unknown> = {
 }
 let closeCount = 0
 
-function FrameHarness({ id, width, laggyCodex = false, english = false, feedback = false }: { id: string; width: number; laggyCodex?: boolean; english?: boolean; feedback?: boolean }) {
+function FrameHarness({ id, width, laggyCodex = false, english = false, feedback = false, modelName = 'DeepSeek V4 Flash Vision (exp)' }: { id: string; width: number; laggyCodex?: boolean; english?: boolean; feedback?: boolean; modelName?: string }) {
   const panels = { drawerOpen: true, detailsOpen: laggyCodex }
   const useStore = (select: (state: typeof panels) => unknown) => select(panels)
   const actions = useMemo(() => ({
@@ -65,8 +65,8 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
         <textarea aria-label="Prompt" />
         <div role="listbox"><button type="button" data-command-option>/plan</button></div>
         <div className="fixtureComposerToolbar">
-          <div className="fixtureComposerTools"><button data-add-control>+</button><div style={{ display: 'flex', minWidth: 0 }}><button data-plan-control aria-label="Workspace Write" aria-haspopup="menu" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><svg width="14" height="14" aria-hidden="true"><rect width="14" height="14" rx="3" fill="currentColor" /></svg><span>Workspace Write</span><svg width="12" height="12" aria-hidden="true"><path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg></button></div></div>
-          <div className="fixtureComposerTrailing"><div style={{ minWidth: 0 }}><button aria-haspopup="menu" aria-label="Select model, current Gemini 3.8 Flash" style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, fontSize: 13, lineHeight: '20px', fontWeight: 500 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}><span style={{ display: 'inline-flex', minWidth: 14 }}><svg width="14" height="14" aria-hidden="true"><rect width="14" height="14" rx="3" fill="currentColor" /></svg></span>Gemini 3.8 Flash</span><svg width="14" height="14" /></button></div><button aria-haspopup="dialog" data-context-control>272K</button><button data-send-control>↑</button></div>
+          <div className="fixtureComposerTools"><button data-add-control>+</button><div style={{ display: 'flex', minWidth: 0, gap: 4 }}><button type="button" data-plan-control aria-label="Access mode, current: Workspace Write" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span aria-hidden><svg width="14" height="14"><rect width="14" height="14" rx="3" fill="currentColor" /></svg></span><span>Workspace Write</span><span aria-hidden data-permission-chevron><svg width="12" height="12"><path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg></span></button><button type="button" data-mobile-plan-toggle aria-pressed="false" style={{ width: 28, height: 28, padding: 0 }}><svg width="14" height="14" /></button></div></div>
+          <div className="fixtureComposerTrailing"><div data-slot="conversation.input.model"><button type="button" aria-haspopup="menu" aria-expanded="false" aria-label={`Select model, current ${modelName} · High Effort`} style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, fontSize: 13, lineHeight: '20px', fontWeight: 500 }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}><span style={{ display: 'inline-flex', minWidth: 14 }}><svg width="14" height="14" aria-hidden><rect width="14" height="14" rx="3" fill="currentColor" /></svg></span>{modelName}</span><span>High Effort</span><svg width="14" height="14" aria-hidden data-model-chevron><path d="M3 5L7 9L11 5" stroke="currentColor" strokeWidth="1.5" fill="none" /></svg></button></div><span data-context-control style={{ display: 'inline-flex' }}><button type="button" aria-haspopup="dialog" aria-label="45% of context used" style={{ width: 28, height: 28, display: 'grid', placeItems: 'center', padding: 0, border: 'none', background: 'transparent' }}><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" strokeWidth="2" /><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="8.64 34.56" transform="rotate(-90 7 7)" /></svg></button></span><button data-send-control>↑</button></div>
         </div>
       </div>
       <div data-dsh-mobile-popup="rich" className="fixtureModelCard">
@@ -264,26 +264,87 @@ function App() {
       const planRect = planControl.getBoundingClientRect()
       const modelRect = modelControl.getBoundingClientRect()
       const contextRect = contextControl.getBoundingClientRect()
-      document.body.dataset.permissionCompactLabel = planControl.querySelector<HTMLElement>('span')?.dataset.mobilePermissionLabel ?? ''
+      const permissionChevron = planControl.querySelector<HTMLElement>('[data-permission-chevron]')!
+      const modelChevron = modelControl.querySelector<SVGElement>(':scope > svg')!
+      const contextRing = contextControl.querySelector<SVGElement>('svg')!
+      document.body.dataset.permissionIcon = String(planControl.dataset.mobilePermissionTrigger !== undefined)
+      document.body.dataset.permissionHaspopup = String(planControl.getAttribute('aria-haspopup'))
+      document.body.dataset.permissionExtraHidden = String(
+        Array.from(planControl.children).slice(1).every((node) => getComputedStyle(node as Element).display === 'none'),
+      )
+      document.body.dataset.permissionChevronHidden = String(getComputedStyle(permissionChevron).display === 'none')
+      document.body.dataset.modelChevronHidden = String(getComputedStyle(modelChevron).display === 'none')
+      document.body.dataset.modelAria = modelControl.getAttribute('aria-label') ?? ''
+      document.body.dataset.modelHaspopup = modelControl.getAttribute('aria-haspopup') ?? ''
+      document.body.dataset.contextRingVisible = String(
+        getComputedStyle(contextControl).display !== 'none'
+        && getComputedStyle(contextRing).display !== 'none'
+        && contextRect.width > 0
+        && contextRect.height > 0,
+      )
       document.body.dataset.planControlGap = String(Math.round(planRect.left - addRect.right))
       document.body.dataset.modelControlWidth = String(Math.round(modelRect.width))
-      document.body.dataset.modelLongText = modelControl.querySelector<HTMLElement>('span')?.textContent ?? ''
+      const closedLabel = (button: HTMLElement): string => button.querySelector<HTMLElement>('[data-mobile-model-trigger]')?.dataset.mobileModelTrigger
+        ?? button.querySelector<HTMLElement>('span')?.textContent?.trim() ?? ''
+      document.body.dataset.modelLongText = closedLabel(modelControl)
       const model390 = document.querySelector<HTMLElement>('#phone390 .fixtureComposerTrailing button[aria-haspopup="menu"]')!
       const model390Rect = model390.getBoundingClientRect()
-      const model390Label = model390.querySelector<HTMLElement>('span')!
       document.body.dataset.modelLongWidth = String(Math.round(model390Rect.width))
-      document.body.dataset.modelLongFits = String(model390Label.scrollWidth <= model390Label.clientWidth + 1)
+      document.body.dataset.modelLongFits = String(model390.scrollWidth <= model390.clientWidth + 1)
+      document.body.dataset.grokText = closedLabel(model390)
+      document.body.dataset.grokAria = model390.getAttribute('aria-label') ?? ''
       const model360 = document.querySelector<HTMLElement>('#official .fixtureComposerTrailing button[aria-haspopup="menu"]')!
       const model360Rect = model360.getBoundingClientRect()
-      const model360Label = model360.querySelector<HTMLElement>('span')!
       document.body.dataset.modelMedWidth = String(Math.round(model360Rect.width))
-      document.body.dataset.modelMedFits = String(model360Label.scrollWidth <= model360Label.clientWidth + 1)
+      document.body.dataset.modelMedFits = String(model360.scrollWidth <= model360.clientWidth + 1)
+      document.body.dataset.deepseekText = closedLabel(model360)
+      document.body.dataset.deepseekAria = model360.getAttribute('aria-label') ?? ''
+      const model412 = document.querySelector<HTMLElement>('#phone412 .fixtureComposerTrailing button[aria-haspopup="menu"]')!
+      document.body.dataset.cursorGrokText = closedLabel(model412)
+      document.body.dataset.cursorGrokAria = model412.getAttribute('aria-label') ?? ''
+      const near4 = (value: number): boolean => Math.abs(value - 4) <= 1
+      const cluster = (rootId: string) => {
+        const bar = document.querySelector<HTMLElement>('#' + rootId + ' .fixtureComposerToolbar')!
+        const plus = bar.querySelector<HTMLElement>('[data-add-control]')!.getBoundingClientRect()
+        const perm = bar.querySelector<HTMLElement>('[data-plan-control]')!.getBoundingClientRect()
+        const plan = bar.querySelector<HTMLElement>('[data-mobile-plan-toggle]')!.getBoundingClientRect()
+        const model = bar.querySelector<HTMLElement>('.fixtureComposerTrailing button[aria-haspopup="menu"]')!.getBoundingClientRect()
+        const ctx = bar.querySelector<HTMLElement>('[data-context-control]')!.getBoundingClientRect()
+        const send = bar.querySelector<HTMLElement>('[data-send-control]')!.getBoundingClientRect()
+        const barRect = bar.getBoundingClientRect()
+        const plusPerm = Math.round(perm.left - plus.right)
+        const permPlan = Math.round(plan.left - perm.right)
+        const modelCtx = Math.round(ctx.left - model.right)
+        const ctxSend = Math.round(send.left - ctx.right)
+        return {
+          plusPerm, permPlan, modelCtx, ctxSend,
+          planModel: Math.round(model.left - plan.right),
+          planWidth: Math.round(plan.width),
+          leftAlign: Math.round(plus.left - barRect.left),
+          rightAlign: Math.round(barRect.right - send.right),
+          gaps4: near4(plusPerm) && near4(permPlan) && near4(modelCtx) && near4(ctxSend),
+          noOverlap: plus.right <= perm.left && perm.right <= plan.left && plan.right <= model.left && model.right <= ctx.left && ctx.right <= send.left,
+        }
+      }
+      const gaps360 = cluster('official')
+      const gaps390 = cluster('phone390')
+      const gaps320 = cluster('phone320')
+      document.body.dataset.iconGaps360 = String(gaps360.gaps4)
+      document.body.dataset.iconGaps390 = String(gaps390.gaps4)
+      document.body.dataset.iconGaps320 = String(gaps320.gaps4)
+      document.body.dataset.planHit360 = String(gaps360.planWidth)
+      document.body.dataset.leftAlign360 = String(gaps360.leftAlign)
+      document.body.dataset.rightAlign360 = String(gaps360.rightAlign)
+      document.body.dataset.planModelGap360 = String(gaps360.planModel)
+      document.body.dataset.modelPacked390 = String(near4(gaps390.modelCtx) && gaps390.planModel >= 8)
       const toolbarFit = (rootId: string): string => {
         const bar = document.querySelector<HTMLElement>('#' + rootId + ' .fixtureComposerToolbar')!
-        const p = bar.querySelector<HTMLElement>('[data-plan-control]')!.getBoundingClientRect()
+        const p = bar.querySelector<HTMLElement>('[data-mobile-plan-toggle]')!.getBoundingClientRect()
         const m = bar.querySelector<HTMLElement>('.fixtureComposerTrailing button[aria-haspopup="menu"]')!.getBoundingClientRect()
         const c = bar.querySelector<HTMLElement>('[data-context-control]')!.getBoundingClientRect()
-        return String(p.right <= m.left && m.right <= c.left)
+        const ring = bar.querySelector<HTMLElement>('[data-context-control] svg')!
+        const ringHidden = getComputedStyle(ring).display === 'none' || c.width <= 0
+        return String(p.right <= m.left && m.right <= c.left && !ringHidden)
       }
       document.body.dataset.composerFit360 = toolbarFit('official')
       document.body.dataset.composerFit390 = toolbarFit('phone390')
@@ -322,12 +383,12 @@ function App() {
   return <>
     <style>{`:root { --dsw-alias-bg-base: #ffffff; --dsw-alias-bg-layer-1: #f3f4f6; }
       .dcs-overlay { position: absolute; inset: 0; } .dcs-toggle { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; } .dcs-root { border-left: 1px solid; border-bottom: 1px solid; background: var(--dsw-alias-bg-layer-1); } .dcs-tabbar { border-bottom: 1px solid; }
-      .fixtureComposerToolbar, .fixtureComposerTools, .fixtureComposerTrailing { display: flex; align-items: center; } .fixtureComposerToolbar { box-sizing: border-box; justify-content: space-between; width: 100%; } .fixtureComposerTools, .fixtureComposerTrailing { min-width: 0; } .fixtureComposerToolbar button { min-width: 28px; height: 28px; } .fixtureComposerTools [data-plan-control] > span { display: none !important; } .fixtureModelCard { box-sizing: border-box; display: flex; flex-direction: column; width: 260px; padding: 4px; } .fixtureQuestionFrame { box-sizing: border-box; width: 100%; padding: 6px 32px 10px; } [data-question-card] { width: 100%; } .fixtureQuestionFooter { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 0 10px; } .fixtureQuestionPager, .fixtureQuestionActions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; } .fixtureQuestionFooter button { min-height: 40px; padding: 0 16px; white-space: nowrap; } .fixtureQuestionFooter [role=status] { flex: 1; }`}</style>
+      .fixtureComposerToolbar, .fixtureComposerTools, .fixtureComposerTrailing { display: flex; align-items: center; } .fixtureComposerToolbar { box-sizing: border-box; justify-content: space-between; width: 100%; } .fixtureComposerTools, .fixtureComposerTrailing { min-width: 0; } .fixtureComposerToolbar button { min-width: 28px; height: 28px; }  .fixtureModelCard { box-sizing: border-box; display: flex; flex-direction: column; width: 260px; padding: 4px; } .fixtureQuestionFrame { box-sizing: border-box; width: 100%; padding: 6px 32px 10px; } [data-question-card] { width: 100%; } .fixtureQuestionFooter { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 0 10px; } .fixtureQuestionPager, .fixtureQuestionActions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; } .fixtureQuestionFooter button { min-height: 40px; padding: 0 16px; white-space: nowrap; } .fixtureQuestionFooter [role=status] { flex: 1; }`}</style>
     <FrameHarness id="official" width={360} />
     <FrameHarness id="constrained" width={240} />
-    <FrameHarness id="phone320" width={320} english feedback />
-    <FrameHarness id="phone390" width={390} english feedback />
-    <FrameHarness id="phone412" width={412} feedback />
+    <FrameHarness id="phone320" width={320} english feedback modelName="Acme Super Long Custom Model Name That Must Ellipsize" />
+    <FrameHarness id="phone390" width={390} english feedback modelName="Grok 4.6" />
+    <FrameHarness id="phone412" width={412} feedback modelName="Cursor Grok 4.6" />
     {/* Host applies the expand intent after the tap; until Codex mounts its
         content the open drawer must stay parked instead of sliding out blank. */}
     <FrameHarness id="laggy" width={360} laggyCodex />

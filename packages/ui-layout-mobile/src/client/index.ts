@@ -18,6 +18,8 @@ import { MobileLayoutController } from './service.ts'
 import { ThemePresenter } from './theme-presenter.ts'
 import { ComposerAttach } from './ComposerAttach.tsx'
 import { CompactStatsLine } from './CompactStatsLine.tsx'
+import { PlanToggle } from './PlanToggle.tsx'
+import { commandsExecuteFrom, interpretPlanCommandResult, type PlanCommand } from './plan-toggle.ts'
 import { installHistoryContinuityAdapter } from './history-continuity.ts'
 import { installLegacyBlankPresetAdapter } from './legacy-blank-preset.ts'
 import { installHostModelFallbackAdapter, type HostModelFallbackContext } from './host-model-fallback.ts'
@@ -75,6 +77,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.input.left': { kind: 'list'; scope: 'session' }
     /** Occupied by this package's compact StatsLine. Declared by ui-conversation. */
     'conversation.composer.dock': { kind: 'list'; scope: 'session'; owner: object }
+    /** Occupied by this package's plan-mode icon toggle. Declared by ui-conversation. */
+    'conversation.input.plan': { kind: 'single'; scope: 'session'; owner: { locked: boolean } }
   }
 }
 
@@ -165,7 +169,7 @@ export function apply(ctx: ClientContext): void {
   )
   ctx.effect(() => installTurnTailPresenter(), 'ui-layout-mobile: compact turn tail')
   ctx.effect(() => installModelPickerPresenter(), 'ui-layout-mobile: compact model details')
-  ctx.effect(() => installPermissionLabelPresenter(), 'ui-layout-mobile: compact permission labels')
+  ctx.effect(() => installPermissionLabelPresenter(), 'ui-layout-mobile: permission icon triggers')
   ctx.effect(() => installPresetLabelPresenter(), 'ui-layout-mobile: compact preset labels')
 
   ctx.effect(() => {
@@ -219,6 +223,36 @@ export function apply(ctx: ClientContext): void {
       disposeStats?.()
     }
   }, 'ui-layout-mobile: compact stats')
+
+  ctx.effect(() => {
+    let disposePlan: (() => void) | undefined
+    const mountPlan = (): void => {
+      if (disposePlan !== undefined) return
+      try {
+        disposePlan = ctx.slots.register({
+          name: 'conversation.input.plan',
+          priority: -1,
+          inject: (sessionId: string) => ({
+            runPlanCommand: async (line: PlanCommand) => {
+              const execute = commandsExecuteFrom(ctx)
+              if (execute === undefined) return 'commands unavailable'
+              return interpretPlanCommandResult(line, await execute(sessionId, line, []))
+            },
+          }),
+        }, PlanToggle)
+      } catch {
+        // ui-conversation declares this slot; retry when that roster lands.
+      }
+    }
+    mountPlan()
+    const off = ctx.on('slots/changed', (key: string) => {
+      if (key === 'conversation' || key === 'conversation.input.plan') mountPlan()
+    })
+    return () => {
+      off()
+      disposePlan?.()
+    }
+  }, 'ui-layout-mobile: plan toggle')
 }
 
 /** Slot bindings for the plus-button seat: official draft-image intake only.

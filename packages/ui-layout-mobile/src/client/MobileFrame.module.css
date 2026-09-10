@@ -347,19 +347,15 @@
   }
 }
 
-/* Narrow composer: this plugin only loads on the mobile root. Hide the
-   effort caption on the official model trigger (effort stays in its menu),
-   keep a bounded model trigger, and keep the official toolbar on one row. */
+/* Narrow composer: icon cluster on the left, model name + send on the right. */
 :global([data-composer-card] > div:last-child > div:last-child button[aria-haspopup="menu"] > span:nth-of-type(2)) {
   display: none;
 }
 
-/* The official model slot is no longer a direct child of the trailing toolbar.
-   Target its semantic trigger so long provider/model names stay on one line. */
 :global([data-composer-card] button[aria-label^="Select model"]),
 :global([data-composer-card] button[aria-label^="选择模型"]) {
   min-width: 0;
-  max-width: 10rem;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -373,66 +369,114 @@
   white-space: nowrap;
 }
 
-/* Keep the official permission name for React and accessibility, but render the
-   approved compact copy in the fixed-width mobile chip. */
-:global([data-mobile-permission-label]) {
-  display: inline !important;
-  flex: 1 1 auto;
+:global([data-mobile-model-trigger]) {
+  display: block;
   min-width: 0;
   overflow: hidden;
-  font-size: 0;
-  text-align: right;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0 !important;
 }
 
-:global([data-mobile-permission-label])::after {
-  content: attr(data-mobile-permission-label);
+:global([data-mobile-model-trigger])::after {
+  content: attr(data-mobile-model-trigger);
   font-size: 13px;
   line-height: 20px;
+}
+
+:global([data-mobile-permission-trigger]) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 28px;
+  padding: 0;
+  flex: none;
+  gap: 0;
+  overflow: hidden;
+}
+
+/* Official PermissionSelect children are sibling spans (icon, label, chevron).
+   Nested wrappers keep the first svg and hide everything after it. */
+:global([data-mobile-permission-trigger] > :not(:first-child)),
+:global([data-mobile-permission-trigger] svg ~ *) {
+  display: none !important;
+}
+
+/* Closed model trigger only: live DOM is span.triggerLabel (logo+name) + direct svg.chevron.
+   Do not hide option-list / menuitem disclosure chevrons. */
+:global([data-composer-card] button[aria-label^="Select model"] > svg),
+:global([data-composer-card] button[aria-label^="选择模型"] > svg) {
+  display: none !important;
+}
+
+/* Official ContextMeter is a 28px ring; keep it from shrinking behind a long model name. */
+:global([data-composer-card] button[aria-haspopup="dialog"]) {
+  flex: none;
+}
+
+:global([data-mobile-permission-generic] > *) {
+  display: none !important;
+}
+
+:global([data-mobile-permission-generic])::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M8.2 1.1 14.6 3.5v3.5c0 4.7-3.6 6.9-6.4 7.9C5.4 13.9 2 11.7 2 7V3.5L8.2 1.1z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M8.2 1.1 14.6 3.5v3.5c0 4.7-3.6 6.9-6.4 7.9C5.4 13.9 2 11.7 2 7V3.5L8.2 1.1z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 :global([data-composer-card] > div:last-child > div:last-child button[aria-haspopup="menu"]) {
   box-sizing: border-box;
   width: auto;
   min-width: 0;
-  max-width: 10rem;
-  flex: 1 1 auto;
+  max-width: 100%;
+  flex: 0 1 auto;
   justify-content: flex-end;
   text-align: right;
 }
 
 :global([data-composer-card] > div:last-child > div:last-child button[aria-haspopup="menu"] > span:first-of-type) {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   text-align: right;
 }
 
 :global([data-composer-card] > div:last-child) {
   flex-wrap: nowrap;
-  gap: 8px;
+  gap: 4px;
 }
 
 :global([data-composer-card] > div:last-child > div:first-child) {
+  flex: none;
+  gap: 4px;
+}
+
+:global([data-composer-card] > div:last-child > div:first-child > div) {
   gap: 4px;
 }
 
 :global([data-composer-card] > div:last-child > div:last-child) {
-  gap: 8px;
-}
-
-:global([data-composer-card] > div:last-child > div:last-child) {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
+  margin-left: auto;
   justify-content: flex-end;
+  gap: 4px;
 }
 
-/* 360px phones keep the full trigger; only narrower viewports take the 9rem cap. */
-@media (max-width: 359px) {
-  :global([data-composer-card] > div:last-child > div:last-child button[aria-haspopup="menu"]) {
-    width: auto;
-    max-width: 9rem;
-    flex-basis: auto;
-  }
+:global([data-composer-card] [data-slot="conversation.input.model"]) {
+  display: contents;
+}
+
+:global([data-composer-card] [data-slot="conversation.input.model"] > *) {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* The official composer scrollport still scrolls after its 14-line cap, but
