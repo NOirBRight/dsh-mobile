@@ -9,7 +9,7 @@ npm ci
 DSH_HOME="$DSH_HOME" npm run build
 ```
 
-`npm run build` prepares the official checkout and compiles the mobile-owned e2e-tunnel, interaction-operations, ui-layout-mobile, and mobile web shell used by the Android package. It does not build or install the published Host Pairing package or a Host-side browser shell. The mobile shell must compile against the pinned Host-compatible client checkout selected by `DSH_UPSTREAM` (default: the repository `.dsh-upstream` checkout). The verifier requires the official `dsh-v0.1.2-alpha.4` tag and revision before building.
+`npm run build` prepares the official checkout and compiles the mobile-owned e2e-tunnel, interaction-operations, ui-layout-mobile, and mobile web shell used by the Android package. It does not build or install the published Host Pairing package or a Host-side browser shell. The mobile shell must compile against the pinned Host-compatible client checkout selected by `DSH_UPSTREAM` (default: the repository `.dsh-upstream` checkout). The verifier requires the official `dsh-v0.1.5-rc.1` tag and revision before building, because the client module table it seeds must match the Host release the app pairs with. The frozen Alpha.4 clean-mobile matrix still builds and verifies `dsh-v0.1.2-alpha.4`; point `DSH_UPSTREAM` at that checkout when running it.
 
 Install the published Pairing package separately when a Host needs the Host plugin and `dsh-pair-mux` executable:
 

@@ -40,7 +40,7 @@ npm run verify:pairing
 
 ## Official baseline
 
-Compatibility checks inspect the pinned official **dsh-v0.1.2-alpha.4** provenance checkout (`4e84901e6471b79ec0338099867ebb4606d12bb5`) via `DSH_UPSTREAM`; the tag, commit, remote, and clean worktree must match exactly. The mobile matrix copies only regular files and directories into an isolated temporary directory, skips source links, recreates ignored dependencies with offline frozen `pnpm install --ignore-scripts`, then runs `pnpm run clean` and `pnpm run build` there. It hashes the resulting regular CLI and executes only that copied CLI. Mobile owns only its own interaction-operations and ui-layout-mobile workspaces; those are packed from source inside this repository.
+Compatibility checks inspect the pinned official **dsh-v0.1.5-rc.1** provenance checkout (`183f08e9c6dde7e36cd2318eaee70b0da08fb35e`) via `DSH_UPSTREAM`; the tag, commit, remote, and clean worktree must match exactly. The mobile shell is built from that same checkout, so its client module table carries every platform module the 0.1.5 Host plugin graph requires — including `dsh-client-ui-dockkit`, which the Alpha.4 shell lacked. The frozen Alpha.4 clean-mobile matrix keeps verifying `dsh-v0.1.2-alpha.4` against its own checkout. The mobile matrix copies only regular files and directories into an isolated temporary directory, skips source links, recreates ignored dependencies with offline frozen `pnpm install --ignore-scripts`, then runs `pnpm run clean` and `pnpm run build` there. It hashes the resulting regular CLI and executes only that copied CLI. Mobile owns only its own interaction-operations and ui-layout-mobile workspaces; those are packed from source inside this repository.
 
 ## Host Connection seam
 

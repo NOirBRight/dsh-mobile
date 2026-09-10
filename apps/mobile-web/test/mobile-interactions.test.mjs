@@ -6,6 +6,8 @@ import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { build } from 'vite'
 
+/** Upstream checkout selected by prepare-upstream.mjs; an explicit env still wins. */
+const upstream = process.env.DSH_UPSTREAM ?? resolve(import.meta.dirname, '../../../.dsh-upstream')
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/mobile-interactions')
 
 test('mobile composer closes other menus and never focuses input from send or stop', async () => {
@@ -19,10 +21,7 @@ test('mobile composer closes other menus and never focuses input from send or st
       resolve: {
         dedupe: ['react', 'react-dom'],
         alias: {
-          '@deepseek-ai/dsh-client-ui-primitives': resolve(
-            import.meta.dirname,
-            '../../../../deepseek-harness/packages/client/ui-primitives/src/index.ts',
-          ),
+          '@deepseek-ai/dsh-client-ui-primitives': resolve(upstream, 'packages/client/ui-primitives/src/index.ts'),
         },
       },
       build: { outDir, emptyOutDir: true },

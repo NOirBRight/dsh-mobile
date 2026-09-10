@@ -8,8 +8,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { aggregateErrors, run, sanitizedChildEnv, sha256File } from './mobile-matrix.mjs'
 
 const OFFICIAL_REPOSITORY = 'deepseek-ai/deepseek-harness'
+/** Official DSH baseline the mobile shell, its Host bridge artifact, and typecheck build against. */
+export const SHELL_DSH_REVISION = '183f08e9c6dde7e36cd2318eaee70b0da08fb35e'
+export const SHELL_DSH_TAG = 'dsh-v0.1.5-rc.1'
+/** Frozen Alpha.4 baseline the historical clean-mobile matrix still verifies; not the shell build input. */
 export const REQUIRED_DSH_REVISION = '4e84901e6471b79ec0338099867ebb4606d12bb5'
 export const REQUIRED_DSH_TAG = 'dsh-v0.1.2-alpha.4'
+
+/** Baseline the shell build and this verifier's CLI check use by default. */
+const SHELL_BASELINE = { revision: SHELL_DSH_REVISION, tag: SHELL_DSH_TAG }
+/** Baseline the Alpha.4 clean-mobile matrix passes explicitly. */
+export const ALPHA4_DSH_BASELINE = { revision: REQUIRED_DSH_REVISION, tag: REQUIRED_DSH_TAG }
 
 function repositoryOf(remote) {
   return remote
@@ -20,7 +29,7 @@ function repositoryOf(remote) {
     .replace(/\.git$/, '')
 }
 
-export function assessOfficialDshCheckout({ remote, status, head, tag }) {
+export function assessOfficialDshCheckout({ remote, status, head, tag }, baseline = SHELL_BASELINE) {
   const reasons = []
   if (repositoryOf(remote) !== OFFICIAL_REPOSITORY) {
     reasons.push('origin is not deepseek-ai/deepseek-harness')
@@ -28,11 +37,11 @@ export function assessOfficialDshCheckout({ remote, status, head, tag }) {
   if (status.trim() !== '') {
     reasons.push('official DSH checkout has local changes')
   }
-  if (head.trim() !== REQUIRED_DSH_REVISION) {
+  if (head.trim() !== baseline.revision) {
     reasons.push('official DSH revision does not match the required baseline')
   }
-  if (typeof tag !== 'string' || tag.trim() !== REQUIRED_DSH_TAG) {
-    reasons.push('official DSH checkout is not exactly tagged ' + REQUIRED_DSH_TAG)
+  if (typeof tag !== 'string' || tag.trim() !== baseline.tag) {
+    reasons.push('official DSH checkout is not exactly tagged ' + baseline.tag)
   }
   return reasons.length === 0
     ? { ok: true, revision: head.trim() }
@@ -47,22 +56,22 @@ function git(checkout, ...args) {
   }).trim()
 }
 
-function inspectOfficialDshMetadata(checkout) {
+function inspectOfficialDshMetadata(checkout, baseline) {
   return assessOfficialDshCheckout({
     remote: git(checkout, 'config', '--get', 'remote.origin.url'),
     status: '',
     head: git(checkout, 'rev-parse', 'HEAD'),
     tag: git(checkout, 'tag', '--points-at', 'HEAD'),
-  })
+  }, baseline)
 }
 
-export function inspectOfficialDshCheckout(checkout) {
+export function inspectOfficialDshCheckout(checkout, baseline = SHELL_BASELINE) {
   return assessOfficialDshCheckout({
     remote: git(checkout, 'config', '--get', 'remote.origin.url'),
     status: git(checkout, 'status', '--porcelain'),
     head: git(checkout, 'rev-parse', 'HEAD'),
     tag: git(checkout, 'tag', '--points-at', 'HEAD'),
-  })
+  }, baseline)
 }
 function assertNoNonIgnoredOutputs(checkout, phase) {
   const status = git(checkout, 'status', '--porcelain')
@@ -176,12 +185,13 @@ function copyOfficialTree(source, destination) {
  * Source links and other non-regular paths are skipped; ignored dependencies are recreated in the copy.
  * @param checkout Official DSH provenance checkout selected by the caller.
  * @param destination Existing isolated parent for the temporary build directory.
+ * @param baseline Official revision and tag the copy must match.
  * @returns The exact built revision, copied checkout, source checkout, and CLI digest.
  */
-export function prepareOfficialDshCheckout(checkout, destination = undefined) {
+export function prepareOfficialDshCheckout(checkout, destination = undefined, baseline = SHELL_BASELINE) {
   const provenanceCheckout = resolve(checkout ?? resolve(dirname(fileURLToPath(import.meta.url)), '..', '.dsh-upstream'))
   const sourceCheckout = realpathSync(provenanceCheckout)
-  const before = inspectOfficialDshCheckout(sourceCheckout)
+  const before = inspectOfficialDshCheckout(sourceCheckout, baseline)
   if (!before.ok) throw new Error(before.reasons.join('; '))
   assertNoNonIgnoredOutputs(sourceCheckout, 'source')
   assertNoTrackedCoreChanges(sourceCheckout, 'source')
@@ -193,9 +203,9 @@ export function prepareOfficialDshCheckout(checkout, destination = undefined) {
   const copiedCheckout = resolve(buildRoot, 'checkout')
   try {
     copyOfficialTree(sourceCheckout, copiedCheckout)
-    const copiedBefore = inspectOfficialDshMetadata(copiedCheckout)
+    const copiedBefore = inspectOfficialDshMetadata(copiedCheckout, baseline)
     if (!copiedBefore.ok) throw new Error(copiedBefore.reasons.join('; '))
-    if (copiedBefore.revision !== REQUIRED_DSH_REVISION || copiedBefore.revision !== before.revision) {
+    if (copiedBefore.revision !== baseline.revision || copiedBefore.revision !== before.revision) {
       throw new Error('copied official DSH source revision does not match the required baseline')
     }
     run('pnpm', ['install', '--offline', '--frozen-lockfile', '--ignore-scripts'], { cwd: copiedCheckout, env: { DSH_UPSTREAM: copiedCheckout } })
@@ -205,12 +215,12 @@ export function prepareOfficialDshCheckout(checkout, destination = undefined) {
     assertFreshOfficialCli(cli)
     const cliHash = sha256File(cli)
     assertFreshOfficialCli(cli)
-    const after = inspectOfficialDshMetadata(copiedCheckout)
+    const after = inspectOfficialDshMetadata(copiedCheckout, baseline)
     if (!after.ok) throw new Error(after.reasons.join('; '))
-    if (after.revision !== REQUIRED_DSH_REVISION || after.revision !== before.revision) {
+    if (after.revision !== baseline.revision || after.revision !== before.revision) {
       throw new Error('built official DSH CLI revision does not match the required baseline')
     }
-    const sourceAfter = inspectOfficialDshCheckout(sourceCheckout)
+    const sourceAfter = inspectOfficialDshCheckout(sourceCheckout, baseline)
     if (!sourceAfter.ok || sourceAfter.revision !== before.revision) {
       throw new Error('official DSH provenance checkout changed during isolated build')
     }

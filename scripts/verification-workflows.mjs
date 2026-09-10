@@ -13,6 +13,7 @@ import {
   selectResponsiveBootManifest,
 } from '../apps/mobile-web/src/manifest.ts'
 import {
+  ALPHA4_DSH_BASELINE,
   prepareOfficialDshCheckout,
   REQUIRED_DSH_REVISION,
   REQUIRED_DSH_TAG,
@@ -385,7 +386,7 @@ export async function runCleanAlpha4MobileMatrix({ mode, resolvePairing }) {
         assertMobilePackageWorkspaces()
         assertStrictArtifact(selection, artifactInspection, strictPairingLabel(selection, artifact.tarball))
       }
-      const checkoutResult = prepareOfficialDshCheckout(provenanceCheckout, tempRoot)
+      const checkoutResult = prepareOfficialDshCheckout(provenanceCheckout, tempRoot, ALPHA4_DSH_BASELINE)
       const cli = checkoutResult.cli
       const expectedCliHash = checkoutResult.cliHash
       const officialEnv = { DSH_UPSTREAM: checkoutResult.sourceCheckout }

@@ -44,6 +44,9 @@ export default defineConfig({
       { find: /^@deepseek-ai\/dsh-client-web-react$/, replacement: up('packages/client/web-react/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-ui-slots$/, replacement: up('packages/client/ui-slots/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-ui-primitives$/, replacement: up('packages/client/ui-primitives/src/index.ts') },
+      // Platform module added by the 0.1.5 client seed table; shells that omit it
+      // fail Host plugin imports with "require(...dockkit) missed the module table".
+      { find: /^@deepseek-ai\/dsh-client-ui-dockkit$/, replacement: up('packages/client/ui-dockkit/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-ui-attachment$/, replacement: up('packages/client/ui-attachment/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-schema-form$/, replacement: up('packages/client/schema-form/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-modules\/client$/, replacement: up('packages/client/modules/src/client/index.ts') },

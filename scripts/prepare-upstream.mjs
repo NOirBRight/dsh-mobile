@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const link = resolve(root, '.dsh-upstream')
 const required = 'packages/client/store/package.json'
-const requiredRevision = '4e84901e6471b79ec0338099867ebb4606d12bb5'
-const requiredTag = 'dsh-v0.1.2-alpha.4'
+const requiredRevision = '183f08e9c6dde7e36cd2318eaee70b0da08fb35e'
+const requiredTag = 'dsh-v0.1.5-rc.1'
 
 function git(target, ...args) {
   try {

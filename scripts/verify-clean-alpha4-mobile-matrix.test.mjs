@@ -285,7 +285,7 @@ test('matrix roots and npm/DSH children use isolated operational state', async (
   assert.match(workflow, /lstatSync\(tempRoot\)/)
   assert.match(workflow, /removeTemporaryRoot\(tempRoot\)/)
   assert.match(workflow, /unlinkSync\(tempRoot\)/)
-  assert.match(workflow, /prepareOfficialDshCheckout\(provenanceCheckout, tempRoot\)/)
+  assert.match(workflow, /prepareOfficialDshCheckout\(provenanceCheckout, tempRoot, ALPHA4_DSH_BASELINE\)/)
   assert.match(workflow, /DSH_UPSTREAM: checkoutResult\.sourceCheckout/)
   assert.match(strict, /runCleanAlpha4MobileMatrix/)
   assert.match(dev, /runCleanAlpha4MobileMatrix/)
