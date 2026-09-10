@@ -4,6 +4,7 @@
     "noEmit": true,
     "declaration": false,
     "allowImportingTsExtensions": true,
+    "types": ["node"],
     "paths": {
       "@deepseek-ai/dsh-client-web": ["../../.dsh-upstream/packages/client/web/lib/types/index.d.ts"],
       "@dsh-mobile/e2e-tunnel": ["../../packages/e2e-tunnel/src/index.ts"]

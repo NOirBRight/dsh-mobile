@@ -12,13 +12,20 @@ function FrameHarness() {
     },
   }), [current])
   const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)
-  const panels = { drawerOpen: true, detailsOpen: false }
+  const panels = {
+    drawerOpen: true,
+    panelInfo: { activePanelId: null },
+    rightbar: { track: false, fullscreen: false, dismissed: false },
+  }
   const useStore = (select: (state: typeof panels) => unknown) => select(panels)
   const actions = useMemo(() => ({
     toggleSidebar() {},
     closeDrawer() {},
-    openDetails() {},
-    closeDetails() {},
+    selectPanel() {},
+    retainMainPanels() {},
+    openRightbar() {},
+    closeRightbar() {},
+    dismissRightbar() {},
   }), [])
   const renderSlot = (name: string) => {
     if (name === 'sidebar') return <button
@@ -28,7 +35,7 @@ function FrameHarness() {
       aria-selected={current === 'b'}
       onClick={() => { setCurrent('b') }}
     >Session B</button>
-    if (name === 'conversation') return (
+    if (name === 'main') return (
       <div data-composer-card>
         <div
           id="message"

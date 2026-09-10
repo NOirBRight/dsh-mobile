@@ -17,13 +17,20 @@ const statsProjections: Record<string, unknown> = {
 let closeCount = 0
 
 function FrameHarness({ id, width, laggyCodex = false, english = false, feedback = false, modelName = 'DeepSeek V4 Flash Vision (exp)' }: { id: string; width: number; laggyCodex?: boolean; english?: boolean; feedback?: boolean; modelName?: string }) {
-  const panels = { drawerOpen: true, detailsOpen: laggyCodex }
+  const panels = {
+    drawerOpen: true,
+    panelInfo: { activePanelId: null },
+    rightbar: { track: laggyCodex, fullscreen: false, dismissed: false },
+  }
   const useStore = (select: (state: typeof panels) => unknown) => select(panels)
   const actions = useMemo(() => ({
     toggleSidebar() {},
     closeDrawer() { closeCount += 1 },
-    openDetails() {},
-    closeDetails() {},
+    selectPanel() {},
+    retainMainPanels() {},
+    openRightbar() {},
+    closeRightbar() {},
+    dismissRightbar() {},
   }), [])
   const renderSlot = (name: string, owner: { width?: number }) => {
     if (name === 'sidebar') {
@@ -37,7 +44,7 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
         <div role="treeitem" aria-selected="true" data-session-row={id}>Session A</div>
       </div>
     }
-    if (name === 'details') {
+    if (name === 'rightbar') {
       // The real Codex content is empty while collapsed; shell.overlay remains
       // stable, while these chrome nodes let the fixture inspect edge cleanup.
       if (laggyCodex) return <div data-codex-details-placeholder />
@@ -46,7 +53,7 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
     if (name === 'shell.overlay') {
       return <div className="dcs-overlay"><button className="dcs-toggle" type="button"><svg width="16" height="16" /></button></div>
     }
-    if (name === 'conversation') return <div style={{ '--dsh-composer-side-clearance': '16px' } as React.CSSProperties}>
+    if (name === 'main') return <div style={{ '--dsh-composer-side-clearance': '16px' } as React.CSSProperties}>
       <header data-session-header>
         <div>
           <div><nav aria-label="会话层级">Old title</nav><div data-header-action>

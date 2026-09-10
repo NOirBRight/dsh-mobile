@@ -10,7 +10,8 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type { PanelActions } from './service.ts'
+import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PanelInfo } from './service.ts'
 import { MobileFrame } from './MobileFrame.tsx'
 import type { MobileInteractionOperations } from './MobileFrame.tsx'
 import { createMobileLayoutStore } from './stores.ts'
@@ -35,7 +36,7 @@ import type { DraftConversation } from './composer-attach.ts'
 // registrants compose against; frame components and the store factory stay
 // package-internal (same convergence rule as upstream ui-layout).
 export { MobileLayoutController } from './service.ts'
-export type { IMobileLayout } from './service.ts'
+export type { IMobileLayout, MainPanelId, PanelInfo, UsePanelInfo } from './service.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -56,28 +57,33 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'sidebar': { kind: 'single'; scope: 'root'; owner: SidebarOwnerProps }
     /**
-     * The whole center column (the mobile frame's single content column),
+     * Center column selected by sidebar entry id. The reserved `conversation`
+     * key hosts the Conversation — the mobile frame's single content column,
      * across both the no-session hero and a live conversation. OCCUPIED by
-     * ui-conversation's ConversationRoot.
+     * ui-conversation's ConversationPanel.
      */
-    'conversation': { kind: 'single'; scope: 'session-maybe'; owner: ConvOwnerProps }
+    'main': { kind: 'keyed'; scope: 'root' }
     /**
-     * The details surface, shown when the layout opens it; on mobile a
-     * full-screen sheet over the content column. OCCUPIED by
-     * ui-conversation's DetailsPanel. Stays mounted while closed.
+     * The right surface: on mobile a full-screen sheet over the content column,
+     * shown when its occupant reports it. OCCUPIED by ui-sidebar-right, which
+     * owns the expanded/hidden decision and reports it through `ctx.layout`.
+     * Stays mounted while closed.
      */
-    'details': { kind: 'single'; scope: 'session'; owner: DetailsOwnerProps }
+    'rightbar': { kind: 'single'; scope: 'root'; owner: RightbarOwnerProps }
     /**
      * Frame-wide floating layer, above every surface and outside their scroll
      * containers. Additive list seat for badges, toasts, status pills. The
      * layer is click-through; entries opt back into pointer events.
      */
     'shell.overlay': { kind: 'list'; scope: 'root' }
-    /** Occupied by this package's plus-button attach control. Declared by ui-conversation (no owner: entries read session state through the standard hooks). */
+    // Declared by ui-conversation at runtime; re-declared here (identical kind
+    // and scope) so this package still compiles the session-scoped registrations
+    // below against the upstream checkout alone.
+    /** Occupied by this package's plus-button attach control. */
     'conversation.input.left': { kind: 'list'; scope: 'session' }
-    /** Occupied by this package's compact StatsLine. Declared by ui-conversation. */
+    /** Occupied by this package's compact StatsLine. */
     'conversation.composer.dock': { kind: 'list'; scope: 'session'; owner: object }
-    /** Occupied by this package's plan-mode icon toggle. Declared by ui-conversation. */
+    /** Occupied by this package's plan-mode icon toggle. */
     'conversation.input.plan': { kind: 'single'; scope: 'session'; owner: { locked: boolean } }
   }
 }
@@ -90,11 +96,15 @@ export interface SidebarOwnerProps {
   width: number
 }
 
-/** Conversation owner share: business state and actions belong to the registrant. */
-export interface ConvOwnerProps {}
-
-/** Details owner share: empty — sessionId arrives as a framework-standard prop. */
-export interface DetailsOwnerProps {}
+/** Right column owner share: the frame's single content width on mobile. */
+export interface RightbarOwnerProps {
+  /** Rendered surface width in px. */
+  width: number
+  /** Current frame width in px. */
+  viewportWidth: number
+  /** Whether the sheet can be shown (the mobile frame always can). */
+  canShow: boolean
+}
 
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme', 'sessions', 'remote.agentPresets', 'modelDirectories']
@@ -116,27 +126,43 @@ function interactionOperationsFrom(ctx: ClientContext): MobileInteractionOperati
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
-  const layout = new MobileLayoutController()
   ctx.effect(() => {
+    // Same assembly as upstream ui-layout: one store instance is shared by the
+    // registration and the service face, and the panel-info source is provided
+    // as a root standard prop.
+    const handle = createMobileLayoutStore()
+    const instance = handle.create()
+    const store: typeof handle = { ...handle, create: () => instance }
+    const layout = new MobileLayoutController(instance.actions, id =>
+      ctx.slots.entries('main').some(entry => entry.options.key === id))
+    const panelInfo: HostObservable<PanelInfo> = {
+      getSnapshot: () => instance.getSnapshot().panelInfo,
+      subscribe: listener => instance.subscribe(listener),
+    }
+    const disposePanelInfo = ctx.slots.provideRoot({ hooks: { panelInfo } })
     const disposeService = ctx.reflect.provide('layout', layout)
     const disposeRegistration = ctx.slots.register({
       name: 'root',
       children: {
         'sidebar': { kind: 'single', scope: 'root' },
-        'conversation': { kind: 'single', scope: 'session-maybe' },
-        'details': { kind: 'single', scope: 'session' },
+        'main': { kind: 'keyed', scope: 'root' },
+        'rightbar': { kind: 'single', scope: 'root' },
         'shell.overlay': { kind: 'list', scope: 'root' },
       },
-      // Exclusive store: the factory itself — the framework instantiates per
-      // entry and delivers useStore/actions to MobileFrame as standard props.
-      store: createMobileLayoutStore,
-      inject: (actions: PanelActions) => {
-        layout.attachPanels(actions)
-        return { interactionOperations: interactionOperationsFrom(ctx) }
-      },
+      store,
+      inject: () => ({ interactionOperations: interactionOperationsFrom(ctx) }),
     }, MobileFrame)
+    const retainMainPanels = (): void => {
+      instance.actions.retainMainPanels(ctx.slots.entries('main').flatMap(entry =>
+        entry.options.key === undefined ? [] : [entry.options.key]))
+    }
+    const disposePanels = ctx.slots.subscribe('main', retainMainPanels)
+    retainMainPanels()
     return () => {
+      layout.dispose()
+      disposePanels()
       disposeRegistration()
+      disposePanelInfo()
       // provide()'s disposer settles asynchronously; teardown is synchronous fire-and-forget.
       void disposeService()
     }

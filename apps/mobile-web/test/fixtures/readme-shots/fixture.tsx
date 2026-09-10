@@ -123,18 +123,25 @@ function CodexFiles() {
 }
 
 function Frame({ drawerOpen, detailsOpen }: { drawerOpen: boolean; detailsOpen: boolean }) {
-  const panels = { drawerOpen, detailsOpen }
+  const panels = {
+    drawerOpen,
+    panelInfo: { activePanelId: null },
+    rightbar: { track: detailsOpen, fullscreen: false, dismissed: false },
+  }
   const useStore = (select: (state: typeof panels) => unknown) => select(panels)
   const actions = useMemo(() => ({
     toggleSidebar() {},
     closeDrawer() {},
-    openDetails() {},
-    closeDetails() {},
+    selectPanel() {},
+    retainMainPanels() {},
+    openRightbar() {},
+    closeRightbar() {},
+    dismissRightbar() {},
   }), [])
   const renderSlot = (name: string) => {
     if (name === 'sidebar') return <Nav />
-    if (name === 'conversation') return <Conversation />
-    if (name === 'details') return <CodexFiles />
+    if (name === 'main') return <Conversation />
+    if (name === 'rightbar') return <CodexFiles />
     if (name === 'shell.overlay') {
       return <div className="dcs-overlay"><button type="button" className="dcs-toggle" aria-label="Codex">▦</button></div>
     }

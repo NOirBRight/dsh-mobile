@@ -50,7 +50,7 @@ export interface MobileInteractionOperations {
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type MobileFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay'>
+  & PropsRenderSlots<'sidebar' | 'main' | 'rightbar' | 'shell.overlay'>
   & PropsStore<ReturnType<typeof createMobileLayoutStore>>
   & { interactionOperations?: MobileInteractionOperations }
 
@@ -60,21 +60,24 @@ export function MobileFrame({
   useSessions,
   actions,
   renderSlot,
-  SessionProvider,
   interactionOperations,
 }: MobileFrameProps) {
   const panels = useStore(s => s)
+  /** The right surface is drawn only while its occupant reports it and no mobile dismissal hides it. */
+  const rightbarVisible = panels.rightbar.track && !panels.rightbar.dismissed
   const frameRef = useRef<HTMLDivElement | null>(null)
   const drawerRef = useRef<HTMLElement | null>(null)
   const [drawerWidth, setDrawerWidth] = useState(OFFICIAL_DRAWER_WIDTH)
+  /** Measured frame width, published to the right surface as the owner share. */
+  const [frameWidth, setFrameWidth] = useState(() => (typeof window === 'undefined' ? 0 : window.innerWidth))
   useLayoutEffect(() => {
-    if (!panels.detailsOpen || interactionOperations === undefined) return
+    if (!rightbarVisible || interactionOperations === undefined) return
     return interactionOperations.registerSurface({
       id: 'mobile-details',
       kind: 'details',
-      dismiss: () => { actions.closeDetails() },
+      dismiss: () => { actions.dismissRightbar() },
     })
-  }, [actions, interactionOperations, panels.detailsOpen])
+  }, [actions, interactionOperations, rightbarVisible])
   useLayoutEffect(() => {
     if (!panels.drawerOpen || interactionOperations === undefined) return
     return interactionOperations.registerSurface({
@@ -122,7 +125,7 @@ export function MobileFrame({
   useLayoutEffect(() => {
     if (lastSession.current === detailsSession) return
     if (lastSession.current !== undefined && detailsSession !== undefined) {
-      actions.closeDetails()
+      actions.dismissRightbar()
       actions.closeDrawer()
     }
     lastSession.current = detailsSession
@@ -155,6 +158,8 @@ export function MobileFrame({
       const visibleHeight = viewport?.height
       const height = resolveMobileViewportHeight(layoutHeight, visibleHeight)
       if (height > 0) frame.style.setProperty('--dsh-mobile-viewport-height', height + 'px')
+      const width = frame.getBoundingClientRect().width
+      if (width > 0) setFrameWidth(current => (current === width ? current : width))
     }
     update()
     window.addEventListener('resize', update)
@@ -172,7 +177,7 @@ export function MobileFrame({
       ref={frameRef}
       className={css.frame}
       data-drawer-open={panels.drawerOpen || undefined}
-      data-details-open={panels.detailsOpen || undefined}
+      data-details-open={rightbarVisible || undefined}
     >
       <header className={css.topbar} data-mobile-topbar>
         <button
@@ -186,7 +191,7 @@ export function MobileFrame({
         <div className={css.sessionTitle} title={sessionTitle} data-mobile-session-title>{sessionTitle}</div>
       </header>
       <main className={css.center}>
-        {renderSlot('conversation', {})}
+        {renderSlot('main', {}, { entryKey: panels.panelInfo.activePanelId ?? 'conversation' })}
       </main>
       <div className={css.noticeLayer} data-mobile-connection-notice-layer>
         <div className={css.topbarNotice} data-mobile-topbar-notice hidden role="status" aria-live="polite">
@@ -211,7 +216,7 @@ export function MobileFrame({
         {renderSlot('sidebar', { collapsed: false, width: drawerWidth })}
       </nav>
       <section className={css.detailsSheet} aria-label="详情面板">
-        <SessionProvider>{renderSlot('details', {})}</SessionProvider>
+        {renderSlot('rightbar', { width: frameWidth, viewportWidth: frameWidth, canShow: true })}
       </section>
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}
