@@ -19,6 +19,8 @@ Android-first 的 Capacitor 本地应用壳。运行 origin 为 https://localhos
 
 npm run build 会构建 @dsh-mobile/interaction-operations 与 @dsh-mobile/ui-layout-mobile。操作插件在宽/窄两种 Product Client root 都加载；移动布局只替换窄屏 root，boot 永远走官方 Runtime。Host 其余插件 bundle 经 tunnel fetch，转为本地 Blob URL 后交给 DSH ModuleLoader。没有静态镜像步骤。
 
+APK 内这三个本地 bundle 由 `/mobile-plugins/@dsh-mobile/*` 提供，而不是 `/plugins/*`：Capacitor 会把 Web root 的 `plugins/` 目录下所有文件当成 Cordova 插件 JS，拼成一段 document-start 脚本注入，那时还没有任何 Shell 代码和模块表，`window.__ModuleLoader__.load(...)` 必然抛 `Cannot read properties of undefined (reading 'load')`。`package-android-layout.mjs` 在 cap copy 之后把 cap 复制到 `plugins/` 的那几份删掉、改放到 `mobile-plugins/`；浏览器部署仍用 `/plugins/@dsh-mobile/*`。
+
 ## 后台连接保护
 
 该功能默认关闭。用户在“设备连接”中开启后，App 注册常驻通知并启动 Android remote-messaging Foreground Service；native 层持有 partial wake lock，并周期性提示 Shell 探测当前 Host。关闭选项会停止 Service 并释放 wake lock。Android 13 及以上若不允许通知，启用会失败且偏好不会保存。

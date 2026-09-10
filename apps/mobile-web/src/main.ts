@@ -8,7 +8,7 @@ import { resolveClientDeviceName } from './client-device-name.ts'
 import { createBackgroundConnectionControl, readBackgroundConnectionPreference, writeBackgroundConnectionPreference } from './background-connection.ts'
 import { BrowserCredentialVault, NativeCredentialVault, purgeLegacyAndroidWebCredentials, type NativeCredentialVaultBridge, type ReadableCredentialVault } from './credential-vault.ts'
 import { claimShellNativeBridges, concealShellNativeBridges, installSystemBarThemeSync } from './native-bridges.ts'
-import { COLD_BOOT_PLUGIN_CONCURRENCY, hostLaunchTokenExchangeUrl, installCompatibilityNotice, launchTokenFromSearch, loadSameOriginMobileBootManifest, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, readViewportWidth, SAME_ORIGIN_BOOT_NAV_KEY, sameOriginBootFailureTitle, sameOriginHostRedirectLocation, selectResponsiveBootManifest, setProtectedCacheScope, setSameOriginHostBridgeCapability, type BootManifest, type ResponsiveBootSelection } from './manifest.ts'
+import { ANDROID_LOCAL_PLUGIN_BASE, COLD_BOOT_PLUGIN_CONCURRENCY, hostLaunchTokenExchangeUrl, installCompatibilityNotice, launchTokenFromSearch, loadSameOriginMobileBootManifest, NARROW_LAYOUT_BREAKPOINT, officialNarrowContractAvailable, readViewportWidth, SAME_ORIGIN_BOOT_NAV_KEY, sameOriginBootFailureTitle, sameOriginHostRedirectLocation, selectResponsiveBootManifest, setProtectedCacheScope, setSameOriginHostBridgeCapability, type BootManifest, type ResponsiveBootSelection } from './manifest.ts'
 import { scanPairingQr } from './pairing-scanner.ts'
 import { routePlatformBack } from './platform-back.ts'
 import { prepareProfileConnection, type PreparedProfileConnection } from './profile-connection.ts'
@@ -239,6 +239,9 @@ void (async () => {
   own(() => appUrlListener.remove())
 
   const native = Capacitor.isNativePlatform()
+  // The APK cannot serve its own bundles from /plugins: Capacitor injects every
+  // file there as Cordova plugin JS before any shell code runs.
+  const localPluginBase = native ? ANDROID_LOCAL_PLUGIN_BASE : undefined
   if (native) {
     const backButtonListener = await App.addListener('backButton', ({ canGoBack }) => {
       routePlatformBack(document, canGoBack, {
@@ -712,6 +715,7 @@ void (async () => {
           expectedOfficialLayoutRevision,
           failedMobileLayoutRevision,
           localizePlugins: native,
+          localPluginBase,
           hostId: next.profile.hostId,
           ...shellMounted ? {} : { pluginConcurrency: COLD_BOOT_PLUGIN_CONCURRENCY },
           onPluginProgress(loaded, total) {
@@ -741,6 +745,7 @@ void (async () => {
         return hydrateBootManifestFromCache(next.profile.hostId, {
           viewportWidth: viewportWidth(),
           localizePlugins: native,
+          localPluginBase,
           failedMobileLayoutRevision,
         })
       },

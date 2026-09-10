@@ -16,7 +16,32 @@ const CLIENT_HMR_ID = '@deepseek-ai/dsh-client-hmr'
 const MOBILE_LAYOUT_REV = '0.1.60'
 const INTERACTION_OPERATIONS_REV = '0.1.17'
 const MOBILE_CONNECTION_REV = '0.1.23'
-const MOBILE_CONNECTION_URL = '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=' + MOBILE_CONNECTION_REV
+/** Path of the Host bridge bundle inside whichever base serves the shell's own plugins. */
+const MOBILE_CONNECTION_SUBPATH = '/@dsh-mobile/ui-layout-mobile/connection.js'
+
+/** Base the Host-served browser deployment serves the shell's own plugin bundles from. */
+export const WEB_LOCAL_PLUGIN_BASE = '/plugins'
+/**
+ * Base the Android APK serves them from. Capacitor concatenates every file
+ * under the web root's `plugins/` directory into one document-start script as
+ * Cordova plugin JS, before any shell code or module table exists, so the APK
+ * stages its own bundles beside that directory instead of inside it.
+ */
+export const ANDROID_LOCAL_PLUGIN_BASE = '/mobile-plugins'
+/** Every base the shell may serve its own plugin bundles from. */
+export const LOCAL_PLUGIN_BASES = [WEB_LOCAL_PLUGIN_BASE, ANDROID_LOCAL_PLUGIN_BASE] as const
+
+/**
+ * Whether a URL addresses the packaged mobile layout bundle or its Host bridge,
+ * the shell-owned assets that never travel through the tunnel.
+ * @param url - Absolute path or full URL of one boot entry.
+ * @returns True under either local plugin base.
+ */
+export function isPackagedShellPluginUrl(url: string): boolean {
+  const path = url.split('?')[0]
+  const subpath = '/@dsh-mobile/ui-layout-mobile/'
+  return LOCAL_PLUGIN_BASES.some(base => path === base + subpath + 'client.js' || path.startsWith(base + subpath))
+}
 const MOBILE_LAYOUT_EXTRA_INJECT = ['@deepseek-ai/dsh-api-remotes'] as const
 
 /** Mark the page only after the authenticated same-origin Host bridge is validated. */
@@ -274,7 +299,7 @@ export async function localizePluginBundles(
 
 async function localizeEntry(entry: BootEntry, options: PluginLocalizationOptions): Promise<BootEntry> {
   if (entry.id === MOBILE_LAYOUT_ID || entry.id === INTERACTION_OPERATIONS_ID) return { ...entry }
-  if (entry.id === CONNECTION_ID && entry.url.startsWith('/plugins/@dsh-mobile/ui-layout-mobile/connection.js')) return { ...entry }
+  if (entry.id === CONNECTION_ID && isPackagedShellPluginUrl(entry.url)) return { ...entry }
   if (!entry.url.startsWith('/plugins/')) {
     throw new Error('host plugin URL must stay under /plugins/: ' + entry.id)
   }
@@ -373,7 +398,8 @@ async function parseHostBridgeManifest(response: Response): Promise<BootManifest
   return {
     ...manifest,
     entries: manifest.entries.map(entry => entry.id === CONNECTION_ID
-      ? { ...entry, url: MOBILE_CONNECTION_URL, rev: MOBILE_CONNECTION_REV }
+      // This is the Host-served browser shell's own origin, so it keeps the web base.
+      ? { ...entry, url: WEB_LOCAL_PLUGIN_BASE + MOBILE_CONNECTION_SUBPATH + '?rev=' + MOBILE_CONNECTION_REV, rev: MOBILE_CONNECTION_REV }
       : { ...entry }),
   }
 }
@@ -462,6 +488,8 @@ export interface ResponsiveBootSelectionOptions {
   narrowContractAvailable?: boolean
   /** Official layout rev that previously crashed the mobile layout; skip retry until Host rev changes. */
   failedMobileLayoutRevision?: string
+  /** Base serving the shell's own plugin bundles; defaults to the browser deployment's. */
+  localPluginBase?: string
 }
 
 export interface ResponsiveBootSelection {
@@ -638,11 +666,12 @@ export function selectResponsiveBootManifest(
   options: ResponsiveBootSelectionOptions,
 ): ResponsiveBootSelection {
   const manifest = validateBootManifest(value)
+  const localBase = options.localPluginBase ?? WEB_LOCAL_PLUGIN_BASE
   const official = manifest.entries.find(entry => entry.id === DESKTOP_LAYOUT_ID)!
   const hostEntries = manifest.entries.filter(entry => entry.id !== CLIENT_HMR_ID && entry.id !== INTERACTION_OPERATIONS_ID)
   const interactionOperations: BootEntry = {
     id: INTERACTION_OPERATIONS_ID,
-    url: '/plugins/@dsh-mobile/interaction-operations/client.js?rev=' + INTERACTION_OPERATIONS_REV,
+    url: localBase + '/@dsh-mobile/interaction-operations/client.js?rev=' + INTERACTION_OPERATIONS_REV,
     rev: INTERACTION_OPERATIONS_REV,
     inject: ['@deepseek-ai/dsh-client-ui-renderer'],
   }
@@ -672,7 +701,7 @@ export function selectResponsiveBootManifest(
 
   const mobileLayout: BootEntry = {
     id: MOBILE_LAYOUT_ID,
-    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=' + MOBILE_LAYOUT_REV,
+    url: localBase + '/@dsh-mobile/ui-layout-mobile/client.js?rev=' + MOBILE_LAYOUT_REV,
     rev: MOBILE_LAYOUT_REV,
     // The mobile layout replaces the official one in the same seat and needs
     // the same provider roster plus the Remote used to repair legacy blank
@@ -682,7 +711,9 @@ export function selectResponsiveBootManifest(
   }
   const finalEntries = mobileEntries.map(entry => {
     if (entry.id === DESKTOP_LAYOUT_ID) return mobileLayout
-    if (entry.id === CONNECTION_ID) return { ...entry, url: MOBILE_CONNECTION_URL, rev: MOBILE_CONNECTION_REV }
+    if (entry.id === CONNECTION_ID) {
+      return { ...entry, url: localBase + MOBILE_CONNECTION_SUBPATH + '?rev=' + MOBILE_CONNECTION_REV, rev: MOBILE_CONNECTION_REV }
+    }
     return { ...entry }
   })
   return {

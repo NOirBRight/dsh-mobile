@@ -9,7 +9,7 @@
  */
 import { connect, HeartbeatController, TunnelError } from '@dsh-mobile/e2e-tunnel'
 import type { ClientKeypair, ConnectionPolicy, ConnectionStatus, ConnectOptions, TunnelClient, TunnelState } from '@dsh-mobile/e2e-tunnel'
-import { createLocalStoragePluginCache, extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readCachedBootManifest, selectResponsiveBootManifest, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
+import { createLocalStoragePluginCache, extractBootManifestJson, isPackagedShellPluginUrl, localizePluginBundles, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readCachedBootManifest, selectResponsiveBootManifest, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
 import { findConnectionBadgeAnchor, findSettingsTrigger, OFFICIAL_DRAWER, OWN_DRAWER_BRAND, OWN_TOPBAR, queryDrawerToggleSlot } from './anchors.ts'
 import type { EndpointKind } from './profiles.ts'
 
@@ -450,8 +450,7 @@ export class DeferredWebSocket {
 
 /** Packaged Android shell assets that must not be fetched from the Host. */
 export function isPackagedShellPluginPath(pathname: string): boolean {
-  return pathname === '/plugins/@dsh-mobile/ui-layout-mobile/client.js'
-    || pathname.startsWith('/plugins/@dsh-mobile/ui-layout-mobile/')
+  return isPackagedShellPluginUrl(pathname)
 }
 
 /** Host Gateway rendezvous/tunnel sockets stay on the Public Endpoint, not the tunneled Host. */
