@@ -8,18 +8,17 @@
 
 ## 安装
 
-需要本机已经在跑 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.2-alpha.4**，手机要连的就是这台。
+需要本机已经在跑 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.5-rc.1**，手机要连的就是这台。
 
 这是 **多份已发布的包**，不是 `npm i dsh-mobile`。Host 上先装 **远程**（配对插件），它会带上公开的隧道库。`interaction-operations` 是可独立安装的 Host Client 插件；移动 APK 已经内置它和 `ui-layout-mobile`，因此手机连接时不需要把布局源码或本地路径装进 Host。Codex Sidebar 可选，建议装。然后再装 APK。
 
 ```sh
-dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile-pairing/releases/latest/download/dsh-mobile-pairing.tgz
-dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile-interaction-operations.tgz
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile-pairing/releases/download/v0.1.15-015rc1/dsh-mobile-pairing-0.1.15.tgz
 dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-codex-sidebar/releases/latest/download/dsh-codex-sidebar.tgz
 dsh web
 ```
 
-第二行是独立的 `interaction-operations` Host 插件；它只注册浏览器交互适配器，不拥有业务设置或移动布局。第三行是 Codex Sidebar（Files / Review / Browser / Terminal）。只要聊天可以不装 Sidebar。
+`interaction-operations` 已随 `v1.1.12-015rc1d` APK 内置，不单独装进 Host。第二行是 Codex Sidebar（Files / Review / Browser / Terminal）。只要聊天可以不装 Sidebar。
 
 固定版本（可复现）安装：
 

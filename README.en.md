@@ -8,18 +8,17 @@ This is not a second DSH, not a browser that exposes `:3080`, and not a hosted p
 
 ## Install
 
-Need [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.2-alpha.4**, already running on the machine the phone should reach.
+Need [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.5-rc.1**, already running on the machine the phone should reach.
 
 This is **several published packages**, not `npm i dsh-mobile`. On the Host, install **Remote** (the pairing plugin). `interaction-operations` is an independently installable Host Client plugin; the mobile APK already ships it and `ui-layout-mobile`, so a phone connection does not require putting layout source or a workstation path in the Host. Codex Sidebar is optional and recommended. Then install the APK.
 
 ```sh
-dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile-pairing/releases/latest/download/dsh-mobile-pairing.tgz
-dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile-interaction-operations.tgz
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile-pairing/releases/download/v0.1.15-015rc1/dsh-mobile-pairing-0.1.15.tgz
 dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-codex-sidebar/releases/latest/download/dsh-codex-sidebar.tgz
 dsh web
 ```
 
-The second line is the independent `interaction-operations` Host plugin; it only registers browser interaction adapters and owns neither business settings nor the mobile layout. The third line is Codex Sidebar (Files / Review / Browser / Terminal). Skip Sidebar if you only want chat.
+`interaction-operations` ships in the `v1.1.12-015rc1d` APK; do not add it to the Host. The second line is Codex Sidebar (Files / Review / Browser / Terminal). Skip Sidebar if you only want chat.
 
 Fixed-version (reproducible) installation:
 
