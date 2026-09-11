@@ -15,7 +15,7 @@ function FrameHarness() {
   const panels = {
     drawerOpen: true,
     panelInfo: { activePanelId: null },
-    rightbar: { track: false, fullscreen: false, dismissed: false },
+    rightbar: { track: false, dismissed: false },
   }
   const useStore = (select: (state: typeof panels) => unknown) => select(panels)
   const actions = useMemo(() => ({

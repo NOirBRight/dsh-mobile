@@ -23,8 +23,6 @@ type MobileLayoutState = {
   rightbar: {
     /** The occupant asked for the right surface to be shown. */
     track: boolean
-    /** The occupant reports a frame-covering presentation. */
-    fullscreen: boolean
     /** A mobile dismissal (session switch) hides the surface until the occupant reopens it. */
     dismissed: boolean
   }
@@ -52,7 +50,7 @@ export function createMobileLayoutStore(): EngineStoreHandle<MobileLayoutState, 
     init: (): MobileLayoutState => ({
       drawerOpen: false,
       panelInfo: { activePanelId: null },
-      rightbar: { track: false, fullscreen: false, dismissed: false },
+      rightbar: { track: false, dismissed: false },
     }),
     actions: {
       toggleSidebar: (d) => { d.drawerOpen = !d.drawerOpen },
@@ -63,14 +61,16 @@ export function createMobileLayoutStore(): EngineStoreHandle<MobileLayoutState, 
           d.panelInfo.activePanelId = null
         }
       },
-      openRightbar: (d, track: boolean, fullscreen: boolean) => {
+      // The fullscreen argument is accepted for ILayout parity and ignored:
+      // the mobile sheet is always viewport-sized, so the frame has no separate
+      // full-screen presentation to record. ui-sidebar-right derives full-screen
+      // from the owner share's viewportWidth instead.
+      openRightbar: (d, track: boolean, _fullscreen: boolean) => {
         d.rightbar.track = track
-        d.rightbar.fullscreen = fullscreen
         d.rightbar.dismissed = false
       },
       closeRightbar: (d) => {
         d.rightbar.track = false
-        d.rightbar.fullscreen = false
         d.rightbar.dismissed = false
       },
       dismissRightbar: (d) => { d.rightbar.dismissed = true },

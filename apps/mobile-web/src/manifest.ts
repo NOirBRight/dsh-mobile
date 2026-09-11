@@ -16,8 +16,10 @@ const CLIENT_HMR_ID = '@deepseek-ai/dsh-client-hmr'
 const MOBILE_LAYOUT_REV = '0.1.60'
 const INTERACTION_OPERATIONS_REV = '0.1.17'
 const MOBILE_CONNECTION_REV = '0.1.23'
-/** Path of the Host bridge bundle inside whichever base serves the shell's own plugins. */
-const MOBILE_CONNECTION_SUBPATH = '/@dsh-mobile/ui-layout-mobile/connection.js'
+/** Directory the mobile layout's bundles occupy inside whichever base serves them. */
+const MOBILE_LAYOUT_SUBPATH = '/@dsh-mobile/ui-layout-mobile/'
+/** Path of the Host bridge bundle inside that directory. */
+const MOBILE_CONNECTION_SUBPATH = MOBILE_LAYOUT_SUBPATH + 'connection.js'
 
 /** Base the Host-served browser deployment serves the shell's own plugin bundles from. */
 export const WEB_LOCAL_PLUGIN_BASE = '/plugins'
@@ -39,8 +41,7 @@ export const LOCAL_PLUGIN_BASES = [WEB_LOCAL_PLUGIN_BASE, ANDROID_LOCAL_PLUGIN_B
  */
 export function isPackagedShellPluginUrl(url: string): boolean {
   const path = url.split('?')[0]
-  const subpath = '/@dsh-mobile/ui-layout-mobile/'
-  return LOCAL_PLUGIN_BASES.some(base => path === base + subpath + 'client.js' || path.startsWith(base + subpath))
+  return LOCAL_PLUGIN_BASES.some(base => path.startsWith(base + MOBILE_LAYOUT_SUBPATH))
 }
 const MOBILE_LAYOUT_EXTRA_INJECT = ['@deepseek-ai/dsh-api-remotes'] as const
 

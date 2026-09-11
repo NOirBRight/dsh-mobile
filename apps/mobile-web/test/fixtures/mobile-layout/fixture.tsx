@@ -20,7 +20,7 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
   const panels = {
     drawerOpen: true,
     panelInfo: { activePanelId: null },
-    rightbar: { track: laggyCodex, fullscreen: false, dismissed: false },
+    rightbar: { track: laggyCodex, dismissed: false },
   }
   const useStore = (select: (state: typeof panels) => unknown) => select(panels)
   const actions = useMemo(() => ({
@@ -32,7 +32,7 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
     closeRightbar() {},
     dismissRightbar() {},
   }), [])
-  const renderSlot = (name: string, owner: { width?: number }) => {
+  const renderSlot = (name: string, owner: { width?: number; viewportWidth?: number; canShow?: boolean }) => {
     if (name === 'sidebar') {
       return <div data-owner={id} data-owner-width={owner.width}>
         <div data-brand-row>
@@ -47,8 +47,9 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
     if (name === 'rightbar') {
       // The real Codex content is empty while collapsed; shell.overlay remains
       // stable, while these chrome nodes let the fixture inspect edge cleanup.
-      if (laggyCodex) return <div data-codex-details-placeholder />
-      return <div data-codex-details-placeholder><div className="dcs-root"><div className="dcs-tabbar" /></div></div>
+      const ownerShare = { 'data-rightbar-width': owner.width, 'data-rightbar-viewport-width': owner.viewportWidth, 'data-rightbar-can-show': owner.canShow }
+      if (laggyCodex) return <div data-codex-details-placeholder {...ownerShare} />
+      return <div data-codex-details-placeholder {...ownerShare}><div className="dcs-root"><div className="dcs-tabbar" /></div></div>
     }
     if (name === 'shell.overlay') {
       return <div className="dcs-overlay"><button className="dcs-toggle" type="button"><svg width="16" height="16" /></button></div>

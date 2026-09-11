@@ -73,7 +73,7 @@ export function MobileFrame({
   useLayoutEffect(() => {
     if (!rightbarVisible || interactionOperations === undefined) return
     return interactionOperations.registerSurface({
-      id: 'mobile-details',
+      id: 'mobile-rightbar',
       kind: 'details',
       dismiss: () => { actions.dismissRightbar() },
     })
@@ -216,6 +216,11 @@ export function MobileFrame({
         {renderSlot('sidebar', { collapsed: false, width: drawerWidth })}
       </nav>
       <section className={css.detailsSheet} aria-label="详情面板">
+        {/* All three fields are read by ui-sidebar-right, so none is redundant
+            here: it derives full-screen from viewportWidth (under 768px the
+            sheet covers the frame, which also keeps `track` false) and collapses
+            itself when canShow is false. The sheet is the frame, so its rendered
+            width and the viewport it measures against are the same box. */}
         {renderSlot('rightbar', { width: frameWidth, viewportWidth: frameWidth, canShow: true })}
       </section>
       <div className={css.overlayLayer} data-shell-overlay>

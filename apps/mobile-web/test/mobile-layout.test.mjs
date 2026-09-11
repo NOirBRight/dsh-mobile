@@ -72,6 +72,12 @@ test('mobile drawer closes on navigation and reports its constrained rendered wi
     assert.equal(capture('official-owner-width'), '280')
     assert.equal(capture('drawer-width'), '240')
     assert.equal(capture('owner-width'), '240')
+    // ui-sidebar-right reads all three owner share fields: it derives full-screen
+    // from viewportWidth and collapses itself when canShow is false, so a frame
+    // that passed only `width` would leave both undefined.
+    assert.equal(capture('rightbar-viewport-width'), capture('rightbar-width'), 'the sheet is the frame: one measured box feeds both owner fields')
+    assert.ok(Number(capture('rightbar-width')) > 0, 'the right surface owner share must carry a measured width')
+    assert.equal(capture('rightbar-can-show'), 'true', 'the mobile frame can always show the right surface')
     assert.equal(capture('topbar-title'), 'Mobile UI Session')
     assert.equal(capture('notice-center-delta'), '0', 'connection notice should be viewport-centered')
     assert.equal(capture('notice-in-header'), 'false', 'connection notice should not occupy the topbar')

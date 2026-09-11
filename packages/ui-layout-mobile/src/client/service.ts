@@ -63,26 +63,16 @@ export interface IMobileLayout {
 
 /** Cross-plugin panel-action face (ctx.layout). */
 export class MobileLayoutController implements IMobileLayout {
-  #panels: PanelActions | undefined
   #navigation = new AbortController()
 
   /**
-   * @param panels - bound actions of the instance shared with the root entry.
+   * @param panels - bound actions of the store instance shared with the root entry.
    * @param hasMainPanel - checks the live main-slot registry for a panel id.
    */
-  constructor(panels?: PanelActions, private readonly hasMainPanel: (id: MainPanelId) => boolean = () => true) {
-    this.#panels = panels
-  }
-
-  /**
-   * Adopt the root entry's bound store actions. Called from the root
-   * registration's inject hook (a sanctioned assembly side effect); on entry
-   * re-register the fresh actions overwrite the stale set.
-   * @param actions - bound actions of the entry's layout store instance.
-   */
-  attachPanels(actions: PanelActions): void {
-    this.#panels = actions
-  }
+  constructor(
+    private readonly panels: PanelActions,
+    private readonly hasMainPanel: (id: MainPanelId) => boolean = () => true,
+  ) {}
 
   /** Select a global panel or return to the Conversation. */
   selectPanel(panelId: MainPanelId | null): void {
@@ -90,7 +80,7 @@ export class MobileLayoutController implements IMobileLayout {
       throw new Error('layout.selectPanel: main panel "' + panelId + '" is not registered')
     }
     this.#navigation.abort()
-    this.#require().selectPanel(panelId)
+    this.panels.selectPanel(panelId)
   }
 
   /** @returns the new pending navigation's cancellation signal. */
@@ -107,21 +97,17 @@ export class MobileLayoutController implements IMobileLayout {
 
   /** Toggle the sidebar (mobile: the navigation drawer). */
   toggleSidebar(): void {
-    this.#require().toggleSidebar()
+    this.panels.toggleSidebar()
   }
 
   /** Report the right panel's presentation. */
   openRightbar(track: boolean, fullscreen: boolean): void {
-    this.#require().openRightbar(track, fullscreen)
+    this.panels.openRightbar(track, fullscreen)
   }
 
   /** Report the right panel as hidden. */
   closeRightbar(): void {
-    this.#require().closeRightbar()
+    this.panels.closeRightbar()
   }
 
-  #require(): PanelActions {
-    if (this.#panels === undefined) throw new Error('ui-layout-mobile: layout store actions are not attached yet')
-    return this.#panels
-  }
 }

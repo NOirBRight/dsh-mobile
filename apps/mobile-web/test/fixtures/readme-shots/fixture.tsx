@@ -126,7 +126,7 @@ function Frame({ drawerOpen, detailsOpen }: { drawerOpen: boolean; detailsOpen: 
   const panels = {
     drawerOpen,
     panelInfo: { activePanelId: null },
-    rightbar: { track: detailsOpen, fullscreen: false, dismissed: false },
+    rightbar: { track: detailsOpen, dismissed: false },
   }
   const useStore = (select: (state: typeof panels) => unknown) => select(panels)
   const actions = useMemo(() => ({
