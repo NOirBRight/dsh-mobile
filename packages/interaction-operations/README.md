@@ -24,10 +24,10 @@ npm test -w @dsh-mobile/interaction-operations
 
 ## Release installation
 
-The package is independently installable as a Host Client plugin and is also bundled locally by the signed [dsh-mobile v1.1.12-015rc1d](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.12-015rc1d) APK. It owns input, popup, and surface interaction adapters only; it does not own provider settings, business mutations, or the mobile root layout.
+The package is independently installable as a Host Client plugin and is also bundled locally by the signed [dsh-mobile v1.1.12-015rc1e](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.12-015rc1e) APK. It owns input, popup, and surface interaction adapters only; it does not own provider settings, business mutations, or the mobile root layout.
 
 Latest (version-free):
 
-The 0.1.5-rc.1 candidate (`v1.1.12-015rc1d`) ships this adapter inside the APK only. Do not add it to a desktop WebUI profile.
+The 0.1.5-rc.1 release (`v1.1.12-015rc1e`) ships this adapter inside the APK only. Do not add it to a desktop WebUI profile.
 
 Verify with `dsh plugin --profile web list` and `dsh plugin --profile web doctor`; uninstall with `dsh plugin --profile web remove @dsh-mobile/interaction-operations`. The package targets DeepSeek Harness `0.1.5-rc.1` and has no sibling-repository, `link:`, `workspace:`, or absolute-path dependency. Release bytes and checksums are emitted with the 0.1.5-rc.1 mobile release. Roll back by restoring the prior APK, then restart the Web service once after verifying the profile.
