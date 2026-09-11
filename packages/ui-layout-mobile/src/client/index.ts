@@ -3,7 +3,7 @@
  * MobileFrame into the runtime's built-in 'root' slot and, in the same breath,
  * declares the four child slots — verbatim the upstream ui-layout contract
  * (see README.md「Slot 契约」; drift fails at load by design). Seats the
- * mobile layout store (drawer / details sheet) and wires ctx.layout, the
+ * mobile layout store (drawer / rightbar sheet) and wires ctx.layout, the
  * cross-plugin panel-action face consumed by ui-sidebar and ui-conversation.
  * A second effect seats the theme presenter (copied from upstream).
  */

@@ -1,8 +1,8 @@
 /**
  * Mobile shell frame, registered into the built-in 'root' slot (the web shell
  * renders only 'root'). Single content column with a top bar (menu button),
- * a slide-out navigation drawer (the 'sidebar' seat), a full-screen details
- * sheet (the 'details' seat), and the frame-wide overlay layer. Safe-area
+ * a slide-out navigation drawer (the 'sidebar' seat), a full-screen rightbar
+ * sheet (the 'rightbar' seat), and the frame-wide overlay layer. Safe-area
  * insets pad the top bar and the content bottom.
  *
  * Drawer and sheet stay mounted while closed (CSS transform off-surface), so

@@ -1,6 +1,6 @@
 # @dsh-mobile/ui-layout-mobile
 
-移动端根布局:`dsh.client` 插件(platform web),注册进 web shell 内建的 `'root'` slot,**逐字实现上游 `@deepseek-ai/dsh-client-ui-layout` 的 slot 契约**,使全部 leaf 插件(ui-sidebar、ui-conversation 等)不经修改继续工作。布局本体是移动形态:单栏 + 顶栏(菜单按钮)+ sidebar 滑出抽屉 + details 全屏底部弹层 + 安全区内边距。维护者在 `dshapp` 上改本包时必须遵守 [docs/ops-dshapp-without-restarting-web.md](../../docs/ops-dshapp-without-restarting-web.md)：不重启 `dshweb` 的 Host，也不把本包做成第二套功能 UI 或独立设计系统。窄屏加号拦截后只弹出「命令 / 插入图片」；图片仍走 Host 官方的 draft-image 通道（PNG/JPG/WebP/GIF），不提供协议并不支持的任意文件上传入口。
+移动端根布局:`dsh.client` 插件(platform web),注册进 web shell 内建的 `'root'` slot,**逐字实现上游 `@deepseek-ai/dsh-client-ui-layout` 的 slot 契约**,使全部 leaf 插件(ui-sidebar、ui-conversation 等)不经修改继续工作。布局本体是移动形态:单栏 + 顶栏(菜单按钮)+ sidebar 滑出抽屉 + rightbar 全屏底部弹层 + 安全区内边距。维护者在 `dshapp` 上改本包时必须遵守 [docs/ops-dshapp-without-restarting-web.md](../../docs/ops-dshapp-without-restarting-web.md)：不重启 `dshweb` 的 Host，也不把本包做成第二套功能 UI 或独立设计系统。窄屏加号拦截后只弹出「命令 / 插入图片」；图片仍走 Host 官方的 draft-image 通道（PNG/JPG/WebP/GIF），不提供协议并不支持的任意文件上传入口。
 
 ## Slot 契约(本包的维护面)
 
@@ -11,20 +11,20 @@
 | slot | kind | scope | owner | 占用者 | 移动端语义 |
 |---|---|---|---|---|---|
 | `'sidebar'` | `single` | `root` | `{ collapsed: boolean; width: number }` | ui-sidebar SidebarRoot | 滑出抽屉本体;抽屉打开期间恒传 `collapsed: false`(不触发紧凑轨道 UI) |
-| `'conversation'` | `single` | `session-maybe` | `{}` | ui-conversation ConversationRoot | 唯一内容栏(无会话 hero 与 live 对话两态) |
-| `'details'` | `single` | `session` | `{}` | ui-conversation DetailsPanel | 全屏弹层;关闭时保持挂载(CSS 位移离屏) |
+| `'main'` | `keyed` | `root` | 无 | ui-conversation ConversationPanel(`conversation` key)等 | 唯一内容栏(无会话 hero 与 live 对话两态;由 `panelInfo.activePanelId` 选 key) |
+| `'rightbar'` | `single` | `root` | `{ width: number; viewportWidth: number; canShow: boolean }` | ui-sidebar-right | 全屏弹层;关闭时保持挂载(CSS 位移离屏) |
 | `'shell.overlay'` | `list` | `root` | 无 | 各插件的浮层项 | 全框架浮动层,click-through,子项自行恢复 pointer-events |
 
 ### 契约的其余三条
 
-1. **`ctx.layout` 服务面**(IMobileLayout,与上游 ILayout 逐方法一致):`toggleSidebar()` / `openDetails()` / `closeDetails()`。ui-sidebar 的折叠按钮、ui-conversation 的详情开关都调它;`app-shell` 伪入口 `inject: ['slots', 'sessions', 'layout']` —— **不提供该服务则 shell 永不就绪**(packages/client/web/src/app-shell.ts)。经 `ctx.reflect.provide('layout', controller)` 提供,bound actions 由 register 的 inject hook 接回。
+1. **`ctx.layout` 服务面**(IMobileLayout,与上游 ILayout 逐方法一致):`toggleSidebar()` / `openRightbar()` / `closeRightbar()`(另有 `selectPanel` / `beginNavigation`)。ui-sidebar 的折叠按钮、右侧栏的展示报告都调它;`app-shell` 伪入口 `inject: ['slots', 'sessions', 'layout']` —— **不提供该服务则 shell 永不就绪**(packages/client/web/src/app-shell.ts)。经 `ctx.reflect.provide('layout', controller)` 提供,bound actions 由 register 的 inject hook 接回。interaction-operations 的 surface `kind: 'details'` 是另一套关闭优先级枚举,不是根 slot 名。
 2. **ThemePresenter**:ui-theme 只持有快照,把快照写到 document(body 的 palette 属性、token 内联变量、theme-color meta)的职责随根布局走。本包 `theme-presenter.ts` 是上游同名文件的逐字拷贝;两个布局同时挂载会导致双写,所以 bundle 必须禁用上游 ui-layout 行。
 3. **插件 inject**:`['slots', 'theme', 'sessions', 'remote.agentPresets', 'modelDirectories']`；静态 `dsh.client.inject` 同时声明提供这些服务的 Host 客户端模块。
 
 ## 与上游的行为差异(有意为之)
 
-- 桌面三栏/拖拽把手/ concession 链 → 移动单栏 + 抽屉 + 弹层;store 状态从 px 宽度简化为 `{ drawerOpen, detailsOpen }`。
-- 会话切换时除关闭 details(上游行为)外**还关闭抽屉**(移动端导航即收起的惯例)。
+- 桌面三栏/拖拽把手/ concession 链 → 移动单栏 + 抽屉 + 弹层;store 状态从 px 宽度简化为 `{ drawerOpen, panelInfo, rightbar }`。
+- 会话切换时除关闭 rightbar(上游行为)外**还关闭抽屉**(移动端导航即收起的惯例)。
 - 抽屉打开时不传 `collapsed: true`,侧边栏的紧凑轨道 UI 在移动端永不出现。
 - 上游暂未提供语义 seam、只能桥接本地化 ARIA 时，不得只匹配一种语言；当前上游中英文词典必须同时匹配，并由真实浏览器 fixture 固定两种 label 下的同一布局结果。
 - 不得用控件已有的伪元素承载移动端文案；例如 View tab 的 `::after` 属于选中下划线，移动布局必须保留真实 tab 文本并通过间距分配解决宽度。

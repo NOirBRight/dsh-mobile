@@ -47,9 +47,9 @@ dshapp 不是独立产品 UI。它是同一份 Host 官方模块在窄屏上的�
 
 1. **只换根布局，不换功能。** 会话、侧栏、设置、工作区、composer 仍是 Host 的 `@deepseek-ai/dsh-client-ui-*`。禁止在 mobile 包里重写这些叶子，禁止再做一个平行功能面。
 2. **宽屏继续官方桌面。** 视口 ≥ 696px（官方 `56 + 640`）必须挂 `@deepseek-ai/dsh-client-ui-layout`。mobile layout 只在窄屏替换 `root`。禁止把 dshapp 做成“永远手机壳”。
-3. **slot 契约逐字对齐上游。** `sidebar` / `conversation` / `details` / `shell.overlay` 的 kind/scope、`ctx.layout` 三方法、ThemePresenter 不得自行发明。升级上游时 diff 官方 `ui-layout` 的 `src/client/index.ts`。
+3. **slot 契约逐字对齐上游。** `sidebar` / `main` / `rightbar` / `shell.overlay` 的 kind/scope、`ctx.layout` 方法（含 `toggleSidebar` / `openRightbar` / `closeRightbar`）、ThemePresenter 不得自行发明。升级上游时 diff 官方 `ui-layout` 的 `src/client/index.ts`。interaction-operations 的 surface `kind: 'details'` 是关闭优先级枚举，不是根 slot 名。
 4. **视觉属于官方 theme。** 颜色、字体、圆角、阴影、边框、动效用官方 semantic token / primitive。没有 token 就加到官方所有者，不要在 mobile CSS 里抄一份字面量设计系统。
-5. **窄屏只改空间语义：** 单栏、顶栏、sidebar → overlay drawer（展开宽默认 280px，owner 拿到实测宽度）、details → 全屏 sheet、safe-area。抽屉打开时 `collapsed: false`，不要让官方侧栏掉进桌面轨道模式。
+5. **窄屏只改空间语义：** 单栏、顶栏、sidebar → overlay drawer（展开宽默认 280px，owner 拿到实测宽度）、rightbar → 全屏 sheet、safe-area。抽屉打开时 `collapsed: false`，不要让官方侧栏掉进桌面轨道模式。
 6. **禁止深挖官方 DOM。** 不准靠 `main header`、generated CSS-module class 去搬 token 统计、turn 元数据、composer。信息优先级/截断可以变，完整信息必须仍能点开或通过无障碍文本拿到。
 7. **layout 包保持纯 UI。** 不准引入 Capacitor、vault、扫码、配对、Host 协议。那些属于 `apps/mobile-web` 壳；本轮若只改外观，壳也不要顺手改连接策略。
 8. **Host boot roster 是只读的。** dshapp 客户端把 desktop layout 条目换成本地 mobile bundle，并去掉 `@deepseek-ai/dsh-client-hmr`。不准为了 app 去改 3080 吐出的官方 HTML/插件列表。
