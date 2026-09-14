@@ -20,6 +20,7 @@ import { ComposerAttach } from './ComposerAttach.tsx'
 import { PlanToggle } from './PlanToggle.tsx'
 import { commandsExecuteFrom, interpretPlanCommandResult, type PlanCommand } from './plan-toggle.ts'
 import { installHistoryContinuityAdapter } from './history-continuity.ts'
+import { installColdStartOverlayAdapter } from './cold-start-overlay.ts'
 import { installLegacyBlankPresetAdapter } from './legacy-blank-preset.ts'
 import { installHostModelFallbackAdapter, type HostModelFallbackContext } from './host-model-fallback.ts'
 import { installTurnTailPresenter } from './turn-tail-presenter.ts'
@@ -155,6 +156,7 @@ export function apply(ctx: ClientContext): void {
   }, 'ui-layout-mobile: theme presenter')
 
   ctx.effect(() => installHistoryContinuityAdapter(ctx), 'ui-layout-mobile: expanded history continuity')
+  ctx.effect(() => installColdStartOverlayAdapter(ctx), 'ui-layout-mobile: cold-start session overlay')
   ctx.effect(
     () => installLegacyBlankPresetAdapter(ctx as ClientContext & import('./legacy-blank-preset.ts').LegacyBlankPresetContext),
     'ui-layout-mobile: legacy blank preset recovery',
