@@ -102,6 +102,13 @@ test('live session summaries map id and parentId onto the durable cache shape', 
   }])
 })
 
+test('clearWindow erases the current conversation so an empty Host cannot resurrect it', async () => {
+  const cache = createSessionCache('host-a', createMemorySessionRecordStore())
+  await cache.writeWindow('old', { entries: [{ event: event(1) }], hasMore: false })
+  await cache.clearWindow()
+  assert.equal(await cache.readWindow(), undefined)
+})
+
 test('empty list and empty window commits overwrite a previous non-empty snapshot', async () => {
   const cache = createSessionCache('host-a', createMemorySessionRecordStore())
   await cache.writeList([dirtyRow('old')])

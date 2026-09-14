@@ -62,7 +62,7 @@ while (elapsed() < deadlineMs) {
   const state = JSON.parse(await evaluate(stateExpression))
   if (state.title !== null && milestones.shellMs === undefined) milestones.shellMs = elapsed()
   if (state.display === 'flex' && state.text === '连接中…' && milestones.connectingMs === undefined) milestones.connectingMs = elapsed()
-  if (state.display === 'flex' && state.text === '刷新中…' && milestones.refreshingMs === undefined) milestones.refreshingMs = elapsed()
+  if (state.display === 'flex' && state.text === '同步中…' && milestones.refreshingMs === undefined) milestones.refreshingMs = elapsed()
   for (const write of state.writes) {
     const key = write.kind + 'WriteMs'
     if (milestones[key] === undefined) milestones[key] = probeInstalledMs + write.at

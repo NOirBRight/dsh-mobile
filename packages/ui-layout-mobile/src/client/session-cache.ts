@@ -25,6 +25,8 @@ export interface SessionCache {
   readWindow(): Promise<{ sessionId: string; window: SessionWindowCacheSeed } | undefined>
   writeList(entries: readonly unknown[]): Promise<void>
   writeWindow(sessionId: string, window: unknown): Promise<void>
+  /** Drop the current-window record when this Host has no current session. */
+  clearWindow(): Promise<void>
 }
 
 /** Test-injected Map-like port. Production uses IndexedDB. */
@@ -192,6 +194,11 @@ function createCache(hostId: string, store: SessionRecordStore): SessionCache {
           sessionId,
           window: normalized,
         })
+      } catch { /* same degrade as list writes */ }
+    },
+    async clearWindow() {
+      try {
+        await store.put(windowKey(hostId), { kind: 'cleared', version: RECORD_VERSION, hostId })
       } catch { /* same degrade as list writes */ }
     },
   }

@@ -307,6 +307,9 @@ export function createColdStartOverlayController(options: ColdStartOverlayContro
     if (typeof current !== 'string' || current.length === 0 || !ids.includes(current)) {
       windowBaseline = 'ready'
       detachWindow()
+      hasWindowSnapshot = false
+      windowSeed = undefined
+      void cache.clearWindow()
     } else {
       if (windowBaseline === 'ready' || windowBaseline === 'error') {
         /* keep until this generation's session reports */
@@ -376,6 +379,13 @@ export function createColdStartOverlayController(options: ColdStartOverlayContro
       void reloadCache().then(() => {
         if (disposed) return
         publish()
+        // Official list.phase never steps back. A new generation must pull again;
+        // the next list notification is this generation's baseline.
+        void sessions.refresh().then(() => {}, () => {
+          if (disposed) return
+          listBaseline = 'error'
+          publish()
+        })
       })
     },
     async handleRetry() {

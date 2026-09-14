@@ -114,6 +114,7 @@ test('phase pending with an empty byId is not an empty-list success', async () =
 test('list ready including empty drops the list overlay and overwrites the cache', async () => {
   const cache = createSessionCache('host-a', createMemorySessionRecordStore())
   await cache.writeList([{ sessionId: 'ghost', title: 'Ghost', updatedAt: 1, blank: false }])
+  await cache.writeWindow('ghost', { entries: [{ event: event(1, 'ghost') }], hasMore: false })
   const harness = sessionsHarness({ phase: 'pending', ids: [], byId: {}, current: undefined })
   const controller = createColdStartOverlayController({
     sessions: harness.sessions,
@@ -129,6 +130,7 @@ test('list ready including empty drops the list overlay and overwrites the cache
   assert.equal(model.conversationOverlay, false)
   assert.equal(model.composerLocked, false)
   assert.deepEqual(await cache.readList(), [])
+  assert.equal(await cache.readWindow(), undefined)
   controller.dispose()
 })
 
@@ -267,6 +269,17 @@ test('a new generation restores overlays and republishes pending baselines', asy
   assert.equal(baselines.at(-1)?.listBaseline, 'pending')
   assert.equal(baselines.at(-1)?.windowBaseline, 'pending')
   assert.equal(baselines.at(-1)?.hasListSnapshot, true)
+  assert.deepEqual(harness.refreshed, ['refresh'])
+  live.session.patch({ openState: 'loading' })
+  harness.list.set({
+    phase: 'ready',
+    ids: ['s1'],
+    byId: { s1: summary('s1') },
+    current: 's1',
+  })
+  await settled()
+  assert.equal(controller.snapshot().listOverlay, false)
+  assert.equal(controller.snapshot().conversationOverlay, true)
   controller.dispose()
 })
 
