@@ -84,13 +84,13 @@ test('floating connection indicator starts only after the cached conversation sh
   })
 })
 
-test('floating connection indicator follows theme and waits for authoritative live data after transport open', () => {
+test('floating connection indicator waits for session data; core-ready must not hide the chip', () => {
   assert.deepEqual(connectionIndicatorPresentation('closed', 'Tunnel Fallback', true, false), {
     visible: true, text: '重连中…', label: 'Tunnel Fallback · 隧道已断开，重连中',
     color: 'var(--dsw-alias-state-error-primary, #ec1313)',
   })
   assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, false), {
-    visible: true, text: '刷新中…', label: 'WebRTC Direct · 正在刷新会话…',
+    visible: true, text: '同步中…', label: 'WebRTC Direct · 正在同步会话…',
     color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
   })
   assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, true), {
@@ -98,11 +98,11 @@ test('floating connection indicator follows theme and waits for authoritative li
     color: 'var(--dsw-alias-state-success-primary, #22c55e)',
   })
   assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, 'core-ready'), {
-    visible: false, text: '已连接', label: 'WebRTC Direct · 已连接',
-    color: 'var(--dsw-alias-state-success-primary, #22c55e)',
+    visible: true, text: '同步中…', label: 'WebRTC Direct · 正在同步会话…',
+    color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
   })
   assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, 'error'), {
-    visible: true, text: '刷新失败', label: 'WebRTC Direct · 会话数据刷新失败',
+    visible: true, text: '同步失败', label: 'WebRTC Direct · 会话数据同步失败',
     color: 'var(--dsw-alias-state-error-primary, #ec1313)',
   })
 })
