@@ -12,6 +12,7 @@ import type { ClientKeypair, ConnectionPolicy, ConnectionStatus, ConnectOptions,
 import { extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readCachedBootManifest, selectResponsiveBootManifest, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
 import { createIndexedDbPluginCache } from './plugin-cache.ts'
 import { findConnectionBadgeAnchor, findSettingsTrigger, OFFICIAL_DRAWER, OWN_DRAWER_BRAND, OWN_TOPBAR, queryDrawerToggleSlot } from './anchors.ts'
+import { coldStartPresentation, type BaselineState, type ColdStartPresentationInput } from '../../../packages/ui-layout-mobile/src/client/cold-start-presentation.ts'
 import type { EndpointKind } from './profiles.ts'
 
 export { findConnectionBadgeAnchor } from './anchors.ts'
@@ -550,6 +551,8 @@ export function connectionRecoveryNotice(
   return null
 }
 
+export type { BaselineState }
+
 export interface ConnectionIndicatorPresentation {
   visible: boolean
   text: string
@@ -557,80 +560,36 @@ export interface ConnectionIndicatorPresentation {
   color: string
 }
 
+export type ConnectionIndicatorExtras = Partial<Pick<
+  ColdStartPresentationInput,
+  'accountsOwnBaselines' | 'listBaseline' | 'windowBaseline' | 'hasListSnapshot' | 'hasWindowSnapshot'
+>>
+
 /** True while transport failures are being retried without user action. */
 export function isPassiveConnectionRetry(activity: TunnelManagerActivity): boolean {
   return activity.phase === 'retry-wait'
     || (activity.phase === 'connecting' && activity.reconnecting && activity.attempt >= 3)
 }
 
-/** Pure state presentation shared by the drawer dot and floating cached-shell hint. */
+/** Thin chip wrapper around `coldStartPresentation` so badge tests keep one call site. */
 export function connectionIndicatorPresentation(
   status: TunnelState | TunnelManagerActivity,
   route = '',
   shellMounted = true,
-  liveDataReady: boolean | LiveDataReadiness = true,
+  liveDataReady: boolean | LiveDataReadiness = 'pending',
+  extras: ConnectionIndicatorExtras = {},
 ): ConnectionIndicatorPresentation {
-  if (typeof status !== 'string' && status.phase === 'terminal') {
-    const title = '连接需要处理'
-    return {
-      visible: false,
-      text: '离线',
-      label: route === '' ? title : route + ' · ' + title,
-      color: 'var(--dsw-alias-state-error-primary, #ec1313)',
-    }
-  }
-  const passiveRetry = typeof status !== 'string'
-    && isPassiveConnectionRetry(status)
-  if (passiveRetry) {
-    const title = '连接中断，后台自动重试'
-    return {
-      visible: shellMounted,
-      text: '重连中…',
-      label: route === '' ? title : route + ' · ' + title,
-      color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
-    }
-  }
-  const state: TunnelState = typeof status === 'string'
-    ? status
-    : status.phase === 'open'
-      ? 'open'
-      : status.phase === 'connecting'
-        ? 'connecting'
-        : 'closed'
-  const reconnecting = typeof status !== 'string' && status.phase === 'connecting' && status.reconnecting
-  const readiness = typeof liveDataReady === 'boolean' ? (liveDataReady ? 'ready' : 'pending') : liveDataReady
-  const refreshFailed = state === 'open' && readiness === 'error'
-  const refreshing = state === 'open' && readiness === 'pending'
-  const connected = state === 'open' && (readiness === 'ready' || readiness === 'core-ready')
-  const title = refreshFailed
-    ? '会话数据刷新失败'
-    : refreshing
-      ? '正在刷新会话…'
-      : connected
-        ? '已连接'
-      : state === 'connecting'
-        ? reconnecting ? '正在重连…' : '隧道连接中…'
-        : '隧道已断开，重连中'
-  const color = state === 'closed' || refreshFailed
-    ? 'var(--dsw-alias-state-error-primary, #ec1313)'
-    : connected
-      ? 'var(--dsw-alias-state-success-primary, #22c55e)'
-      : 'var(--dsw-alias-state-warn-primary, #f59e0b)'
-  const text = refreshFailed
-    ? '刷新失败'
-    : refreshing
-      ? '刷新中…'
-      : connected
-        ? '已连接'
-      : state === 'connecting'
-        ? reconnecting ? '重连中…' : '连接中…'
-        : '重连中…'
-  return {
-    visible: shellMounted && (state !== 'open' || (readiness !== 'ready' && readiness !== 'core-ready')),
-    text,
-    label: route === '' ? title : route + ' · ' + title,
-    color,
-  }
+  return coldStartPresentation({
+    status,
+    route,
+    shellMounted,
+    liveDataReady,
+    accountsOwnBaselines: extras.accountsOwnBaselines ?? true,
+    listBaseline: extras.listBaseline ?? 'pending',
+    windowBaseline: extras.windowBaseline ?? 'pending',
+    hasListSnapshot: extras.hasListSnapshot ?? false,
+    hasWindowSnapshot: extras.hasWindowSnapshot ?? false,
+  }).chip
 }
 
 /** Mounted connection indicator controller. */
@@ -640,6 +599,7 @@ export interface ConnectionBadgeUpdater {
     route?: string,
     shellMounted?: boolean,
     liveDataReady?: boolean | LiveDataReadiness,
+    extras?: ConnectionIndicatorExtras,
   ): void
   /** Remove indicator nodes and stop observing shell mutations. */
   dispose(): void
@@ -695,8 +655,8 @@ export function installBadge(): ConnectionBadgeUpdater {
     'border-radius:50%;box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,.28);'
   el.append(dot)
 
-  // Cached content remains fully interactive; this pill is display-only and
-  // disappears as soon as the live tunnel opens.
+  // Cached content stays interactive. The pill is display-only except 同步失败,
+  // which asks layout to retry through dsh-mobile:cold-start-retry.
   const floating = document.createElement('span')
   floating.setAttribute('role', 'status')
   floating.setAttribute('aria-live', 'polite')
@@ -732,15 +692,22 @@ export function installBadge(): ConnectionBadgeUpdater {
     el.style.display = 'grid'
   }
   document.body.append(el, floating)
+  floating.addEventListener('click', () => {
+    if (floating.style.display === 'none' || floatingText.textContent !== '同步失败') return
+    document.dispatchEvent(new CustomEvent('dsh-mobile:cold-start-retry'))
+  })
   const stop = observeShellChrome(place)
   place()
 
-  const update: ConnectionBadgeUpdater = (state, route = '', shellMounted = true, liveDataReady = true) => {
-    const view = connectionIndicatorPresentation(state, route, shellMounted, liveDataReady)
+  const update: ConnectionBadgeUpdater = (state, route = '', shellMounted = true, liveDataReady = 'pending', extras = {}) => {
+    const view = connectionIndicatorPresentation(state, route, shellMounted, liveDataReady, extras)
+    const retryable = view.visible && view.text === '同步失败'
     dot.style.background = view.color
     el.title = view.label
     el.setAttribute('aria-label', view.label)
     floating.style.display = view.visible ? 'flex' : 'none'
+    floating.style.pointerEvents = retryable ? 'auto' : 'none'
+    floating.style.cursor = retryable ? 'pointer' : 'default'
     floatingDot.style.background = view.color
     floatingText.textContent = view.text
     floating.title = view.label
