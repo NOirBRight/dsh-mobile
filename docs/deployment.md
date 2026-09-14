@@ -14,7 +14,7 @@ DSH_HOME="$DSH_HOME" npm run build
 Install the published Pairing package separately when a Host needs the Host plugin and `dsh-pair-mux` executable:
 
 ```bash
-npm install --global github:NOirBRight/dsh-mobile-pairing#v0.1.11
+npm install --global github:NOirBRight/dsh-mobile-pairing#v0.1.17
 command -v dsh-pair-mux
 ```
 

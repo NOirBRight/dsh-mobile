@@ -21,7 +21,7 @@ docker compose up -d
 ```
 
 On the Host, install the published Pairing package
-(`github:NOirBRight/dsh-mobile-pairing#v0.1.11`), copy `frpc.toml.example`, set
+(`github:NOirBRight/dsh-mobile-pairing#v0.1.17`), copy `frpc.toml.example`, set
 `serverAddr` / token / domain, and run `frpc -c frpc.toml`. Then set the pairing
 plugin to
 

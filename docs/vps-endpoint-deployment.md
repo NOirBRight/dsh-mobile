@@ -17,7 +17,7 @@ Android APK ── wss://pair.noirbright.top ──> VPS: Docker Caddy :443 (Let
 
 - Caddy runs in Docker (`infodigest-caddy`) with the `pair.noirbright.top` site block already present: no basic_auth, capability-gated inside the Gateway, never proxies raw :3080.
 - The return path is the restricted SSH reverse tunnel unit `dsh-gateway-vps-tunnel.service` (`ssh -N -R 172.18.0.1:31424:127.0.0.1:43168 vps-aliyun`). The public Pair endpoint intentionally terminates at the daily 3080 Host; this is not a lab/3082 mismatch.
-- AM01S `dsh-pair-mux.service` runs the installed published `dsh-pair-mux` executable through its configured `PATH`. Install `dsh-mobile-pairing#v0.1.11` before enabling the unit and verify it with `command -v dsh-pair-mux`.
+- AM01S `dsh-pair-mux.service` runs the installed published `dsh-pair-mux` executable through its configured `PATH`. Install `dsh-mobile-pairing#v0.1.17` before enabling the unit and verify it with `command -v dsh-pair-mux`.
 - DNS A records for `pair`/`dsh`/`dshapp`/`relay.noirbright.top` all point at the VPS.
 - `frps` also runs on the VPS (`:7000`, `/opt/frp/frps.toml`) and can replace the SSH tunnel later; it is not required for this migration.
 - `dsh.noirbright.top` / `dshapp.noirbright.top` / `relay.noirbright.top` are maintainer personal recovery surfaces (`docs/dual-domain-deployment.md`), not product topology.
