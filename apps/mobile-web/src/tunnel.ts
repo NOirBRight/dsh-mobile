@@ -9,11 +9,21 @@
  */
 import { connect, HeartbeatController, TunnelError } from '@dsh-mobile/e2e-tunnel'
 import type { ClientKeypair, ConnectionPolicy, ConnectionStatus, ConnectOptions, TunnelClient, TunnelState } from '@dsh-mobile/e2e-tunnel'
-import { createLocalStoragePluginCache, extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readCachedBootManifest, selectResponsiveBootManifest, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
+import { createLocalStoragePluginCache, extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readCachedBootManifest, selectResponsiveBootManifest, writeCachedBootManifest, type BootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
+import { createDurablePluginCache, readIndexedDbBootManifest, writeIndexedDbBootManifest } from './plugin-cache.ts'
 import { findConnectionBadgeAnchor, findSettingsTrigger, OFFICIAL_DRAWER, OWN_DRAWER_BRAND, OWN_TOPBAR, queryDrawerToggleSlot } from './anchors.ts'
 import type { EndpointKind } from './profiles.ts'
 
 export { findConnectionBadgeAnchor } from './anchors.ts'
+
+function hostPluginCache(hostId: string) {
+  return createDurablePluginCache(hostId, createLocalStoragePluginCache(undefined, hostId))
+}
+
+async function persistBootRoster(hostId: string, manifest: BootManifest): Promise<void> {
+  writeCachedBootManifest(hostId, manifest)
+  await writeIndexedDbBootManifest(hostId, manifest)
+}
 
 /** Give up on a silent Cloudflare tunnel instead of spinning on GET / forever. */
 export const BOOT_FETCH_TIMEOUT_MS = 20_000
@@ -72,7 +82,9 @@ export async function injectBootManifestFromTunnel(
     ...responsive,
     narrowContractAvailable: responsive.narrowContractAvailable ?? officialNarrowContractAvailable(hostManifest),
   })
-  if (typeof responsive.hostId === 'string') writeCachedBootManifest(responsive.hostId, hostManifest as Parameters<typeof writeCachedBootManifest>[1])
+  if (typeof responsive.hostId === 'string') {
+    await persistBootRoster(responsive.hostId, hostManifest as BootManifest)
+  }
   if (responsive.localizePlugins === false) {
     ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = selection.manifest
     return selection
@@ -90,7 +102,7 @@ export async function injectBootManifestFromTunnel(
       throw new Error(last)
     },
     createUrl: pluginBlobUrl,
-    cache: createLocalStoragePluginCache(undefined, responsive.hostId ?? ''),
+    cache: hostPluginCache(responsive.hostId ?? ''),
     concurrency: responsive.pluginConcurrency ?? PLUGIN_LOAD_CONCURRENCY,
     ...responsive.onPluginProgress === undefined ? {} : { onProgress: responsive.onPluginProgress },
   })
@@ -112,21 +124,21 @@ export async function hydrateBootManifestFromCache(
   hostId: string,
   responsive: ResponsiveBootSelectionOptions & { localizePlugins?: boolean } = { viewportWidth: typeof window === 'undefined' ? 0 : window.innerWidth },
 ): Promise<ResponsiveBootSelection | null> {
-  const cached = readCachedBootManifest(hostId) ?? readCachedBootManifest('last')
+  const cached = await readIndexedDbBootManifest(hostId) ?? readCachedBootManifest(hostId)
   if (cached === undefined) return null
   try {
     const selection = selectResponsiveBootManifest(cached, {
       ...responsive,
       narrowContractAvailable: responsive.narrowContractAvailable ?? officialNarrowContractAvailable(cached),
     })
-      if (responsive.localizePlugins === false) {
+    if (responsive.localizePlugins === false) {
       ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = selection.manifest
       return selection
     }
     const localizedManifest = await localizePluginBundles(selection.manifest, {
       load: async () => { throw new Error('plugin cache miss') },
       createUrl: pluginBlobUrl,
-      cache: createLocalStoragePluginCache(undefined, hostId),
+      cache: hostPluginCache(hostId),
       cacheOnly: true,
     })
     ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = localizedManifest

@@ -126,10 +126,7 @@ export class HostSession {
         if (generation !== this.generation) throw new TunnelError('closed', HOST_SESSION_STOPPED_MESSAGE)
         if (bootGeneration !== this.bootGeneration) return null
         manager.armHeartbeat()
-        // Cached plugin graphs may mount before the transport can answer their
-        // one-shot settings RPCs. Recreate the same graph once the live tunnel
-        // is ready so every Host plugin initializes against a usable carrier.
-        await this.paint(selection, prepared.profile.hostId, bootGeneration, cached !== null)
+        await this.paint(selection, prepared.profile.hostId, bootGeneration)
         if (superseded()) return null
         if (generation !== this.generation) throw new TunnelError('closed', HOST_SESSION_STOPPED_MESSAGE)
         return bootGeneration === this.bootGeneration ? selection : null

@@ -301,7 +301,7 @@ test('a superseded remount failure cannot surface after a newer refresh succeeds
   assert.deepEqual(mounts, ['initial', 'newer'])
 })
 
-test('connect repaints a cached boot roster after the tunnel opens so plugin settings can load', async () => {
+test('connect keeps a same-rev cached shell after the tunnel opens', async () => {
   const mounts = []
   let release
   const gate = new Promise(resolve => { release = resolve })
@@ -325,7 +325,7 @@ test('connect repaints a cached boot roster after the tunnel opens so plugin set
   assert.deepEqual(mounts, ['r1'])
   release()
   await pending
-  assert.deepEqual(mounts, ['r1', 'r1'])
+  assert.deepEqual(mounts, ['r1'])
 })
 
 test('a live roster revision change remounts after the cached shell', async () => {
