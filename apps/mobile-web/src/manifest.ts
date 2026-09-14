@@ -135,7 +135,7 @@ export interface PluginBundleCache {
 const PLUGIN_CACHE_PREFIX = 'dsh-mobile:plugin:'
 
 /** Stored values: 'gz1:' + base64(gzip(source)), or legacy plaintext. */
-const GZIP_PREFIX = 'gz1:'
+export const GZIP_PREFIX = 'gz1:'
 
 /** The WebView localStorage origin is hard-capped at 5 MB; bundles gzip ~3.5x. */
 const gzipCapable = (): boolean => typeof CompressionStream === 'function' && typeof DecompressionStream === 'function'
@@ -152,7 +152,7 @@ async function gzipEncode(source: string): Promise<string> {
   return GZIP_PREFIX + btoa(binary)
 }
 
-async function gzipDecode(stored: string): Promise<string> {
+export async function gzipDecode(stored: string): Promise<string> {
   const binary = atob(stored.slice(GZIP_PREFIX.length))
   const bytes = new Uint8Array(binary.length)
   for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
@@ -282,7 +282,11 @@ async function localizeEntry(entry: BootEntry, options: PluginLocalizationOption
   if (source === undefined) {
     if (options.cacheOnly === true) throw new Error('plugin cache miss: ' + entry.id)
     source = await options.load(entry.url)
-    await options.cache?.write(entry.id, entry.rev, source)
+    try {
+      await options.cache?.write(entry.id, entry.rev, source)
+    } catch {
+      /* cache is best-effort; the downloaded source still boots */
+    }
   }
   return { ...entry, url: options.createUrl(source, entry.id) }
 }
@@ -600,7 +604,7 @@ function resolveStorage(storage?: Pick<Storage, 'getItem' | 'setItem'> | Pick<St
   return storage ?? undefined
 }
 
-function validateBootManifest(value: unknown): BootManifest {
+export function validateBootManifest(value: unknown): BootManifest {
   if (typeof value !== 'object' || value === null) throw new Error('mobile boot manifest must be an object')
   const manifest = value as Partial<BootManifest>
   if (typeof manifest.rev !== 'string' || !Array.isArray(manifest.entries)) {

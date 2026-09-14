@@ -5,7 +5,7 @@ This workflow keeps the production profile read-only while evolving the two inde
 ## Release order
 
 1. **@dsh-mobile/e2e-tunnel**: in the e2e-tunnel checkout run `npm test` and `npm run build`; publish/tag (current candidate: **v0.1.5**).
-2. **@dsh-mobile/pairing**: in the pairing checkout bump the dependency to `github:NOirBRight/dsh-e2e-tunnel#v0.1.5`; run `npm run build`, tests, `npm run verify:packed`, and `test/published-e2e-contract.test.mjs`; publish/tag (current candidate: **v0.1.14**).
+2. **@dsh-mobile/pairing**: in the pairing checkout bump the dependency to `github:NOirBRight/dsh-e2e-tunnel#v0.1.5`; run `npm run build`, tests, `npm run verify:packed`, and `test/published-e2e-contract.test.mjs`; publish/tag (current: **v0.1.17**).
 3. **Lab validation**: keep `~/.dsh-lab/profiles/web` on the published tags for release validation and restart **3082**. Local iteration may use a temporary checkout, but committed manifests must not contain `link:` or Workstation-absolute paths.
 
 No build output is copied into `~/.dsh`; production changes only through an explicit promote operation.

@@ -8,7 +8,7 @@ const selection = {
   compatibility: 'compatible',
 }
 
-test('cold cache paints before readiness and remounts once the transport can serve plugin settings', async () => {
+test('cold cache paints before readiness and keeps the same-rev shell after the tunnel opens', async () => {
   const hostId = 'cold-host'
   let releaseTransport
   const transport = new Promise(resolve => { releaseTransport = resolve })
@@ -37,8 +37,5 @@ test('cold cache paints before readiness and remounts once the transport can ser
   assert.deepEqual(painted, [{ rev: 'cached-roster', hostId }])
   releaseTransport()
   await connecting
-  assert.deepEqual(painted, [
-    { rev: 'cached-roster', hostId },
-    { rev: 'cached-roster', hostId },
-  ])
+  assert.deepEqual(painted, [{ rev: 'cached-roster', hostId }])
 })
