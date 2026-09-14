@@ -16,7 +16,7 @@ import { activateHostProfile, completeProfileOnboarding, removeHostProfile } fro
 import { connectionRecoveryDecision, endpointRefreshRequired } from './reconnect-recovery.ts'
 import { BrowserProfileStorage, ProfileRepository } from './profiles.ts'
 import { prepareDshClientBoot } from './dsh-boot.ts'
-import { connectionRecoveryNotice, connectionRouteLabel, coreLiveDataReadiness, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, isPassiveConnectionRetry, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type LiveDataReadiness, type TunnelManagerActivity } from './tunnel.ts'
+import { connectionRecoveryNotice, connectionRouteLabel, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, isPassiveConnectionRetry, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type BaselineState, type LiveDataReadiness, type TunnelManagerActivity } from './tunnel.ts'
 import { HostSession, isHostSessionStoppedError } from './host-session.ts'
 import { mountProgressScreen } from './progress-screen.ts'
 import { mountFirstRunScreen } from './first-run-screen.ts'
@@ -378,24 +378,73 @@ void (async () => {
     // Transport readiness and authoritative session-data freshness are
     // intentionally separate: the cached shell remains usable between them.
     let liveDataReady: LiveDataReadiness = 'pending'
+    let listBaseline: BaselineState = 'pending'
+    let windowBaseline: BaselineState = 'pending'
+    let hasListSnapshot = false
+    let hasWindowSnapshot = false
     const updateBadge = installBadge()
     own(() => updateBadge.dispose())
+    const paintBadge = (): void => {
+      updateBadge(activity, route, shellMounted, liveDataReady, {
+        accountsOwnBaselines: !supportsLiveDataReadiness(document.documentElement.dataset),
+        listBaseline,
+        windowBaseline,
+        hasListSnapshot,
+        hasWindowSnapshot,
+      })
+    }
+    const resetColdStartBaselines = (): void => {
+      listBaseline = 'pending'
+      windowBaseline = 'pending'
+      hasListSnapshot = false
+      hasWindowSnapshot = false
+      liveDataReady = 'pending'
+    }
     // Cached shell may paint before TunnelManager emits its first callback.
-    updateBadge(activity, route, shellMounted, liveDataReady)
+    paintBadge()
     const handleLiveDataState = (event: Event): void => {
       const state = (event as CustomEvent<{ state?: unknown }>).detail?.state
       if (state !== 'pending' && state !== 'ready' && state !== 'error') return
       liveDataReady = state
-      updateBadge(activity, route, shellMounted, liveDataReady)
+      paintBadge()
     }
     const handleLiveDataReady = (): void => {
       liveDataReady = 'ready'
-      updateBadge(activity, route, shellMounted, liveDataReady)
+      paintBadge()
+    }
+    const isBaseline = (value: unknown): value is BaselineState =>
+      value === 'pending' || value === 'ready' || value === 'error'
+    const handleColdStartBaseline = (event: Event): void => {
+      const detail = (event as CustomEvent<{
+        generation?: unknown
+        listBaseline?: unknown
+        windowBaseline?: unknown
+        hasListSnapshot?: unknown
+        hasWindowSnapshot?: unknown
+      }>).detail
+      if (detail === undefined || detail === null || typeof detail !== 'object') return
+      if (typeof detail.generation === 'number') {
+        const current = document.documentElement.dataset.dshMobileConnectionGeneration
+        if (current !== undefined && current !== String(detail.generation)) return
+      }
+      if (isBaseline(detail.listBaseline)) listBaseline = detail.listBaseline
+      if (isBaseline(detail.windowBaseline)) windowBaseline = detail.windowBaseline
+      if (typeof detail.hasListSnapshot === 'boolean') hasListSnapshot = detail.hasListSnapshot
+      if (typeof detail.hasWindowSnapshot === 'boolean') hasWindowSnapshot = detail.hasWindowSnapshot
+      paintBadge()
+    }
+    const handleColdStartTransport = (): void => {
+      resetColdStartBaselines()
+      paintBadge()
     }
     document.addEventListener('dsh:live-data-state', handleLiveDataState)
     document.addEventListener('dsh:live-data-ready', handleLiveDataReady)
+    document.addEventListener('dsh-mobile:cold-start-baseline', handleColdStartBaseline)
+    document.addEventListener('dsh-mobile:cold-start-transport', handleColdStartTransport)
     own(() => document.removeEventListener('dsh:live-data-state', handleLiveDataState))
     own(() => document.removeEventListener('dsh:live-data-ready', handleLiveDataReady))
+    own(() => document.removeEventListener('dsh-mobile:cold-start-baseline', handleColdStartBaseline))
+    own(() => document.removeEventListener('dsh-mobile:cold-start-transport', handleColdStartTransport))
     const openProfileMenu = (): void => {
       void showProfileMenu(repository, reconnectActiveHost, enterOnboardingAfterRemoval, async enabled => {
         await backgroundConnection.setEnabled(enabled)
@@ -555,13 +604,10 @@ void (async () => {
       state = 'open'
       activity = { phase: 'open', attempt: activity.attempt, route: activity.route }
       // Core Runtime has no authoritative readiness contract; transport-open
-      // must not be presented as proof that live session baselines refreshed.
-      if (!supportsLiveDataReadiness(document.documentElement.dataset)) {
-        liveDataReady = coreLiveDataReadiness(transportReady, shellMounted)
-      }
+      // must not hide the chip. Official live-data events or product baselines do.
       lastError = ''
       endpointRefreshAvailable = false
-      updateBadge(activity, route, shellMounted, liveDataReady)
+      paintBadge()
       render()
     }
 
@@ -572,11 +618,11 @@ void (async () => {
       session?.forgetPaint()
       shellMounted = false
       transportReady = false
-      liveDataReady = 'pending'
+      resetColdStartBaselines()
       state = 'closed'
       route = ''
       activity = { phase: 'terminal', attempt: activity.attempt, route: null, error: 'no Active Host Profile' }
-      updateBadge(activity, route, shellMounted, liveDataReady)
+      paintBadge()
       setTopbarNotice(null)
       const firstRun = mountFirstRunScreen(el)
       const offerUrl = await completeProfileOnboarding({
@@ -597,7 +643,7 @@ void (async () => {
       session?.forgetPaint()
       shellMounted = false
       transportReady = false
-      liveDataReady = 'pending'
+      resetColdStartBaselines()
       state = 'connecting'
       route = ''
       lastError = ''
@@ -606,7 +652,7 @@ void (async () => {
       activity = { phase: 'connecting', attempt: activity.attempt + 1, reconnecting: false, route: null }
       activeConnection = next
       setProtectedCacheScope(next.profile.hostId)
-      updateBadge(activity, route, shellMounted, liveDataReady)
+      paintBadge()
       setTopbarNotice(null)
       // Compatibility notices live outside #root. A Host switch owns the
       // entire shell surface, so the prior Host cannot remain visible while
@@ -678,9 +724,10 @@ void (async () => {
                 ? 'connecting'
                 : 'closed'
             transportReady = nextActivity.phase === 'open'
-            if (nextActivity.phase !== 'open') liveDataReady = 'pending'
-            else if (!supportsLiveDataReadiness(document.documentElement.dataset)) {
-              liveDataReady = coreLiveDataReadiness(transportReady, shellMounted)
+            if (nextActivity.phase !== 'open') {
+              liveDataReady = 'pending'
+              listBaseline = 'pending'
+              windowBaseline = 'pending'
             }
             if (nextActivity.phase === 'open' || (nextActivity.phase === 'connecting' && !nextActivity.reconnecting)) {
               lastError = ''
@@ -690,7 +737,7 @@ void (async () => {
               const recovery = connectionRecoveryDecision(next.profile.endpoint.kind, nextActivity.phase, lastError)
               endpointRefreshAvailable ||= recovery === 'endpoint'
             }
-            updateBadge(activity, route, shellMounted, liveDataReady)
+            paintBadge()
             render()
             const refresh = session?.refreshAfterTransportActivity(previousActivity, nextActivity, shellMounted)
             void refresh?.catch(error => {
@@ -744,7 +791,7 @@ void (async () => {
           failedMobileLayoutRevision,
         })
       },
-      async mount(selection, _hostId) {
+      async mount(selection, _hostId, _bootGeneration) {
         const booted = await bootDshShell(selection)
         // Claim the shell root before any further await: a status repaint
         // between here and the last await would wipe the shell just painted.
@@ -759,10 +806,7 @@ void (async () => {
             updatedAt: new Date().toISOString(),
           })
         }
-        if (!supportsLiveDataReadiness(document.documentElement.dataset)) {
-          liveDataReady = coreLiveDataReadiness(transportReady, shellMounted)
-        }
-        updateBadge(activity, route, shellMounted, liveDataReady)
+        paintBadge()
         // The tunnel can report open before the WebView shell exists. Repaint
         // now so a ready state cannot leave a stale recovery notice behind.
         render()

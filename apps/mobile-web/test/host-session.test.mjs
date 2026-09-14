@@ -469,3 +469,40 @@ test('stop during an in-flight connect rejects as a cancelled Host session, not 
   session.stop()
   await assert.rejects(connecting, error => isHostSessionStoppedError(error))
 })
+
+test('paint publishes boot generation and host id so overlay can bind this connection', async () => {
+  const dataset = {}
+  const events = []
+  const previous = globalThis.document
+  globalThis.document = {
+    documentElement: { dataset },
+    dispatchEvent(event) {
+      events.push({ type: event.type, detail: event.detail })
+      return true
+    },
+  }
+  try {
+    const mounts = []
+    const manager = fakeManager()
+    const session = new HostSession({
+      slot: { attach() {}, async current() { return manager.current() } },
+      createManager() { return manager },
+      async injectBoot() { return selection('r1') },
+      mount(next, hostId, generation) { mounts.push({ rev: next.manifest.rev, hostId, generation }) },
+    })
+    await session.connect(prepared('host-a'))
+    assert.equal(mounts.length, 1)
+    assert.equal(mounts[0].hostId, 'host-a')
+    assert.equal(typeof mounts[0].generation, 'number')
+    assert.ok(mounts[0].generation > 0)
+    assert.equal(dataset.dshMobileHostId, 'host-a')
+    assert.equal(dataset.dshMobileConnectionGeneration, String(mounts[0].generation))
+    assert.deepEqual(events.at(-1), {
+      type: 'dsh-mobile:cold-start-transport',
+      detail: { hostId: 'host-a', generation: mounts[0].generation },
+    })
+  } finally {
+    if (previous === undefined) delete globalThis.document
+    else globalThis.document = previous
+  }
+})

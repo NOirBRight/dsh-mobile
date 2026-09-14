@@ -18,7 +18,7 @@ export interface HostSessionDeps {
   injectBoot(client: TunnelClient, prepared: PreparedProfileConnection): Promise<ResponsiveBootSelection>
   /** Paint a cached boot roster before the tunnel is open; null means wait for the live inject. */
   hydrateBoot?(prepared: PreparedProfileConnection): Promise<ResponsiveBootSelection | null>
-  mount(selection: ResponsiveBootSelection, hostId: string): void | Promise<void>
+  mount(selection: ResponsiveBootSelection, hostId: string, bootGeneration: number): void | Promise<void>
 }
 
 export interface ShellPaintContext {
@@ -195,11 +195,12 @@ export class HostSession {
   private paint(selection: ResponsiveBootSelection, nextHostId: string, bootGeneration: number, force = false): Promise<void> {
     const run = async (): Promise<void> => {
       if (bootGeneration !== this.bootGeneration) return
+      publishColdStartTransport(nextHostId, bootGeneration)
       if (!force && !shellNeedsPaint(this.lastSelection, selection, { previousHostId: this.lastHostId, nextHostId })) {
         this.lastSelection = selection
         return
       }
-      await this.deps.mount(selection, nextHostId)
+      await this.deps.mount(selection, nextHostId, bootGeneration)
       if (bootGeneration !== this.bootGeneration) return
       this.lastSelection = selection
       this.lastHostId = nextHostId
@@ -211,6 +212,23 @@ export class HostSession {
 }
 
 export const HOST_SESSION_STOPPED_MESSAGE = 'Active Host connection stopped'
+
+/** Publish this boot generation so layout overlay can bind (and drop stale covers). */
+export function publishColdStartTransport(
+  hostId: string,
+  bootGeneration: number,
+  doc: Pick<Document, 'documentElement' | 'dispatchEvent'> | undefined = globalThis.document,
+): void {
+  if (doc === undefined) return
+  const root = doc.documentElement
+  if (root === undefined) return
+  root.dataset.dshMobileConnectionGeneration = String(bootGeneration)
+  root.dataset.dshMobileHostId = hostId
+  if (typeof CustomEvent !== 'function') return
+  doc.dispatchEvent(new CustomEvent('dsh-mobile:cold-start-transport', {
+    detail: { hostId, generation: bootGeneration },
+  }))
+}
 
 /** A superseded connect was cancelled by stop() or a newer connect(); it is not a transport failure. */
 export function isHostSessionStoppedError(error: unknown): boolean {

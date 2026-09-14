@@ -123,12 +123,65 @@
 }
 
 .center {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Product-owned cold-start covers. Official sidebar/conversation stay mounted
+   underneath; these nodes are injected into the drawer and main, never into
+   the Codex overlay seat. Hidden when this generation's baseline is ready. */
+.drawer > :global([data-mobile-cold-start-list-overlay]),
+.center :global([data-chat-scroll] > [data-mobile-cold-start-conversation-overlay]),
+.center > :global([data-mobile-cold-start-conversation-overlay]) {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: auto;
+  pointer-events: auto;
+  background: var(--dsw-specific-sidebar-fill, var(--dsw-alias-bg-base));
+}
+
+.center :global([data-chat-scroll]) {
+  position: relative;
+}
+
+.center :global([data-chat-scroll] > [data-mobile-cold-start-conversation-overlay]),
+.center > :global([data-mobile-cold-start-conversation-overlay]) {
+  background: var(--dsw-alias-bg-base);
+}
+
+.drawer > :global([data-mobile-cold-start-list-overlay][hidden]),
+.center :global([data-mobile-cold-start-conversation-overlay][hidden]) {
+  display: none;
+}
+
+.drawer > :global([data-mobile-cold-start-list-overlay] > button) {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.center :global([data-chat-scroll] > [data-mobile-cold-start-conversation-overlay] > [data-mobile-cold-start-event]),
+.center > :global([data-mobile-cold-start-conversation-overlay] > [data-mobile-cold-start-event]) {
+  padding: 8px 16px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  line-height: 20px;
+  white-space: pre-wrap;
 }
 
 /* Scrim sits between content and drawer; visibility rides the slide
