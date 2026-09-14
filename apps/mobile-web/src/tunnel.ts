@@ -9,7 +9,8 @@
  */
 import { connect, HeartbeatController, TunnelError } from '@dsh-mobile/e2e-tunnel'
 import type { ClientKeypair, ConnectionPolicy, ConnectionStatus, ConnectOptions, TunnelClient, TunnelState } from '@dsh-mobile/e2e-tunnel'
-import { createLocalStoragePluginCache, extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readCachedBootManifest, selectResponsiveBootManifest, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
+import { extractBootManifestJson, localizePluginBundles, officialNarrowContractAvailable, PLUGIN_LOAD_CONCURRENCY, readCachedBootManifest, selectResponsiveBootManifest, writeCachedBootManifest, type ResponsiveBootSelection, type ResponsiveBootSelectionOptions } from './manifest.ts'
+import { createIndexedDbPluginCache } from './plugin-cache.ts'
 import { findConnectionBadgeAnchor, findSettingsTrigger, OFFICIAL_DRAWER, OWN_DRAWER_BRAND, OWN_TOPBAR, queryDrawerToggleSlot } from './anchors.ts'
 import type { EndpointKind } from './profiles.ts'
 
@@ -90,7 +91,7 @@ export async function injectBootManifestFromTunnel(
       throw new Error(last)
     },
     createUrl: pluginBlobUrl,
-    cache: createLocalStoragePluginCache(undefined, responsive.hostId ?? ''),
+    cache: createIndexedDbPluginCache(responsive.hostId ?? ''),
     concurrency: responsive.pluginConcurrency ?? PLUGIN_LOAD_CONCURRENCY,
     ...responsive.onPluginProgress === undefined ? {} : { onProgress: responsive.onPluginProgress },
   })
@@ -126,7 +127,7 @@ export async function hydrateBootManifestFromCache(
     const localizedManifest = await localizePluginBundles(selection.manifest, {
       load: async () => { throw new Error('plugin cache miss') },
       createUrl: pluginBlobUrl,
-      cache: createLocalStoragePluginCache(undefined, hostId),
+      cache: createIndexedDbPluginCache(hostId),
       cacheOnly: true,
     })
     ;(window as unknown as { __DSH_BOOT__: unknown }).__DSH_BOOT__ = localizedManifest
