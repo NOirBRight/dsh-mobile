@@ -6,11 +6,14 @@ const sessions = { current: 'session-a', byId: { 'session-a': { blank: false, di
 const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)
 
 function App() {
-  const panels = { drawerOpen: true, detailsOpen: false }
+  const panels = { drawerOpen: true, rightbarOpen: false, panelInfo: { activePanelId: null } }
   const useStore = (select: (state: typeof panels) => unknown) => select(panels)
   const actions = useMemo(() => ({
     toggleSidebar() {},
     closeDrawer() {},
+    selectPanel() {},
+    openRightbar() {},
+    closeRightbar() {},
     openDetails() {},
     closeDetails() {},
   }), [])
@@ -64,7 +67,7 @@ function App() {
       </button>
       <div className="dcs-col-handle" data-codex-handle />
     </div>
-    if (name === 'conversation') return <div>Conversation</div>
+    if (name === 'main' || name === 'conversation') return <div>Conversation</div>
     return null
   }
   useEffect(() => {

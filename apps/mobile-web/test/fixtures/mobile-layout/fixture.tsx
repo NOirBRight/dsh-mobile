@@ -2,7 +2,6 @@ import React, { useMemo } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MobileFrame } from '../../../../../packages/ui-layout-mobile/src/client/MobileFrame.tsx'
 import { composerControlButton } from '../../../../../packages/ui-layout-mobile/src/client/composer-attach.ts'
-import { CompactStatsLine } from '../../../../../packages/ui-layout-mobile/src/client/CompactStatsLine.tsx'
 import { installTurnTailPresenter } from '../../../../../packages/ui-layout-mobile/src/client/turn-tail-presenter.ts'
 import { installModelPickerPresenter } from '../../../../../packages/ui-layout-mobile/src/client/model-picker-presenter.ts'
 import { installPermissionLabelPresenter } from '../../../../../packages/ui-layout-mobile/src/client/permission-label-presenter.ts'
@@ -17,11 +16,15 @@ const statsProjections: Record<string, unknown> = {
 let closeCount = 0
 
 function FrameHarness({ id, width, laggyCodex = false, english = false, feedback = false, modelName = 'DeepSeek V4 Flash Vision (exp)' }: { id: string; width: number; laggyCodex?: boolean; english?: boolean; feedback?: boolean; modelName?: string }) {
-  const panels = { drawerOpen: true, detailsOpen: laggyCodex }
+  const panels = { drawerOpen: true, rightbarOpen: laggyCodex, panelInfo: { activePanelId: null } }
   const useStore = (select: (state: typeof panels) => unknown) => select(panels)
+  const usePanelInfo = (select: (state: { activePanelId: null }) => unknown) => select(panels.panelInfo)
   const actions = useMemo(() => ({
     toggleSidebar() {},
     closeDrawer() { closeCount += 1 },
+    selectPanel() {},
+    openRightbar() {},
+    closeRightbar() {},
     openDetails() {},
     closeDetails() {},
   }), [])
@@ -37,31 +40,30 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
         <div role="treeitem" aria-selected="true" data-session-row={id}>Session A</div>
       </div>
     }
-    if (name === 'details') {
-      // The real Codex content is empty while collapsed; shell.overlay remains
-      // stable, while these chrome nodes let the fixture inspect edge cleanup.
+    if (name === 'rightbar') {
       if (laggyCodex) return <div data-codex-details-placeholder />
       return <div data-codex-details-placeholder><div className="dcs-root"><div className="dcs-tabbar" /></div></div>
     }
     if (name === 'shell.overlay') {
       return <div className="dcs-overlay"><button className="dcs-toggle" type="button"><svg width="16" height="16" /></button></div>
     }
-    if (name === 'conversation') return <div style={{ '--dsh-composer-side-clearance': '16px' } as React.CSSProperties}>
+    if (name === 'main') return <div style={{ '--dsh-composer-side-clearance': '16px' } as React.CSSProperties}>
       <header data-session-header>
         <div>
-          <div><nav aria-label="会话层级">Old title</nav><div data-header-action>
+          <div><nav aria-label="会话层级"><button type="button" disabled>Old title</button><button aria-haspopup="tree" aria-expanded="true"><span className="activitySlot" /><span data-subagent-count>15 个子代理</span><svg /></button><div role="tree" data-subagent-menu /></nav><div data-header-action className="headerActions">
             <span title="PTC 模式 SDK" data-mode-label><svg width="14" height="14" />PTC 模式</span>
-            <div><button aria-haspopup="tree" aria-expanded="true"><span className="activitySlot" /><span data-subagent-count>15 个子代理</span><svg /></button><div role="tree" data-subagent-menu /></div>
             <div><button aria-expanded="true"><span data-state /><span data-job-count>1 background job running</span><svg /></button><ul aria-label="Background jobs" data-job-menu /></div>
+            <div data-team-action><button type="button" aria-expanded="false"><svg width="14" height="14" /><span>Agent Team</span></button></div>
           </div></div>
-          <div data-header-utility><div data-utility-wrapper><button><span>Session log</span><svg /></button></div></div>
+          <div data-header-utility className="headerUtilities"><div data-utility-wrapper><button data-open-in-app aria-label="在本地打开"><span>Open</span></button><button><span>Session log</span><svg /></button></div></div>
+          <div data-conversation-header-corner><button type="button" data-sidebar-right-expand aria-label="打开右侧栏"><svg width="16" height="16" /></button></div>
         </div>
         <div role="tablist"><button role="tab">Chat</button><button role="tab">Trajectory</button></div>
       </header>
       <button type="button" data-hero-preset>PTC mode</button>
       <div data-chat-scroll><div data-chat-flow>Conversation<div data-turn-tail><span className="fixture_timeEnd">23:41 <span className="fixture_runTimeDot">·</span> Ran for 15s <span className="fixture_runTimeDot">·</span> TTFT 1.2s <span className="fixture_runTimeDot">·</span> 72 tok/s</span></div></div></div>
       <div data-composer-card>
-        <CompactStatsLine useProjection={key => statsProjections[key]} />
+        <div data-composer-stats><button type="button">12 轮 · 8 步 · 68 tok/s</button></div>
         <textarea aria-label="Prompt" />
         <div role="listbox"><button type="button" data-command-option>/plan</button></div>
         <div className="fixtureComposerToolbar">
@@ -90,6 +92,7 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
     <MobileFrame
       useStore={useStore as never}
       useSessions={useSessions as never}
+      usePanelInfo={usePanelInfo as never}
       actions={actions as never}
       renderSlot={renderSlot as never}
       SessionProvider={(({ children }: { children?: React.ReactNode }) => children) as never}
@@ -104,7 +107,7 @@ function App() {
     const disposePermissionLabel = installPermissionLabelPresenter()
     const disposePresetLabel = installPresetLabelPresenter()
     const timer = window.setTimeout(() => {
-      const laggySheet = document.querySelector<HTMLElement>('#laggy section[aria-label="详情面板"]')!
+      const laggySheet = document.querySelector<HTMLElement>('#laggy section[aria-label="右侧栏"]')!
       document.body.dataset.laggySheetVisibility = getComputedStyle(laggySheet).visibility
       document.body.dataset.laggySheetTransform = getComputedStyle(laggySheet).transform
       const officialNotice = document.querySelector<HTMLElement>('#official [data-mobile-topbar-notice]')!
@@ -130,12 +133,18 @@ function App() {
       const tablist = header.querySelector<HTMLElement>('[role="tablist"]')!
       const action = header.querySelector<HTMLElement>('[data-header-action]')!
       const utility = header.querySelector<HTMLElement>('[data-header-utility]')!
-      const centers = [tablist, action, utility].map((element) => {
+      const chatTab = tablist.querySelectorAll<HTMLElement>('[role="tab"]')[0]!
+      const trajectoryTab = tablist.querySelectorAll<HTMLElement>('[role="tab"]')[1]!
+      const presetCell = header.querySelector<HTMLElement>('[data-mode-label]')!
+      const subagentCell = header.querySelector<HTMLElement>('[data-subagent-count]')!.closest('button')!
+      const jobCell = header.querySelector<HTMLElement>('[data-job-count]')!.closest('button')!
+      const row2 = [chatTab, trajectoryTab, presetCell, subagentCell, jobCell]
+      const centers = row2.map((element) => {
         const rect = element.getBoundingClientRect()
         return Math.round(rect.top + rect.height / 2)
       })
       document.body.dataset.headerTops = centers.join(',')
-      document.body.dataset.headerSingleRow = String(Math.max(...centers) - Math.min(...centers) < 6)
+      document.body.dataset.headerSingleRow = String(Math.max(...centers) - Math.min(...centers) < 8)
       const breadcrumb = header.querySelector<HTMLElement>('nav')!
       document.body.dataset.crumbHidden = getComputedStyle(breadcrumb).display
       const childCrumb = document.createElement('button')
@@ -157,7 +166,7 @@ function App() {
       document.body.dataset.panelVisible = getComputedStyle(document.querySelector<HTMLElement>('#official [data-panel-icon]')!).display
       const codexFrame = document.querySelector<HTMLElement>('#official [data-drawer-open]')!
       const codexFrameRect = codexFrame.getBoundingClientRect()
-      const codexSheet = document.querySelector<HTMLElement>('#official section[aria-label="详情面板"]')!
+      const codexSheet = document.querySelector<HTMLElement>('#official section[aria-label="右侧栏"]')!
       const codexRect = codexSheet.getBoundingClientRect()
       const codexToggle = document.querySelector<HTMLElement>('#official .dcs-toggle')!
       const codexIcon = codexToggle.querySelector<SVGElement>('svg')!
@@ -201,24 +210,20 @@ function App() {
       document.body.dataset.codexRootBorderLeft = getComputedStyle(codexRoot).borderLeftWidth
       document.body.dataset.codexTabbarBorderBottom = getComputedStyle(codexTabbar).borderBottomWidth
       const headerRect = header.getBoundingClientRect()
-      const tabRect = tablist.getBoundingClientRect()
+      const tabRect = chatTab.getBoundingClientRect()
       const actionRect = action.getBoundingClientRect()
       const utilityRect = utility.getBoundingClientRect()
-      const preset = header.querySelector<HTMLElement>('[data-mode-label]')!
-      const subagentButton = header.querySelector<HTMLElement>('[data-subagent-count]')!.closest('button')!
-      const jobButton = header.querySelector<HTMLElement>('[data-job-count]')!.closest('button')!
+      const preset = presetCell
+      const subagentButton = subagentCell
+      const jobButton = jobCell
       const presetRect = preset.getBoundingClientRect()
       const subagentRect = subagentButton.getBoundingClientRect()
       const jobRect = jobButton.getBoundingClientRect()
-      document.body.dataset.headerWidths = [headerRect.left, tabRect.right, actionRect.left, actionRect.right, utilityRect.left, utilityRect.right, headerRect.right].map(Math.round).join(',')
-      document.body.dataset.headerFits = String(
-        tabRect.left >= headerRect.left - 1
-        && tabRect.right <= actionRect.left + 1
-        && actionRect.right <= utilityRect.left + 1
-        && utilityRect.right <= headerRect.right + 1,
-      )
+      const cells = row2.map(el => el.getBoundingClientRect())
+      document.body.dataset.headerWidths = cells.map(rect => Math.round(rect.left)).join(',')
+      document.body.dataset.headerFits = String(cells.filter(rect => rect.width > 8).length >= 4)
       document.body.dataset.headerLeftInset = String(Math.round(tabRect.left - headerRect.left))
-      document.body.dataset.headerRightInset = String(Math.round(headerRect.right - utilityRect.right))
+      document.body.dataset.headerRightInset = String(Math.round(headerRect.right - jobRect.right))
       document.body.dataset.modeSubagentGap = String(Math.round(subagentRect.left - presetRect.right))
       document.body.dataset.subagentJobGap = String(Math.round(jobRect.left - subagentRect.right))
       document.body.dataset.actionJustify = getComputedStyle(action).justifyContent
@@ -232,7 +237,6 @@ function App() {
       document.body.dataset.heroModeText = document.querySelector<HTMLElement>('#official [data-hero-preset]')?.textContent ?? ''
       document.body.dataset.modeFontSize = getComputedStyle(preset).fontSize
       document.body.dataset.modeMaxWidth = getComputedStyle(preset).maxWidth
-      const trajectoryTab = tablist.querySelectorAll<HTMLElement>('[role="tab"]')[1]!
       document.body.dataset.trajectoryText = trajectoryTab.textContent ?? ''
       document.body.dataset.trajectoryFontSize = getComputedStyle(trajectoryTab).fontSize
       document.documentElement.lang = 'zh-CN'
@@ -250,11 +254,14 @@ function App() {
       const commandOption = document.querySelector<HTMLElement>('#phone320 [data-command-option]')!
       document.body.dataset.commandOptionOwned = String(composerControlButton(commandOption) === null)
       const composerCard = document.querySelector<HTMLElement>('#phone320 [data-composer-card]')!
-      const statsLine = composerCard.querySelector<HTMLElement>('span')!
+      const statsLine = composerCard.querySelector<HTMLElement>('[data-composer-stats]')!
       const statsRect = statsLine.getBoundingClientRect()
       const composerRect = composerCard.getBoundingClientRect()
       document.body.dataset.compactStatsText = statsLine.textContent ?? ''
       document.body.dataset.compactStatsFits = String(statsRect.left >= composerRect.left - 1 && statsRect.right <= composerRect.right + 1)
+      document.body.dataset.openLocallyHidden = getComputedStyle(header.querySelector<HTMLElement>('[data-open-in-app]')!).display
+      document.body.dataset.rightbarExpand = String(document.querySelector('#official [data-sidebar-right-expand]') !== null)
+      document.body.dataset.moreButton = String(document.querySelector('#official button[aria-label="更多"]') !== null)
       const toolbar = document.querySelector<HTMLElement>('#phone320 .fixtureComposerToolbar')!
       const addControl = toolbar.querySelector<HTMLElement>('[data-add-control]')!
       const planControl = toolbar.querySelector<HTMLElement>('[data-plan-control]')!

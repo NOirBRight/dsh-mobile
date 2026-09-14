@@ -1,8 +1,8 @@
 /**
  * Mobile shell frame, registered into the built-in 'root' slot (the web shell
  * renders only 'root'). Single content column with a top bar (menu button),
- * a slide-out navigation drawer (the 'sidebar' seat), a full-screen details
- * sheet (the 'details' seat), and the frame-wide overlay layer. Safe-area
+ * a slide-out navigation drawer (the 'sidebar' seat), a full-screen rightbar
+ * sheet, and the frame-wide overlay layer. Safe-area
  * insets pad the top bar and the content bottom.
  *
  * Drawer and sheet stay mounted while closed (CSS transform off-surface), so
@@ -50,7 +50,7 @@ export interface MobileInteractionOperations {
 /** Full composed props: runtime share + child-slot render share + store share. */
 export type MobileFrameProps =
   & PropsRuntime<'root'>
-  & PropsRenderSlots<'sidebar' | 'conversation' | 'details' | 'shell.overlay'>
+  & PropsRenderSlots<'sidebar' | 'main' | 'rightbar' | 'shell.overlay'>
   & PropsStore<ReturnType<typeof createMobileLayoutStore>>
   & { interactionOperations?: MobileInteractionOperations }
 
@@ -58,23 +58,30 @@ export type MobileFrameProps =
 export function MobileFrame({
   useStore,
   useSessions,
+  usePanelInfo,
   actions,
   renderSlot,
-  SessionProvider,
   interactionOperations,
 }: MobileFrameProps) {
   const panels = useStore(s => s)
+  const panelId = usePanelInfo === undefined ? null : usePanelInfo(info => info.activePanelId)
   const frameRef = useRef<HTMLDivElement | null>(null)
   const drawerRef = useRef<HTMLElement | null>(null)
   const [drawerWidth, setDrawerWidth] = useState(OFFICIAL_DRAWER_WIDTH)
+  const viewport = typeof window === 'undefined' ? 360 : window.innerWidth
   useLayoutEffect(() => {
-    if (!panels.detailsOpen || interactionOperations === undefined) return
+    if (!panels.rightbarOpen || interactionOperations === undefined) return
     return interactionOperations.registerSurface({
       id: 'mobile-details',
       kind: 'details',
-      dismiss: () => { actions.closeDetails() },
+      dismiss: () => {
+        // Missing seam: ExpandButton reads ui-sidebar-right's store, not ILayout.
+        const toggle = document.querySelector<HTMLButtonElement>('[data-sidebar-right-toggle]')
+        if (toggle !== null) toggle.click()
+        else actions.closeRightbar()
+      },
     })
-  }, [actions, interactionOperations, panels.detailsOpen])
+  }, [actions, interactionOperations, panels.rightbarOpen])
   useLayoutEffect(() => {
     if (!panels.drawerOpen || interactionOperations === undefined) return
     return interactionOperations.registerSurface({
@@ -114,15 +121,11 @@ export function MobileFrame({
     }
   }, [currentSession])
 
-  // Session switch closes the details sheet and the drawer: on mobile both
-  // cover the content column, so keeping them open across navigation strands
-  // the user on a stale surface (upstream closes details only; the drawer
-  // dismissal is the mobile addition).
   const lastSession = useRef(detailsSession)
   useLayoutEffect(() => {
     if (lastSession.current === detailsSession) return
     if (lastSession.current !== undefined && detailsSession !== undefined) {
-      actions.closeDetails()
+      actions.closeRightbar()
       actions.closeDrawer()
     }
     lastSession.current = detailsSession
@@ -172,21 +175,21 @@ export function MobileFrame({
       ref={frameRef}
       className={css.frame}
       data-drawer-open={panels.drawerOpen || undefined}
-      data-details-open={panels.detailsOpen || undefined}
+      data-details-open={panels.rightbarOpen || undefined}
     >
       <header className={css.topbar} data-mobile-topbar>
         <button
           type="button"
           className={css.menuButton}
           aria-label="打开导航菜单"
-          onClick={() => actions.toggleSidebar()}
+          onClick={() => { actions.toggleSidebar() }}
         >
           ☰
         </button>
         <div className={css.sessionTitle} title={sessionTitle} data-mobile-session-title>{sessionTitle}</div>
       </header>
       <main className={css.center}>
-        {renderSlot('conversation', {})}
+        {renderSlot('main', {}, { entryKey: panelId ?? 'conversation' })}
       </main>
       <div className={css.noticeLayer} data-mobile-connection-notice-layer>
         <div className={css.topbarNotice} data-mobile-topbar-notice hidden role="status" aria-live="polite">
@@ -194,7 +197,7 @@ export function MobileFrame({
           <button type="button" data-mobile-topbar-notice-action hidden />
         </div>
       </div>
-      <div className={css.scrim} onClick={() => actions.closeDrawer()} />
+      <div className={css.scrim} onClick={() => { actions.closeDrawer() }} />
       <nav
         ref={drawerRef}
         className={css.drawer}
@@ -210,8 +213,8 @@ export function MobileFrame({
             expanded while visible, so the occupant never renders the rail. */}
         {renderSlot('sidebar', { collapsed: false, width: drawerWidth })}
       </nav>
-      <section className={css.detailsSheet} aria-label="详情面板">
-        <SessionProvider>{renderSlot('details', {})}</SessionProvider>
+      <section className={css.detailsSheet} aria-label="右侧栏">
+        {renderSlot('rightbar', { width: viewport, viewportWidth: viewport, canShow: true })}
       </section>
       <div className={css.overlayLayer} data-shell-overlay>
         {renderSlot('shell.overlay', {})}

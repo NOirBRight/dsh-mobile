@@ -12,11 +12,14 @@ function FrameHarness() {
     },
   }), [current])
   const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)
-  const panels = { drawerOpen: true, detailsOpen: false }
+  const panels = { drawerOpen: true, rightbarOpen: false, panelInfo: { activePanelId: null } }
   const useStore = (select: (state: typeof panels) => unknown) => select(panels)
   const actions = useMemo(() => ({
     toggleSidebar() {},
     closeDrawer() {},
+    selectPanel() {},
+    openRightbar() {},
+    closeRightbar() {},
     openDetails() {},
     closeDetails() {},
   }), [])
@@ -28,7 +31,7 @@ function FrameHarness() {
       aria-selected={current === 'b'}
       onClick={() => { setCurrent('b') }}
     >Session B</button>
-    if (name === 'conversation') return (
+    if (name === 'main' || name === 'conversation') return (
       <div data-composer-card>
         <div
           id="message"

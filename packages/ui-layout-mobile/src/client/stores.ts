@@ -1,39 +1,53 @@
 /**
- * The root entry's transient mobile layout store: the navigation drawer and
- * the details sheet as booleans (mobile has no draggable panel geometry —
- * the desktop px widths collapse into open/closed). Module level exports the
- * factory only: register() receives the factory (exclusive use: the
- * framework instantiates per entry), MobileFrame derives its PropsStore
- * share from the return type, and the service face receives the bound
- * actions through the registration's inject hook.
+ * Transient mobile layout store: drawer + rightbar overlay + active main panel.
+ * Geometry is open/closed; desktop px widths collapse into those flags.
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 
-/** Mobile layout store state: drawer + details sheet open flags. */
-type MobileLayoutState = { drawerOpen: boolean; detailsOpen: boolean }
+/** Active keyed main occupant; null means the default conversation. */
+export type PanelInfo = { activePanelId: string | null }
 
-/** Annotation twin of the actions literal below (drift fails assignability at defineStore). */
+type MobileLayoutState = {
+  drawerOpen: boolean
+  rightbarOpen: boolean
+  panelInfo: PanelInfo
+}
+
 type MobileLayoutActions = {
   toggleSidebar: (draft: MobileLayoutState) => void
   closeDrawer: (draft: MobileLayoutState) => void
+  selectPanel: (draft: MobileLayoutState, panelId: string | null) => void
+  retainMainPanels: (draft: MobileLayoutState, panelIds: readonly string[]) => void
+  openRightbar: (draft: MobileLayoutState, _track?: boolean, _fullscreen?: boolean) => void
+  closeRightbar: (draft: MobileLayoutState) => void
   openDetails: (draft: MobileLayoutState) => void
   closeDetails: (draft: MobileLayoutState) => void
 }
 
-/**
- * Create the mobile layout store handle. Actions are the complete write set;
- * toggleSidebar is named for the ctx.layout face (upstream parity), the
- * gesture toggles the drawer.
- * @returns the store handle (spec + type + identity + factory in one).
- */
+/** Factory for the root entry's layout store. */
 export function createMobileLayoutStore(): EngineStoreHandle<MobileLayoutState, MobileLayoutActions> {
   return defineStore({
-    init: (): MobileLayoutState => ({ drawerOpen: false, detailsOpen: false }),
+    init: (): MobileLayoutState => ({
+      drawerOpen: false,
+      rightbarOpen: false,
+      panelInfo: { activePanelId: null },
+    }),
     actions: {
       toggleSidebar: (d) => { d.drawerOpen = !d.drawerOpen },
       closeDrawer: (d) => { d.drawerOpen = false },
-      openDetails: (d) => { d.detailsOpen = true },
-      closeDetails: (d) => { d.detailsOpen = false },
+      selectPanel: (d, panelId) => {
+        d.panelInfo.activePanelId = panelId
+        d.drawerOpen = false
+      },
+      retainMainPanels: (d, panelIds) => {
+        if (d.panelInfo.activePanelId !== null && !panelIds.includes(d.panelInfo.activePanelId)) {
+          d.panelInfo.activePanelId = null
+        }
+      },
+      openRightbar: (d) => { d.rightbarOpen = true },
+      closeRightbar: (d) => { d.rightbarOpen = false },
+      openDetails: (d) => { d.rightbarOpen = true },
+      closeDetails: (d) => { d.rightbarOpen = false },
     },
   })
 }

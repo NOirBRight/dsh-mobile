@@ -17,7 +17,6 @@ import { createMobileLayoutStore } from './stores.ts'
 import { MobileLayoutController } from './service.ts'
 import { ThemePresenter } from './theme-presenter.ts'
 import { ComposerAttach } from './ComposerAttach.tsx'
-import { CompactStatsLine } from './CompactStatsLine.tsx'
 import { PlanToggle } from './PlanToggle.tsx'
 import { commandsExecuteFrom, interpretPlanCommandResult, type PlanCommand } from './plan-toggle.ts'
 import { installHistoryContinuityAdapter } from './history-continuity.ts'
@@ -45,56 +44,40 @@ declare module '@deepseek-ai/cordis' {
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface GlobalStandardProps {
+    usePanelInfo: {
+      <Selected>(
+        selector: (value: import('./stores.ts').PanelInfo) => Selected,
+        equal?: (left: Selected, right: Selected) => boolean,
+      ): Selected
+    }
+  }
   interface SlotMap {
-    // VERBATIM upstream ui-layout declarations (kind + scope are the runtime
-    // contract; owner types are structural). Keep JSDoc parity with upstream
-    // so a contract diff is reviewable.
-    /**
-     * The whole left column. On mobile: the slide-out drawer body. OCCUPIED by
-     * ui-sidebar's SidebarRoot, which declares the workspace and settings
-     * seats inside it.
-     */
+    /** Overlay drawer. Occupied by ui-sidebar SidebarRoot. */
     'sidebar': { kind: 'single'; scope: 'root'; owner: SidebarOwnerProps }
-    /**
-     * The whole center column (the mobile frame's single content column),
-     * across both the no-session hero and a live conversation. OCCUPIED by
-     * ui-conversation's ConversationRoot.
-     */
-    'conversation': { kind: 'single'; scope: 'session-maybe'; owner: ConvOwnerProps }
-    /**
-     * The details surface, shown when the layout opens it; on mobile a
-     * full-screen sheet over the content column. OCCUPIED by
-     * ui-conversation's DetailsPanel. Stays mounted while closed.
-     */
-    'details': { kind: 'single'; scope: 'session'; owner: DetailsOwnerProps }
-    /**
-     * Frame-wide floating layer, above every surface and outside their scroll
-     * containers. Additive list seat for badges, toasts, status pills. The
-     * layer is click-through; entries opt back into pointer events.
-     */
+    /** Center column. ConversationPanel injects key conversation. */
+    'main': { kind: 'keyed'; scope: 'root' }
+    /** Fullscreen overlay. Occupied by ui-sidebar-right. Phone always passes canShow true. */
+    'rightbar': { kind: 'single'; scope: 'root'; owner: RightbarOwnerProps }
     'shell.overlay': { kind: 'list'; scope: 'root' }
-    /** Occupied by this package's plus-button attach control. Declared by ui-conversation (no owner: entries read session state through the standard hooks). */
     'conversation.input.left': { kind: 'list'; scope: 'session' }
-    /** Occupied by this package's compact StatsLine. Declared by ui-conversation. */
     'conversation.composer.dock': { kind: 'list'; scope: 'session'; owner: object }
-    /** Occupied by this package's plan-mode icon toggle. Declared by ui-conversation. */
     'conversation.input.plan': { kind: 'single'; scope: 'session'; owner: { locked: boolean } }
   }
 }
 
 /** Sidebar owner share: live drawer state from the frame. */
 export interface SidebarOwnerProps {
-  /** True when the sidebar is closed (upstream: renders the compact rail; the drawer never passes true). */
   collapsed: boolean
-  /** Rendered drawer width in px. */
   width: number
 }
 
-/** Conversation owner share: business state and actions belong to the registrant. */
-export interface ConvOwnerProps {}
-
-/** Details owner share: empty — sessionId arrives as a framework-standard prop. */
-export interface DetailsOwnerProps {}
+/** Rightbar owner share: overlay geometry. canShow is always true on mobile. */
+export interface RightbarOwnerProps {
+  width: number
+  viewportWidth: number
+  canShow: boolean
+}
 
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme', 'sessions', 'remote.agentPresets', 'modelDirectories']
@@ -118,26 +101,43 @@ function interactionOperationsFrom(ctx: ClientContext): MobileInteractionOperati
 export function apply(ctx: ClientContext): void {
   const layout = new MobileLayoutController()
   ctx.effect(() => {
+    const handle = createMobileLayoutStore()
+    const instance = handle.create()
+    const store = { ...handle, create: () => instance }
+    const hasMainPanel = (id: string): boolean =>
+      ctx.slots.entries('main').some(entry => entry.options.key === id)
+    layout.attachPanels(instance.actions, hasMainPanel)
+    const panelInfo = {
+      getSnapshot: () => instance.getSnapshot().panelInfo,
+      subscribe: (fn: () => void) => instance.subscribe(fn),
+    }
+    const disposePanelInfo = ctx.slots.provideRoot({ hooks: { panelInfo } })
     const disposeService = ctx.reflect.provide('layout', layout)
+    const retainMainPanels = (): void => {
+      instance.actions.retainMainPanels(
+        ctx.slots.entries('main').flatMap(entry => entry.options.key === undefined ? [] : [entry.options.key]),
+      )
+    }
     const disposeRegistration = ctx.slots.register({
       name: 'root',
       children: {
         'sidebar': { kind: 'single', scope: 'root' },
-        'conversation': { kind: 'single', scope: 'session-maybe' },
-        'details': { kind: 'single', scope: 'session' },
+        'main': { kind: 'keyed', scope: 'root' },
+        'rightbar': { kind: 'single', scope: 'root' },
         'shell.overlay': { kind: 'list', scope: 'root' },
       },
-      // Exclusive store: the factory itself — the framework instantiates per
-      // entry and delivers useStore/actions to MobileFrame as standard props.
-      store: createMobileLayoutStore,
+      store,
       inject: (actions: PanelActions) => {
-        layout.attachPanels(actions)
+        layout.attachPanels(actions, hasMainPanel)
         return { interactionOperations: interactionOperationsFrom(ctx) }
       },
     }, MobileFrame)
+    const disposePanels = ctx.slots.subscribe('main', retainMainPanels)
+    retainMainPanels()
     return () => {
+      disposePanels()
       disposeRegistration()
-      // provide()'s disposer settles asynchronously; teardown is synchronous fire-and-forget.
+      disposePanelInfo()
       void disposeService()
     }
   }, 'ui-layout-mobile: service + root registration')
@@ -189,40 +189,13 @@ export function apply(ctx: ClientContext): void {
     }
     mountAttach()
     const off = ctx.on('slots/changed', (key: string) => {
-      if (key === 'conversation' || key === 'conversation.input.left') mountAttach()
+      if (key === 'main' || key === 'conversation' || key === 'conversation.input.left') mountAttach()
     })
     return () => {
       off()
       disposeAttach?.()
     }
   }, 'ui-layout-mobile: composer attach')
-
-  ctx.effect(() => {
-    let disposeStats: (() => void) | undefined
-    const mountStats = (): void => {
-      if (disposeStats !== undefined) return
-      try {
-        disposeStats = ctx.slots.register({
-          name: 'conversation.composer.dock',
-          id: 'stats',
-          order: 0,
-          // Same occupant identity as the official StatsLine, at a lower cell
-          // priority so this compact mobile face shadows instead of colliding.
-          priority: -1,
-        }, CompactStatsLine)
-      } catch {
-        // ui-conversation declares this slot; retry when that roster lands.
-      }
-    }
-    mountStats()
-    const off = ctx.on('slots/changed', (key: string) => {
-      if (key === 'conversation' || key === 'conversation.composer.dock') mountStats()
-    })
-    return () => {
-      off()
-      disposeStats?.()
-    }
-  }, 'ui-layout-mobile: compact stats')
 
   ctx.effect(() => {
     let disposePlan: (() => void) | undefined
@@ -246,7 +219,7 @@ export function apply(ctx: ClientContext): void {
     }
     mountPlan()
     const off = ctx.on('slots/changed', (key: string) => {
-      if (key === 'conversation' || key === 'conversation.input.plan') mountPlan()
+      if (key === 'main' || key === 'conversation' || key === 'conversation.input.plan') mountPlan()
     })
     return () => {
       off()

@@ -1,66 +1,76 @@
 /**
- * MobileLayoutController: the cross-plugin panel-action face behind
- * ctx.layout. Drawer/sheet state lives in the root entry's layout store
- * (stores.ts); what remains here is the contract other plugins' apply worlds
- * reach for panel transitions (sidebar toggle from ui-sidebar, details
- * open/close from ui-conversation) — writes stay inside the store's declared
- * action set, delivered as the registration's bound actions.
- *
- * Method set is verbatim upstream ui-layout's ILayout: the mobile shell is a
- * drop-in replacement, so the face must not drift.
+ * ctx.layout face. Method set matches 0.1.5 ILayout; openDetails/closeDetails
+ * stay as aliases so interaction-operations still dismisses the overlay.
  */
 import type { BoundActions } from '@deepseek-ai/dsh-client-ui-slots'
-import type { createMobileLayoutStore } from './stores.ts'
+import type { createMobileLayoutStore, PanelInfo } from './stores.ts'
 
-/** The layout store's bound action set (framework-baked, draft params peeled). */
+export type { PanelInfo }
+
+/** Bound store actions. */
 export type PanelActions = BoundActions<ReturnType<typeof createMobileLayoutStore>>
 
-/**
- * The outward layout face (ctx.layout): identical to upstream ILayout —
- * toggleSidebar toggles the navigation drawer on mobile.
- */
+/** Cross-plugin panel-action face (ctx.layout). */
 export interface IMobileLayout {
-  /** Toggle the sidebar (mobile: the navigation drawer). */
   toggleSidebar(): void
-  /** Open the details surface (mobile: the full-screen sheet). */
+  selectPanel(id: string | null): void
+  beginNavigation(): AbortSignal
+  openRightbar(track?: boolean, fullscreen?: boolean): void
+  closeRightbar(): void
+  /** Alias of openRightbar(false, true) for the 0.1.2 back-stack adapter. */
   openDetails(): void
-  /** Close the details surface. */
+  /** Alias of closeRightbar. */
   closeDetails(): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
 export class MobileLayoutController implements IMobileLayout {
   #panels: PanelActions | undefined
+  #navigation: AbortController | undefined
+  #hasMainPanel: ((id: string) => boolean) | undefined
 
-  /**
-   * Adopt the root entry's bound store actions. Called from the root
-   * registration's inject hook (a sanctioned assembly side effect); on entry
-   * re-register the fresh actions overwrite the stale set.
-   * @param actions - bound actions of the entry's layout store instance.
-   */
-  attachPanels(actions: PanelActions): void {
+  /** Wire store actions and the keyed-main occupancy probe. */
+  attachPanels(actions: PanelActions, hasMainPanel?: (id: string) => boolean): void {
     this.#panels = actions
+    this.#hasMainPanel = hasMainPanel
   }
 
-  /** Toggle the sidebar (mobile: the navigation drawer). */
   toggleSidebar(): void {
     this.#require().toggleSidebar()
   }
 
-  /** Open the details surface (no-op when already open). */
+  selectPanel(id: string | null): void {
+    if (id !== null && this.#hasMainPanel !== undefined && !this.#hasMainPanel(id)) {
+      throw new Error('layout.selectPanel: main panel "' + id + '" is not registered')
+    }
+    this.#navigation?.abort()
+    this.#require().selectPanel(id)
+  }
+
+  beginNavigation(): AbortSignal {
+    this.#navigation?.abort()
+    const next = new AbortController()
+    this.#navigation = next
+    return next.signal
+  }
+
+  openRightbar(track?: boolean, fullscreen?: boolean): void {
+    this.#require().openRightbar(track, fullscreen)
+  }
+
+  closeRightbar(): void {
+    this.#require().closeRightbar()
+  }
+
   openDetails(): void {
     this.#require().openDetails()
   }
 
-  /** Close the details surface. */
   closeDetails(): void {
     this.#require().closeDetails()
   }
 
   #require(): PanelActions {
-    // Callers are UI gestures, which cannot fire before the root entry
-    // rendered (the inject hook runs in its first render) — reaching this
-    // unwired is a boot-order bug, not a race to tolerate.
     if (this.#panels === undefined) throw new Error('ui-layout-mobile: panel actions not wired (root entry not mounted)')
     return this.#panels
   }
