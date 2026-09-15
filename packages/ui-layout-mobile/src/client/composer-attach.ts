@@ -117,11 +117,6 @@ export function composerDraftInput(button: HTMLButtonElement): ComposerDraftElem
   return card === null ? null : composerDraftForCard(card)
 }
 
-/** Plus is already holding the slash menu open — let the official toggle close it. */
-export function plusMenuAlreadyOpen(button: HTMLButtonElement): boolean {
-  return button.getAttribute('aria-expanded') === 'true'
-}
-
 /**
  * The official composer editor: Lexical's contenteditable host, or a legacy
  * textarea still rendered by an older Host.

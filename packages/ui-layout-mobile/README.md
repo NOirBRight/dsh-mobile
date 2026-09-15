@@ -31,7 +31,7 @@
 - 已知内置 preset 被用户层覆盖后可能携带非本地化 metadata；移动端只可按可证明的内置身份（`standard` / `ptc` / `minimal` / `cordis` 及其官方中英文全名）补齐紧凑文案。中文为「标准 / PTC / 极简 / 创造」，英文为「Standard / PTC / Minimal / Creator」；任意用户 preset 名称保持原样。
 - 复用 Agent Presets 启用前遗留的空白会话时，移动端把 Host 默认 preset 写入该空白会话，使官方 Hero 模式选择器恢复显示；已有 preset 或已开始的会话不改动。
 - 切换 Host 后若当前空白会话的默认模型 Provider 已不可路由，移动端优先把同名模型重映射到唯一有效 Provider，否则选择该 Host 目录中的首个有效模型；已开始的会话不自动改写。
-- `conversation.input.left` 上游无 owner（渲染 `{}`），attach 经标准 `useSession` 选择器读 busy/subagent，不做 settings 侧读；Send 一律走程序化 Enter 交 Core 的 queue/steer 策略裁决（`inputActions.submit()` 只在 Core 未消费且不可 steer 时回退）。运行中 continuable 子会话的 Send+Stop 双钮只保留一个（`data-mobile-secondary-hidden` 隐藏，handler 不动），各 seat 只作用于自己所在的 `[data-composer-card]`。加号在 capture 阶段拦住 InputBar keepFocus，避免弹出 IME，再把 click 交给官方命令 listbox（含「文件」）。Host 命令面自带图标；仅 skill 源与没有 glyph 的插件命令行补统一立方体。
+- `conversation.input.left` 上游无 owner（渲染 `{}`），attach 经标准 `useSession` 选择器读 busy/subagent，不做 settings 侧读；Send 一律走程序化 Enter 交 Core 的 queue/steer 策略裁决（`inputActions.submit()` 只在 Core 未消费且不可 steer 时回退）。运行中 continuable 子会话的 Send+Stop 双钮只保留一个（`data-mobile-secondary-hidden` 隐藏，handler 不动），各 seat 只作用于自己所在的 `[data-composer-card]`。加号在 capture 阶段拦住 InputBar keepFocus，避免弹出 IME，再把 click 交给官方命令 listbox（含「文件」）。Host 命令面自带图标；仅 skill 源与没有 glyph 的插件命令行补统一立方体。Alpha.4 / 0.1.5 壳 seed 的 primitives 缺少 0.1.6 HOST_FACES 四枚图标；mobile-web 用 Vite transform 把这四枚 export 接到 **seeded** icons 模块上，不改 `.dsh-upstream`、不打 DSH core patch。缺失 seam：官方 pinned Alpha.4 primitives 没有这些名字，上游应把它们放进该 seed 或让 HOST_FACES 不再 `require` 较新导出名。
 
 ## 静态加载修订号
 

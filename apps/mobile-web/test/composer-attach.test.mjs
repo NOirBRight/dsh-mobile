@@ -7,17 +7,10 @@ import {
   composerEditor,
   composerSecondarySeat,
   dismissOfficialMenus,
-  plusMenuAlreadyOpen,
   silencePlusKeepFocus,
 } from '../../../packages/ui-layout-mobile/src/client/composer-attach.ts'
 test('dismissOfficialMenus is safe outside a browser document', () => {
   assert.doesNotThrow(() => dismissOfficialMenus())
-})
-
-test('plusMenuAlreadyOpen follows aria-expanded', () => {
-  assert.equal(plusMenuAlreadyOpen({ getAttribute: () => 'true' }), true)
-  assert.equal(plusMenuAlreadyOpen({ getAttribute: () => 'false' }), false)
-  assert.equal(plusMenuAlreadyOpen({ getAttribute: () => null }), false)
 })
 
 test('silencePlusKeepFocus cancels keepFocus on the official plus without swallowing non-plus events', () => {

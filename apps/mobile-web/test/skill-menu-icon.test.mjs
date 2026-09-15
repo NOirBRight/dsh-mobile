@@ -3,22 +3,12 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import {
-  SKILL_SLASH_OPTION_ID_PREFIX,
   SkillCubeIcon,
   decorateSlashSource,
   installSlashMenuIcon,
-  isSkillSlashOptionId,
   stampSlashOptionIcon,
   withDefaultSlashIcon,
 } from '../../../packages/ui-layout-mobile/src/client/skill-menu-icon.ts'
-
-test('skill slash option ids follow the official MenuView source prefix', () => {
-  assert.equal(isSkillSlashOptionId('dsh-slash-option-skill-0'), true)
-  assert.equal(isSkillSlashOptionId('dsh-slash-option-skill-12'), true)
-  assert.equal(isSkillSlashOptionId('dsh-slash-option-command-0'), false)
-  assert.equal(isSkillSlashOptionId('dsh-slash-option-skill'), false)
-  assert.equal(SKILL_SLASH_OPTION_ID_PREFIX, 'dsh-slash-option-skill-')
-})
 
 test('withDefaultSlashIcon stamps the cube only when icon is missing', () => {
   const stamped = withDefaultSlashIcon({ name: 'ponytail', description: 'x' })

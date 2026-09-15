@@ -46,17 +46,6 @@ const DECORATED = Symbol.for('dsh-mobile.slash-menu-icon')
 /** Marker on a DOM-injected cube so a later scan does not double-stamp. */
 export const MENU_ICON_MARKER = 'data-mobile-menu-icon'
 
-/** Official MenuView option ids are `dsh-slash-option-${source}-${index}`. */
-export const SKILL_SLASH_OPTION_ID_PREFIX = 'dsh-slash-option-skill-'
-
-/**
- * True when a slash listbox option id is a skill-source row.
- * @param id - the option's `id` attribute.
- */
-export function isSkillSlashOptionId(id: string): boolean {
-  return id.startsWith(SKILL_SLASH_OPTION_ID_PREFIX)
-}
-
 /** One `/` trigger source, the subset this decorator writes. */
 export interface SlashTriggerSource {
   readonly trigger: string

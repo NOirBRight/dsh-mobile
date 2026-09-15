@@ -50,7 +50,7 @@ dshapp 不是独立产品 UI。它是同一份 Host 官方模块在窄屏上的�
 3. **slot 契约逐字对齐上游。** `sidebar` / `conversation` / `details` / `shell.overlay` 的 kind/scope、`ctx.layout` 三方法、ThemePresenter 不得自行发明。升级上游时 diff 官方 `ui-layout` 的 `src/client/index.ts`。
 4. **视觉属于官方 theme。** 颜色、字体、圆角、阴影、边框、动效用官方 semantic token / primitive。没有 token 就加到官方所有者，不要在 mobile CSS 里抄一份字面量设计系统。
 5. **窄屏只改空间语义：** 单栏、顶栏、sidebar → overlay drawer（展开宽默认 280px，owner 拿到实测宽度）、details → 全屏 sheet、safe-area。抽屉打开时 `collapsed: false`，不要让官方侧栏掉进桌面轨道模式。
-6. **禁止深挖官方 DOM。** 不准靠 `main header`、generated CSS-module class 去搬 token 统计、turn 元数据、composer。信息优先级/截断可以变，完整信息必须仍能点开或通过无障碍文本拿到。
+6. **禁止深挖官方 DOM。** 不准靠 `main header`、generated CSS-module class 去搬 token 统计、turn 元数据、composer 控件。例外：Host MenuView 没有给缺 `icon` 的 `/` skill 行或插件命令行补 glyph 的公开 seam；窄屏可以 wrap `inputTriggers` 的 skill 源，并在 MenuView 提交后再给仍无 SVG 的 `[role=option]` 盖立方体，但不得 wrap Host `command` source，也不得替换已经画上的官方 SVG。
 7. **layout 包保持纯 UI。** 不准引入 Capacitor、vault、扫码、配对、Host 协议。那些属于 `apps/mobile-web` 壳；本轮若只改外观，壳也不要顺手改连接策略。
 8. **Host boot roster 是只读的。** dshapp 客户端把 desktop layout 条目换成本地 mobile bundle，并去掉 `@deepseek-ai/dsh-client-hmr`。不准为了 app 去改 3080 吐出的官方 HTML/插件列表。
 

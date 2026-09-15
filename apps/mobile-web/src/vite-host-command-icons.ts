@@ -1,6 +1,9 @@
 /**
- * Vite transform: append Host 0.1.6 HOST_FACES glyphs onto an older
- * ui-primitives icons module. Used by apps/mobile-web/vite.config.ts.
+ * Vite transform: append Host 0.1.6 HOST_FACES glyphs onto the **seeded**
+ * ui-primitives icons module in the mobile-web graph. This is not a patch of
+ * `.dsh-upstream` or DSH core. Missing seam: Alpha.4 / 0.1.5 primitives omit
+ * IconPlanOutline14, IconPaperPlaneOutline14, IconCompactOutline16, and
+ * IconShieldOutline16, which 0.1.6 HOST_FACES require at construction.
  */
 import type { Plugin } from 'vite'
 

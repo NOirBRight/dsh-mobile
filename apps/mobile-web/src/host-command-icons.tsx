@@ -4,8 +4,9 @@
  * without these exports those rows render with no official icon.
  *
  * Source of record: dsh-v0.1.6-alpha.1 packages/client/ui-primitives/src/icons/index.tsx.
+ * Copied into this plugin because the pinned Alpha.4 seed cannot export them.
  * Do not import from dsh-client-ui-primitives here — Vite appends these
- * exports onto that module, and a reverse import would cycle.
+ * exports onto that seeded module, and a reverse import would cycle.
  */
 import type { ReactElement } from 'react'
 
