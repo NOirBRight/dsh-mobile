@@ -106,10 +106,8 @@ function App() {
       <ComposerAttach
         useSession={useMainSession}
         inputActions={{
-          addImages: () => true,
           submit: () => { document.body.dataset.mainSubmit = 'true' },
         }}
-        createDraftImages={() => []}
       />
     </div>
     <div data-composer-card id="child-card">
@@ -132,8 +130,7 @@ function App() {
       {childAttached && (
         <ComposerAttach
           useSession={useChildSession}
-          inputActions={{ addImages: () => true }}
-          createDraftImages={() => []}
+          inputActions={{}}
         />
       )}
     </div>

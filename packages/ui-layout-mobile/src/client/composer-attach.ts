@@ -4,31 +4,10 @@ import { isComposerSendLabel, isComposerStopLabel } from './chrome-anchors.ts'
 
 export { isComposerSendLabel, isComposerStopLabel } from './chrome-anchors.ts'
 
-/** Official image MIME set used by the Host draft-image registry. */
-export const IMAGE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'] as const
-
-/** File-input accept list for the gallery/camera chooser. */
-export const IMAGE_ACCEPT = 'image/png,image/jpeg,image/jpg,image/webp,image/gif'
-
-export interface DraftImage {
-  readonly id: string
-}
-
-export interface DraftConversation {
-  createDraftImages(files: readonly File[]): readonly DraftImage[]
-  releaseDraftImage?(id: string): void
-  releaseDraftImages?(images: readonly DraftImage[]): void
-}
-
 export interface DraftInputActions {
-  addImages(ids: readonly string[]): boolean
   /** Official session input action; optional for older Hosts using the fallback bridge. */
   submit?(): void
 }
-
-export type AttachOutcome =
-  | { ok: true }
-  | { ok: false; reason: 'unavailable' | 'busy' | 'unsupported' | 'empty'; message: string }
 
 /** Identify the official composer plus (commands) button without CSS-module class names. */
 export function isComposerPlusButton(target: EventTarget | null): HTMLButtonElement | null {
@@ -165,195 +144,35 @@ export function blurComposer(): void {
 }
 
 /**
- * Close official document-owned menus before the mobile attach menu opens.
+ * Plus pointerdown/mousedown: stop InputBar keepFocus from re-focusing the
+ * editor. Do not preventDefault — a canceled pointerdown/touchstart on
+ * Android WebView swallows the later click that opens the official listbox,
+ * and also keeps the editor focused so the IME stays up.
+ * @param event - capture-phase pointer or mouse event.
+ * @returns true when this event targeted the composer plus.
+ */
+export function silencePlusKeepFocus(event: Event): boolean {
+  const plus = isComposerPlusButton(event.target)
+  if (plus === null) return false
+  event.stopImmediatePropagation()
+  plus.focus({ preventScroll: true })
+  return true
+}
+
+/**
+ * Close official document-owned menus before a phone toolbar action.
  * Current official primitives listen for pointerdown while older controls listen
  * for mousedown, so send both outside signals explicitly.
+ * @param target - dispatch target. Body closes every document-owned menu,
+ * including the slash listbox. Dispatching on the composer card closes
+ * foreign menus (mode, model) without MenuView treating it as an outside
+ * dismiss of the slash listbox the plus click is about to toggle.
  */
-export function dismissOfficialMenus(): void {
-  if (typeof document === 'undefined' || document.body === null) return
+export function dismissOfficialMenus(target: EventTarget | null = typeof document === 'undefined' ? null : document.body): void {
+  if (target === null) return
   const pointer = typeof PointerEvent === 'function'
     ? new PointerEvent('pointerdown', { bubbles: true, cancelable: true })
     : new Event('pointerdown', { bubbles: true, cancelable: true })
-  document.body.dispatchEvent(pointer)
-  document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }))
-}
-
-/** Attribute that hides an official slash-menu file row on the phone. */
-export const FILE_ROW_HIDDEN_MARKER = 'data-mobile-file-row-hidden'
-
-/** Host slash options that open the official command listbox. */
-const OFFICIAL_SLASH_OPTION = '[data-trigger-menu] [role="listbox"] [role="option"]'
-
-/** Host `input.file` (文件 / File) plus the add-file wording of that action. */
-const OFFICIAL_FILE_COMMAND_TITLE = /^(?:添加文件|文件|add files?|file)$/i
-
-type SlashOptionFace = {
-  childNodes?: ArrayLike<{ textContent?: string | null }>
-  textContent?: string | null
-  getAttribute(name: string): string | null
-  setAttribute(name: string, value: string): void
-}
-
-function firstLine(value: string | null | undefined): string {
-  const trimmed = (value ?? '').trim()
-  const breakAt = trimmed.search(/\r|\n/)
-  return breakAt === -1 ? trimmed : trimmed.slice(0, breakAt).trim()
-}
-
-/**
- * True for Host file-command titles in both official dictionaries.
- * @param title - visible slash-option title.
- */
-export function isOfficialFileCommandTitle(title: string): boolean {
-  return OFFICIAL_FILE_COMMAND_TITLE.test(title.trim())
-}
-
-/**
- * True when a slash listbox option is the official `file` command row.
- * @param option - a `[role="option"]` in `[data-trigger-menu]`.
- */
-export function isOfficialFileCommandRow(option: SlashOptionFace): boolean {
-  const nodes = option.childNodes
-  if (nodes !== undefined && nodes.length > 0) {
-    let sawLabel = false
-    for (let index = 0; index < nodes.length; index += 1) {
-      const text = firstLine(nodes[index]?.textContent)
-      if (text === '') continue
-      sawLabel = true
-      if (isOfficialFileCommandTitle(text)) return true
-    }
-    if (sawLabel) return false
-  }
-  return isOfficialFileCommandTitle((option.textContent ?? '').trim())
-}
-
-/**
- * Mark official `file` rows in a Host slash listbox so phone CSS can hide them.
- * Desktop wide never calls this: Mobile Layout (and ComposerAttach) are not the root.
- * @param root - a composer card, or any node that may contain `[data-trigger-menu]`.
- */
-export function hideOfficialFileCommandRows(root: { querySelectorAll(selector: string): Iterable<SlashOptionFace> }): void {
-  for (const option of root.querySelectorAll(OFFICIAL_SLASH_OPTION)) {
-    if (!isOfficialFileCommandRow(option)) continue
-    option.setAttribute(FILE_ROW_HIDDEN_MARKER, 'true')
-  }
-}
-
-/**
- * Watch one composer card and hide official file rows as the slash menu mounts.
- * @param getRoot - the attach seat's `[data-composer-card]`; null until the seat is in the tree.
- * @returns disposer that restores marked rows.
- */
-export function installOfficialFileCommandRowHider(getRoot: () => ParentNode | null | undefined): () => void {
-  if (typeof document === 'undefined' || document.documentElement === null) return () => {}
-  if (typeof MutationObserver !== 'function') return () => {}
-  const originals = new Map<Element, string | null>()
-  const scan = (): void => {
-    const root = getRoot()
-    const live = new Set<Element>()
-    if (root !== null && root !== undefined) {
-      for (const option of root.querySelectorAll(OFFICIAL_SLASH_OPTION)) {
-        if (!isOfficialFileCommandRow(option)) continue
-        live.add(option)
-        if (!originals.has(option)) originals.set(option, option.getAttribute(FILE_ROW_HIDDEN_MARKER))
-        option.setAttribute(FILE_ROW_HIDDEN_MARKER, 'true')
-      }
-    }
-    for (const [option, original] of originals) {
-      if (live.has(option)) continue
-      if (original === null) option.removeAttribute(FILE_ROW_HIDDEN_MARKER)
-      else option.setAttribute(FILE_ROW_HIDDEN_MARKER, original)
-      originals.delete(option)
-    }
-  }
-  const observer = new MutationObserver(scan)
-  observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true })
-  scan()
-  return () => {
-    observer.disconnect()
-    for (const [option, original] of originals) {
-      if (original === null) option.removeAttribute(FILE_ROW_HIDDEN_MARKER)
-      else option.setAttribute(FILE_ROW_HIDDEN_MARKER, original)
-    }
-    originals.clear()
-  }
-}
-
-export function filesFromInput(input: HTMLInputElement): File[] {
-  return Array.from(input.files ?? [])
-}
-
-/**
- * Hand files to the official composer drop listener (InputBar document-level
- * intake). Returns true when that listener ran (`preventDefault`).
- */
-export function dispatchOfficialFileDrop(files: readonly File[]): boolean {
-  if (files.length === 0) return false
-  if (typeof document === 'undefined' || typeof DataTransfer === 'undefined' || typeof DragEvent === 'undefined') return false
-  try {
-    const transfer = new DataTransfer()
-    for (const file of files) transfer.items.add(file)
-    if (transfer.files.length !== files.length) return false
-    const event = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer })
-    document.dispatchEvent(event)
-    return event.defaultPrevented
-  } catch {
-    return false
-  }
-}
-
-export function unsupportedImageMessage(): string {
-  return '仅支持 PNG、JPG、WebP、GIF 格式的图片'
-}
-
-export function attachUnavailableMessage(): string {
-  return '当前会话还不能添加图片'
-}
-
-export function attachBusyMessage(): string {
-  return '正在发送，请稍后再添加图片'
-}
-
-/**
- * Register browser files as official draft images and append them to the
- * composer. Non-images fail as a whole batch, matching Host intake.
- */
-export function attachFiles(
-  files: readonly File[],
-  conversation: DraftConversation | undefined,
-  inputActions: DraftInputActions | undefined,
-): AttachOutcome {
-  if (files.length === 0) return { ok: false, reason: 'empty', message: '' }
-  if (dispatchOfficialFileDrop(files)) return { ok: true }
-  if (conversation?.createDraftImages === undefined || inputActions === undefined) {
-    return { ok: false, reason: 'unavailable', message: attachUnavailableMessage() }
-  }
-  try {
-    const images = conversation.createDraftImages(files)
-    if (!inputActions.addImages(images.map(image => image.id))) {
-      releaseDrafts(conversation, images)
-      return { ok: false, reason: 'busy', message: attachBusyMessage() }
-    }
-    return { ok: true }
-  } catch (error) {
-    const unsupported = error !== null && typeof error === 'object' && (
-      (error as { name?: string }).name === 'UnsupportedImageMediaTypeError'
-      || /unsupported image media type/i.test(String((error as { message?: string }).message ?? error))
-    )
-    return {
-      ok: false,
-      reason: unsupported ? 'unsupported' : 'unavailable',
-      message: unsupported ? unsupportedImageMessage() : attachUnavailableMessage(),
-    }
-  }
-}
-
-function releaseDrafts(conversation: DraftConversation, images: readonly DraftImage[]): void {
-  if (typeof conversation.releaseDraftImages === 'function') {
-    conversation.releaseDraftImages(images)
-    return
-  }
-  if (typeof conversation.releaseDraftImage === 'function') {
-    for (const image of images) conversation.releaseDraftImage(image.id)
-  }
+  target.dispatchEvent(pointer)
+  target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }))
 }

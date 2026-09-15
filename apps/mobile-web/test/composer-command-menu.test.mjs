@@ -8,7 +8,7 @@ import { build } from 'vite'
 
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/composer-command-menu')
 
-test('narrow plus forwards to the official command listbox without a file row; desktop keeps File', async () => {
+test('narrow plus opens the official command listbox with the File row visible', async () => {
   const outDir = await mkdtemp(join(tmpdir(), 'dsh-composer-command-menu-'))
   try {
     await build({
@@ -36,26 +36,29 @@ test('narrow plus forwards to the official command listbox without a file row; d
     const capture = (name) => new RegExp('data-' + name + '="([^"]*)"').exec(chrome.stdout)?.[1] ?? ''
     assert.equal(capture('zh-plus-label'), '添加文件或调用指令')
     assert.equal(capture('en-plus-label'), 'Add files or run commands')
-    assert.match(capture('zh-attach-menu'), /命令/)
-    assert.match(capture('zh-attach-menu'), /插入图片/)
-    assert.doesNotMatch(capture('zh-attach-menu'), /添加文件|File|^文件$/)
-    assert.match(capture('en-attach-menu'), /命令/)
-    assert.match(capture('en-attach-menu'), /插入图片/)
-    assert.doesNotMatch(capture('en-attach-menu'), /Add file/)
-    assert.equal(capture('zh-file-hidden'), 'true', 'Chinese 文件 row must hide on the phone')
-    assert.equal(capture('zh-file-display'), 'none')
+    assert.equal(capture('zh-attach-menu'), '', 'phone plus must not open a second-layer attach menu')
+    assert.equal(capture('en-attach-menu'), '')
+    assert.match(capture('zh-listbox'), /文件/)
+    assert.match(capture('zh-listbox'), /目标/)
+    assert.match(capture('en-listbox'), /File/)
+    assert.match(capture('en-listbox'), /Goal/)
+    assert.equal(capture('zh-file-hidden'), '', 'Chinese 文件 row must stay visible')
+    assert.notEqual(capture('zh-file-display'), 'none')
     assert.match(capture('zh-file-label'), /文件/)
-    assert.equal(capture('zh-goal-hidden'), '', '目标 stays in the official command list')
+    assert.equal(capture('zh-goal-hidden'), '')
     assert.notEqual(capture('zh-goal-display'), 'none')
-    assert.equal(capture('en-file-hidden'), 'true', 'English File row must hide on the phone')
-    assert.equal(capture('en-file-display'), 'none')
+    assert.equal(capture('en-file-hidden'), '', 'English File row must stay visible')
+    assert.notEqual(capture('en-file-display'), 'none')
     assert.match(capture('en-file-label'), /File/)
     assert.equal(capture('en-goal-hidden'), '')
     assert.notEqual(capture('en-goal-display'), 'none')
-    assert.equal(capture('desk-file-hidden'), '', 'desktop wide must keep the official File row')
+    assert.equal(capture('desk-file-hidden'), '')
     assert.notEqual(capture('desk-file-display'), 'none')
     assert.match(capture('desk-file-label'), /File/)
-    assert.equal(capture('desk-goal-hidden'), '')
+    assert.match(capture('desk-listbox'), /File/)
+    assert.equal(capture('zh-file-cube'), '', 'official SVG rows must not get a second cube')
+    assert.equal(capture('zh-ponytail-cube'), 'cube')
+    assert.equal(capture('zh-skill-cube'), 'cube')
   } finally {
     await rm(outDir, { recursive: true, force: true })
   }

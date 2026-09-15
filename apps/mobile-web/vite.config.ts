@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import { attachHostCommandIcons } from './src/vite-host-command-icons.ts'
 
 const src = (rel: string): string => fileURLToPath(new URL(rel, import.meta.url))
 /** Upstream checkout root selected by prepare-upstream.mjs; explicit env still wins. */
@@ -31,7 +32,7 @@ function rejectStandaloneServe(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [rejectStandaloneServe(), react()],
+  plugins: [rejectStandaloneServe(), attachHostCommandIcons(src('./src/host-command-icons.tsx')), react()],
   build: {
     sourcemap: true,
   },
