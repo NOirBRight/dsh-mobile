@@ -12,6 +12,10 @@
   display: none !important;
 }
 
+:global([data-mobile-file-row-hidden]) {
+  display: none !important;
+}
+
 .host {
   position: fixed;
   width: 0;

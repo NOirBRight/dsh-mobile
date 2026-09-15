@@ -178,6 +178,107 @@ export function dismissOfficialMenus(): void {
   document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }))
 }
 
+/** Attribute that hides an official slash-menu file row on the phone. */
+export const FILE_ROW_HIDDEN_MARKER = 'data-mobile-file-row-hidden'
+
+/** Host slash options that open the official command listbox. */
+const OFFICIAL_SLASH_OPTION = '[data-trigger-menu] [role="listbox"] [role="option"]'
+
+/** Host `input.file` (文件 / File) plus the add-file wording of that action. */
+const OFFICIAL_FILE_COMMAND_TITLE = /^(?:添加文件|文件|add files?|file)$/i
+
+type SlashOptionFace = {
+  childNodes?: ArrayLike<{ textContent?: string | null }>
+  textContent?: string | null
+  getAttribute(name: string): string | null
+  setAttribute(name: string, value: string): void
+}
+
+function firstLine(value: string | null | undefined): string {
+  const trimmed = (value ?? '').trim()
+  const breakAt = trimmed.search(/\r|\n/)
+  return breakAt === -1 ? trimmed : trimmed.slice(0, breakAt).trim()
+}
+
+/**
+ * True for Host file-command titles in both official dictionaries.
+ * @param title - visible slash-option title.
+ */
+export function isOfficialFileCommandTitle(title: string): boolean {
+  return OFFICIAL_FILE_COMMAND_TITLE.test(title.trim())
+}
+
+/**
+ * True when a slash listbox option is the official `file` command row.
+ * @param option - a `[role="option"]` in `[data-trigger-menu]`.
+ */
+export function isOfficialFileCommandRow(option: SlashOptionFace): boolean {
+  const nodes = option.childNodes
+  if (nodes !== undefined && nodes.length > 0) {
+    let sawLabel = false
+    for (let index = 0; index < nodes.length; index += 1) {
+      const text = firstLine(nodes[index]?.textContent)
+      if (text === '') continue
+      sawLabel = true
+      if (isOfficialFileCommandTitle(text)) return true
+    }
+    if (sawLabel) return false
+  }
+  return isOfficialFileCommandTitle((option.textContent ?? '').trim())
+}
+
+/**
+ * Mark official `file` rows in a Host slash listbox so phone CSS can hide them.
+ * Desktop wide never calls this: Mobile Layout (and ComposerAttach) are not the root.
+ * @param root - a composer card, or any node that may contain `[data-trigger-menu]`.
+ */
+export function hideOfficialFileCommandRows(root: { querySelectorAll(selector: string): Iterable<SlashOptionFace> }): void {
+  for (const option of root.querySelectorAll(OFFICIAL_SLASH_OPTION)) {
+    if (!isOfficialFileCommandRow(option)) continue
+    option.setAttribute(FILE_ROW_HIDDEN_MARKER, 'true')
+  }
+}
+
+/**
+ * Watch one composer card and hide official file rows as the slash menu mounts.
+ * @param getRoot - the attach seat's `[data-composer-card]`; null until the seat is in the tree.
+ * @returns disposer that restores marked rows.
+ */
+export function installOfficialFileCommandRowHider(getRoot: () => ParentNode | null | undefined): () => void {
+  if (typeof document === 'undefined' || document.documentElement === null) return () => {}
+  if (typeof MutationObserver !== 'function') return () => {}
+  const originals = new Map<Element, string | null>()
+  const scan = (): void => {
+    const root = getRoot()
+    const live = new Set<Element>()
+    if (root !== null && root !== undefined) {
+      for (const option of root.querySelectorAll(OFFICIAL_SLASH_OPTION)) {
+        if (!isOfficialFileCommandRow(option)) continue
+        live.add(option)
+        if (!originals.has(option)) originals.set(option, option.getAttribute(FILE_ROW_HIDDEN_MARKER))
+        option.setAttribute(FILE_ROW_HIDDEN_MARKER, 'true')
+      }
+    }
+    for (const [option, original] of originals) {
+      if (live.has(option)) continue
+      if (original === null) option.removeAttribute(FILE_ROW_HIDDEN_MARKER)
+      else option.setAttribute(FILE_ROW_HIDDEN_MARKER, original)
+      originals.delete(option)
+    }
+  }
+  const observer = new MutationObserver(scan)
+  observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true })
+  scan()
+  return () => {
+    observer.disconnect()
+    for (const [option, original] of originals) {
+      if (original === null) option.removeAttribute(FILE_ROW_HIDDEN_MARKER)
+      else option.setAttribute(FILE_ROW_HIDDEN_MARKER, original)
+    }
+    originals.clear()
+  }
+}
+
 export function filesFromInput(input: HTMLInputElement): File[] {
   return Array.from(input.files ?? [])
 }

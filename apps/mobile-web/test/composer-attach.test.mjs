@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import {
   attachBusyMessage,
   attachFiles,
@@ -8,6 +10,9 @@ import {
   composerEditor,
   composerSecondarySeat,
   dismissOfficialMenus,
+  FILE_ROW_HIDDEN_MARKER,
+  hideOfficialFileCommandRows,
+  isOfficialFileCommandTitle,
   plusMenuAlreadyOpen,
   unsupportedImageMessage,
 } from '../../../packages/ui-layout-mobile/src/client/composer-attach.ts'
@@ -121,4 +126,55 @@ test('composerSecondarySeat hides one seat when Send and Stop coexist', () => {
   assert.equal(composerSecondarySeat(seatCard([enabledSend])), null, 'a lone Send is never secondary')
   assert.equal(composerSecondarySeat(seatCard([enabledStop])), null, 'a lone Stop is never secondary')
   assert.equal(composerSecondarySeat(seatCard([])), null)
+})
+
+test('official file command titles match Host input.file and add-file wording in both languages', () => {
+  for (const title of ['文件', 'File', 'file', '添加文件', 'Add file', 'Add files']) {
+    assert.equal(isOfficialFileCommandTitle(title), true, title)
+  }
+  for (const title of ['目标', 'Goal', 'Feedback', 'Compact', '添加文件或调用指令', 'Add files or run commands', '插入图片']) {
+    assert.equal(isOfficialFileCommandTitle(title), false, title)
+  }
+})
+
+function slashOption(children) {
+  const attrs = {}
+  return {
+    childNodes: children.map(text => ({ textContent: text })),
+    textContent: children.join(''),
+    getAttribute(name) { return attrs[name] ?? null },
+    setAttribute(name, value) { attrs[name] = value },
+  }
+}
+
+test('hideOfficialFileCommandRows marks only the official file row in a slash listbox', () => {
+  const zhFile = slashOption(['', '文件', 'file'])
+  const zhGoal = slashOption(['', '目标', 'goal'])
+  const enFile = slashOption(['', 'File'])
+  const enAddFile = slashOption(['', 'Add file'])
+  const enGoal = slashOption(['', 'Goal'])
+  const selectors = []
+  const root = {
+    querySelectorAll(selector) {
+      selectors.push(selector)
+      return [zhFile, zhGoal, enFile, enAddFile, enGoal]
+    },
+  }
+  hideOfficialFileCommandRows(root)
+  assert.equal(selectors[0], '[data-trigger-menu] [role="listbox"] [role="option"]')
+  assert.equal(zhFile.getAttribute(FILE_ROW_HIDDEN_MARKER), 'true')
+  assert.equal(enFile.getAttribute(FILE_ROW_HIDDEN_MARKER), 'true')
+  assert.equal(enAddFile.getAttribute(FILE_ROW_HIDDEN_MARKER), 'true')
+  assert.equal(zhGoal.getAttribute(FILE_ROW_HIDDEN_MARKER), null)
+  assert.equal(enGoal.getAttribute(FILE_ROW_HIDDEN_MARKER), null)
+})
+
+test('narrow plus menu stays command and image; file-row hiding is installed from ComposerAttach', async () => {
+  const attachPath = resolve(import.meta.dirname, '../../../packages/ui-layout-mobile/src/client/ComposerAttach.tsx')
+  const source = await readFile(attachPath, 'utf8')
+  assert.match(source, /id: 'command'/)
+  assert.match(source, /id: 'image'/)
+  assert.doesNotMatch(source, /id: 'file'/)
+  assert.match(source, /installOfficialFileCommandRowHider/)
+  assert.match(source, /data-mobile-attach-seat/)
 })

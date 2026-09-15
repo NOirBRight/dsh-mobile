@@ -1,6 +1,6 @@
 # @dsh-mobile/ui-layout-mobile
 
-移动端根布局:`dsh.client` 插件(platform web),注册进 web shell 内建的 `'root'` slot,**逐字实现上游 `@deepseek-ai/dsh-client-ui-layout` 的 slot 契约**,使全部 leaf 插件(ui-sidebar、ui-conversation 等)不经修改继续工作。布局本体是移动形态:单栏 + 顶栏(菜单按钮)+ sidebar 滑出抽屉 + rightbar 右侧滑入全屏层 + 安全区内边距。维护者在 `dshapp` 上改本包时必须遵守 [docs/ops-dshapp-without-restarting-web.md](../../docs/ops-dshapp-without-restarting-web.md)：不重启 `dshweb` 的 Host，也不把本包做成第二套功能 UI 或独立设计系统。窄屏加号拦截后只弹出「命令 / 插入图片」；图片仍走 Host 官方的 draft-image 通道（PNG/JPG/WebP/GIF），不提供协议并不支持的任意文件上传入口。
+移动端根布局:`dsh.client` 插件(platform web),注册进 web shell 内建的 `'root'` slot,**逐字实现上游 `@deepseek-ai/dsh-client-ui-layout` 的 slot 契约**,使全部 leaf 插件(ui-sidebar、ui-conversation 等)不经修改继续工作。布局本体是移动形态:单栏 + 顶栏(菜单按钮)+ sidebar 滑出抽屉 + rightbar 右侧滑入全屏层 + 安全区内边距。维护者在 `dshapp` 上改本包时必须遵守 [docs/ops-dshapp-without-restarting-web.md](../../docs/ops-dshapp-without-restarting-web.md)：不重启 `dshweb` 的 Host，也不把本包做成第二套功能 UI 或独立设计系统。窄屏加号拦截后只弹出「命令 / 插入图片」；转交官方命令 listbox 时藏掉 Host 的 `file` 行（「文件」/ File），桌面宽屏不藏；图片仍走 Host 官方的 draft-image 通道（PNG/JPG/WebP/GIF），不提供协议并不支持的任意文件上传入口。
 
 ## Slot 契约(本包的维护面)
 
@@ -31,7 +31,7 @@
 - 已知内置 preset 被用户层覆盖后可能携带非本地化 metadata；移动端只可按可证明的内置身份（`standard` / `ptc` / `minimal` / `cordis` 及其官方中英文全名）补齐紧凑文案。中文为「标准 / PTC / 极简 / 创造」，英文为「Standard / PTC / Minimal / Creator」；任意用户 preset 名称保持原样。
 - 复用 Agent Presets 启用前遗留的空白会话时，移动端把 Host 默认 preset 写入该空白会话，使官方 Hero 模式选择器恢复显示；已有 preset 或已开始的会话不改动。
 - 切换 Host 后若当前空白会话的默认模型 Provider 已不可路由，移动端优先把同名模型重映射到唯一有效 Provider，否则选择该 Host 目录中的首个有效模型；已开始的会话不自动改写。
-- `conversation.input.left` 上游无 owner（渲染 `{}`），attach 经标准 `useSession` 选择器读 busy/subagent，不做 settings 侧读；Send 一律走程序化 Enter 交 Core 的 queue/steer 策略裁决（`inputActions.submit()` 只在 Core 未消费且不可 steer 时回退）。运行中 continuable 子会话的 Send+Stop 双钮只保留一个（`data-mobile-secondary-hidden` 隐藏，handler 不动），各 seat 只作用于自己所在的 `[data-composer-card]`。
+- `conversation.input.left` 上游无 owner（渲染 `{}`），attach 经标准 `useSession` 选择器读 busy/subagent，不做 settings 侧读；Send 一律走程序化 Enter 交 Core 的 queue/steer 策略裁决（`inputActions.submit()` 只在 Core 未消费且不可 steer 时回退）。运行中 continuable 子会话的 Send+Stop 双钮只保留一个（`data-mobile-secondary-hidden` 隐藏，handler 不动），各 seat 只作用于自己所在的 `[data-composer-card]`。转交官方命令 listbox 时藏掉 Host 的 `file` 行，桌面宽屏不藏，也不提供任意文件上传入口。
 
 ## 静态加载修订号
 

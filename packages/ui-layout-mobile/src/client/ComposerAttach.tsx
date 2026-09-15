@@ -21,6 +21,8 @@ import {
   SECONDARY_HIDDEN_MARKER,
   dismissOfficialMenus,
   filesFromInput,
+  hideOfficialFileCommandRows,
+  installOfficialFileCommandRowHider,
   isComposerPlusButton,
   plusMenuAlreadyOpen,
   type DraftConversation,
@@ -189,6 +191,12 @@ export function ComposerAttach({
     }
   }, [inputActions, useSession, running, subagent])
 
+  useEffect(() => {
+    return installOfficialFileCommandRowHider(
+      () => seatRef.current?.closest('[data-composer-card]') ?? null,
+    )
+  }, [])
+
   // A running continuable child renders Send AND an interrupt Stop; the phone
   // footer keeps ONE primary by marking the secondary seat hidden (CSS hides
   // it, handlers stay intact). The card and the hidden button are captured up
@@ -254,6 +262,8 @@ export function ComposerAttach({
       if (plus === null) return
       skipNextPlusRef.current = true
       plus.click()
+      const card = plus.closest('[data-composer-card]')
+      if (card !== null) hideOfficialFileCommandRows(card)
       return
     }
     if (id === 'image') {
