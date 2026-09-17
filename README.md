@@ -8,12 +8,12 @@
 
 ## 安装
 
-需要本机已经在跑 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.2-alpha.4**，手机要连的就是这台。
+需要本机已经在跑 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) **0.1.2-alpha.4** 至 **0.1.5-rc.1**，手机要连的就是这台。
 
 这是 **多份已发布的包**，不是 `npm i dsh-mobile`。Host 上先装 **远程**（配对插件），它会带上公开的隧道库。`interaction-operations` 是可独立安装的 Host Client 插件；移动 APK 已经内置它和 `ui-layout-mobile`，因此手机连接时不需要把布局源码或本地路径装进 Host。Codex Sidebar 可选，建议装。然后再装 APK。
 
 ```sh
-dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile-pairing/releases/latest/download/dsh-mobile-pairing.tgz
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile-pairing/releases/latest/download/dsh-mobile-pairing-0.1.17.tgz
 dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile-interaction-operations.tgz
 dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-codex-sidebar/releases/latest/download/dsh-codex-sidebar.tgz
 dsh web
@@ -24,37 +24,37 @@ dsh web
 固定版本（可复现）安装：
 
 ```sh
-dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile-pairing/releases/download/v0.1.14/dsh-mobile-pairing.tgz
+dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile-pairing/releases/download/v0.1.17/dsh-mobile-pairing-0.1.17.tgz
 dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.6/dsh-mobile-interaction-operations.tgz
 ```
 
 `@dsh-mobile/ui-layout-mobile` 只随 APK 和移动壳打包，由移动端在窄屏替换官方 root；不要把它加入只提供桌面 WebUI 的 profile。需要维护自有移动壳时，才从本 Release 下载对应的 `dsh-mobile-ui-layout-mobile.tgz`，并按移动壳的 bundle 说明加载。
 
-配对插件 **v0.1.14** 依赖 [`@dsh-mobile/e2e-tunnel` v0.1.5](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.5)，仅兼容 DeepSeek Harness **0.1.2-alpha.4**。不要把隧道库再加进 DSH 插件列表；Alpha.1–Alpha.3 用户应继续使用对应旧 Runtime 的旧版插件。
+配对插件 **v0.1.17** 依赖 [`@dsh-mobile/e2e-tunnel` v0.1.5](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.5)，兼容 DeepSeek Harness **0.1.2-alpha.4** 至 **0.1.5-rc.1**。不要把隧道库再加进 DSH 插件列表；更旧 Runtime 的用户应继续使用对应旧版插件。
 
 然后在 Host 上打开 **设置 → 插件 → 插件配置 → DSH Mobile**（导航里叫 **远程**）。
 
 1. **自动生成**（临时 Quick Tunnel）或 **填写地址**（你拿到的，或[自己部署](relay/deploy/README.md) 的 Relay）。
 2. 刷新二维码。约 5 分钟有效，且一次性。
 
-Android APK（已签名 **v1.1.6**）：
+Android APK（已签名 **v1.1.14**）：
 
 - 最新 APK：https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile.apk
-- 固定 APK：https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.6/dsh-mobile.apk
+- 固定 APK：https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.14/dsh-mobile.apk
 
 装上应用，打开后扫描 Host 二维码。
 
 | 部件 | 当前版本 | 角色 |
 |---|---|---|
-| [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing)（`@dsh-mobile/pairing`） | [v0.1.14](https://github.com/NOirBRight/dsh-mobile-pairing/releases/tag/v0.1.14) | **必装。** Host 插件：二维码、设备、回环 Gateway、Tunnel / Direct；仅兼容 DSH 0.1.2-alpha.4。 |
-| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) Host interaction artifact（`@dsh-mobile/interaction-operations`） | [Latest](https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile-interaction-operations.tgz) · [v1.1.6](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.6/dsh-mobile-interaction-operations.tgz) | 可选 Host Client 插件。只提供输入/弹层交互适配；移动 APK 使用同一份本地 bundle。 |
-| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) mobile layout artifact（`@dsh-mobile/ui-layout-mobile`） | [Latest](https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile-ui-layout-mobile.tgz) · [v1.1.6](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.6/dsh-mobile-ui-layout-mobile.tgz) | APK 内置的窄屏 root 布局；不安装到桌面 WebUI profile。 |
+| [dsh-mobile-pairing](https://github.com/NOirBRight/dsh-mobile-pairing)（`@dsh-mobile/pairing`） | [v0.1.17](https://github.com/NOirBRight/dsh-mobile-pairing/releases/tag/v0.1.17) | **必装。** Host 插件：二维码、设备、回环 Gateway、Tunnel / Direct；兼容 DSH 0.1.2-alpha.4 至 0.1.5-rc.1。 |
+| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) Host interaction artifact（`@dsh-mobile/interaction-operations`） | [v1.1.6](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.6/dsh-mobile-interaction-operations.tgz) | 可选 Host Client 插件。只提供输入/弹层交互适配；移动 APK 使用同一份本地 bundle。 |
+| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) mobile layout artifact（`@dsh-mobile/ui-layout-mobile`） | [v1.1.6](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.6/dsh-mobile-ui-layout-mobile.tgz) | APK 内置的窄屏 root 布局；不安装到桌面 WebUI profile。 |
 | [dsh-e2e-tunnel](https://github.com/NOirBRight/dsh-e2e-tunnel)（`@dsh-mobile/e2e-tunnel`） | [v0.1.5](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.5) | 配套库。pairing 已经依赖它。 |
-| [dsh-codex-sidebar](https://github.com/NOirBRight/dsh-codex-sidebar) | [v0.5.11](https://github.com/NOirBRight/dsh-codex-sidebar/releases/tag/v0.5.11) | **可选。** details 席位上的 Files / Review / Browser / Terminal。 |
-| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.6](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.6) | 手机应用。下载固定名称 `dsh-mobile.apk`。 |
+| [dsh-codex-sidebar](https://github.com/NOirBRight/dsh-codex-sidebar) | [v0.5.12](https://github.com/NOirBRight/dsh-codex-sidebar/releases/tag/v0.5.12) | **可选。** details 席位上的 Files / Review / Browser / Terminal。 |
+| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.14](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.14) | 手机应用。下载固定名称 `dsh-mobile.apk`。 |
 | Relay | [`relay/deploy`](relay/deploy/README.md) | 可选自托管密文转发。只用 Quick Tunnel 就跳过。 |
 
-Release 完整性：插件 tarball 和 APK 的固定名称、SHA-256 均列在 [v1.1.6/SHA256SUMS](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.6/SHA256SUMS)。Latest URL 永远不带版本号；生产部署请使用固定版本 URL。
+Release 完整性：APK 的 SHA-256 列在 [v1.1.14/SHA256SUMS-1.1.14](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.14/SHA256SUMS-1.1.14)；Host 插件 tarball 仍以 [v1.1.6/SHA256SUMS](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.6/SHA256SUMS) 为准。配对插件完整性见 [v0.1.17/SHA256SUMS](https://github.com/NOirBRight/dsh-mobile-pairing/releases/download/v0.1.17/SHA256SUMS)。生产部署请使用固定版本 URL。
 
 把隧道嵌进别的 Host 时才单独钉库（装手机不用跑）：
 

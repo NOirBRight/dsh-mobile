@@ -12,6 +12,7 @@ import {
   composerSecondarySeat,
   SECONDARY_HIDDEN_MARKER,
   dismissOfficialMenus,
+  isComposerKeepFocusSeat,
   silencePlusKeepFocus,
   isComposerPlusButton,
   type DraftInputActions,
@@ -69,7 +70,10 @@ export function ComposerAttach({
       const control = composerControlButton(event.target)
       if (control === null) return
       if (composerDraftActionButton(event.target) !== null) return
-      if (control.hasAttribute('aria-haspopup')) dismissOfficialMenus()
+      // keepFocus is only on plus / send / stop. Permission, plan, and model
+      // open on click, so their mousedown must pass through: swallowing it
+      // cancels the click on Android WebView and races the picker open.
+      if (!isComposerKeepFocusSeat(control)) return
       event.preventDefault()
       event.stopImmediatePropagation()
       blurComposer()
