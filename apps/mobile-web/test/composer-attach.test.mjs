@@ -4,9 +4,11 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import {
   composerCardSendSeat,
+  composerDraftActionButton,
   composerEditor,
   composerSecondarySeat,
   dismissOfficialMenus,
+  isComposerKeepFocusSeat,
   silencePlusKeepFocus,
 } from '../../../packages/ui-layout-mobile/src/client/composer-attach.ts'
 test('dismissOfficialMenus is safe outside a browser document', () => {
@@ -46,6 +48,22 @@ test('composerEditor ignores non-elements and is the IME target helper', () => {
   assert.equal(composerEditor({}), null)
 })
 
+test('keepFocus seats are send/stop, never permission/plan/model (plus is gated earlier)', () => {
+  const stop = seatButton({ aria: '停止生成' })
+  const send = seatButton({ aria: '发送消息' })
+  const repaintedStop = seatButton({ aria: '发送消息', stopLabel: '停止生成' })
+  const permission = seatButton({ aria: 'Access mode, current: Full access' })
+  const plan = seatButton({ aria: 'plan mode 已关闭，按下开启' })
+  const model = seatButton({ aria: 'Select model, current Test Model' })
+  assert.equal(isComposerKeepFocusSeat(stop), true)
+  assert.equal(isComposerKeepFocusSeat(send), true)
+  // A repainted Stop keeps the interrupt seat even when its glyph reads Send.
+  assert.equal(isComposerKeepFocusSeat(repaintedStop), true)
+  assert.equal(isComposerKeepFocusSeat(permission), false)
+  assert.equal(isComposerKeepFocusSeat(plan), false)
+  assert.equal(isComposerKeepFocusSeat(model), false)
+})
+
 function seatButton({ aria = '发送消息', stopLabel = undefined, disabled = false } = {}) {
   return {
     dataset: stopLabel === undefined ? {} : { mobileStopLabel: stopLabel },
@@ -68,6 +86,33 @@ test('composerCardSendSeat finds the genuine Send seat and ignores repainted Sto
   const repainted = seatButton({ aria: '发送消息', stopLabel: '停止生成' })
   assert.equal(composerCardSendSeat(seatCard([repainted])), null)
   assert.equal(composerCardSendSeat(seatCard([repainted, send])), send)
+})
+
+test('composerDraftActionButton ignores a repainted Stop even with a draft', () => {
+  const card = {
+    querySelectorAll: (selector) => selector === 'button[aria-label]' ? [draftStopButton] : [],
+    querySelector: (selector) => {
+      if (selector === 'textarea') return null
+      if (selector === '[data-composer-input]') return { textContent: 'follow-up' }
+      if (selector === '[role="group"] img') return null
+      return null
+    },
+  }
+  const draftStopButton = {
+    tagName: 'BUTTON',
+    dataset: { mobileStopLabel: '停止生成' },
+    getAttribute: (name) => name === 'aria-label' ? '发送消息' : null,
+    closest: (selector) => {
+      if (selector === 'button') return draftStopButton
+      if (selector === '[data-composer-card]') return card
+      return null
+    },
+  }
+  assert.equal(
+    composerDraftActionButton(draftStopButton),
+    null,
+    'a repainted Stop keeps its interrupt role and must not enter the send path',
+  )
 })
 
 test('composerSecondarySeat hides one seat when Send and Stop coexist', () => {

@@ -9,10 +9,22 @@ export interface DraftInputActions {
   submit?(): void
 }
 
+function asElement(target: EventTarget | null): Element | null {
+  // Mirrors composerEditor/dismissOfficialMenus: pure helpers stay safe in Node tests.
+  if (typeof Element === 'undefined' || !(target instanceof Element)) return null
+  return target
+}
+
+/** Serve label behind the secondary-seat marker, the send-seat scan, and the mousedown gate. */
+function serveSeatLabel(button: HTMLButtonElement): string | null {
+  return button.dataset.mobileStopLabel ?? button.getAttribute('aria-label')
+}
+
 /** Identify the official composer plus (commands) button without CSS-module class names. */
 export function isComposerPlusButton(target: EventTarget | null): HTMLButtonElement | null {
-  if (!(target instanceof Element)) return null
-  const button = target.closest('button[aria-haspopup="listbox"]')
+  const root = asElement(target)
+  if (root === null) return null
+  const button = root.closest('button[aria-haspopup="listbox"]')
   if (!(button instanceof HTMLButtonElement)) return null
   if (button.closest('[data-composer-card]') === null) return null
   return button
@@ -20,12 +32,25 @@ export function isComposerPlusButton(target: EventTarget | null): HTMLButtonElem
 
 /** Identify any official composer toolbar button without touching its feature behavior. */
 export function composerControlButton(target: EventTarget | null): HTMLButtonElement | null {
-  if (!(target instanceof Element)) return null
-  if (target.closest('[role="menu"], [role="listbox"], [role="dialog"]') !== null) return null
-  const button = target.closest('button')
+  const root = asElement(target)
+  if (root === null) return null
+  if (root.closest('[role="menu"], [role="listbox"], [role="dialog"]') !== null) return null
+  const button = root.closest('button')
   if (!(button instanceof HTMLButtonElement)) return null
   if (button.closest('[data-composer-card]') === null) return null
   return button
+}
+
+/**
+ * Mousedown-swallow seats: official keepFocus (plus/send/stop). Send with a
+ * draft returns earlier via composerDraftActionButton, so this still swallows
+ * the empty-Send mousedown to suppress IME. Permission, plan, and model open
+ * on click (model-switch also arms on pointerdown) and must pass through.
+ */
+export function isComposerKeepFocusSeat(button: HTMLButtonElement): boolean {
+  if (isComposerPlusButton(button) !== null) return true
+  const label = serveSeatLabel(button)
+  return isComposerStopLabel(label) || isComposerSendLabel(label)
 }
 
 function composerCardForButton(button: HTMLButtonElement): HTMLElement | null {
@@ -63,7 +88,7 @@ function stopOwnedSeats(card: HTMLElement): HTMLButtonElement[] {
 
 /** True for a Stop-owned seat. */
 function isStopOwnedSeat(button: HTMLButtonElement): boolean {
-  return isComposerStopLabel(button.dataset.mobileStopLabel ?? button.getAttribute('aria-label'))
+  return isComposerStopLabel(serveSeatLabel(button))
 }
 
 /**
@@ -74,7 +99,7 @@ function isStopOwnedSeat(button: HTMLButtonElement): boolean {
 export function composerCardSendSeat(card: HTMLElement): HTMLButtonElement | null {
   const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>('button[aria-label]'))
   return buttons.find(button =>
-    isComposerSendLabel(button.getAttribute('aria-label')) && !isStopOwnedSeat(button),
+    isComposerSendLabel(serveSeatLabel(button)) && !isStopOwnedSeat(button),
   ) ?? null
 }
 
@@ -107,8 +132,8 @@ export function composerDraftActionButton(target: EventTarget | null): HTMLButto
   if (button === null) return null
   const card = composerCardForButton(button)
   if (card === null || composerDraftForCard(card) === null) return null
-  if (isComposerSendLabel(button.getAttribute('aria-label'))) return button
-  return null
+  if (!isComposerSendLabel(serveSeatLabel(button)) || isStopOwnedSeat(button)) return null
+  return button
 }
 
 /** Return the draft editor associated with a primary action, if it is non-empty. */
