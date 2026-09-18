@@ -1,4 +1,5 @@
 /** Android-first shell bootstrap with Host Profiles and vaulted credentials. */
+import './webview-polyfills.ts'
 import { AppWebEntry } from '@deepseek-ai/dsh-client-web'
 import { App } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
@@ -16,7 +17,7 @@ import { activateHostProfile, completeProfileOnboarding, removeHostProfile } fro
 import { connectionRecoveryDecision, endpointRefreshRequired } from './reconnect-recovery.ts'
 import { BrowserProfileStorage, ProfileRepository } from './profiles.ts'
 import { prepareDshClientBoot } from './dsh-boot.ts'
-import { connectionRecoveryNotice, connectionRouteLabel, coreLiveDataReadiness, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, isPassiveConnectionRetry, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type LiveDataReadiness, type TunnelManagerActivity } from './tunnel.ts'
+import { connectionRecoveryNotice, connectionRouteLabel, coreLiveDataReadiness, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, isPassiveConnectionRetry, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type HostConnectionState, type LiveDataReadiness, type TunnelManagerActivity } from './tunnel.ts'
 import { HostSession, isHostSessionStoppedError } from './host-session.ts'
 import { mountProgressScreen } from './progress-screen.ts'
 import { mountFirstRunScreen } from './first-run-screen.ts'
@@ -378,24 +379,35 @@ void (async () => {
     // Transport readiness and authoritative session-data freshness are
     // intentionally separate: the cached shell remains usable between them.
     let liveDataReady: LiveDataReadiness = 'pending'
+    let hostConnection: HostConnectionState | undefined
     const updateBadge = installBadge()
+    const paintBadge = (): void => { updateBadge(activity, route, shellMounted, liveDataReady, hostConnection) }
     own(() => updateBadge.dispose())
     // Cached shell may paint before TunnelManager emits its first callback.
-    updateBadge(activity, route, shellMounted, liveDataReady)
+    paintBadge()
     const handleLiveDataState = (event: Event): void => {
       const state = (event as CustomEvent<{ state?: unknown }>).detail?.state
       if (state !== 'pending' && state !== 'ready' && state !== 'error') return
       liveDataReady = state
-      updateBadge(activity, route, shellMounted, liveDataReady)
+      paintBadge()
     }
     const handleLiveDataReady = (): void => {
       liveDataReady = 'ready'
-      updateBadge(activity, route, shellMounted, liveDataReady)
+      paintBadge()
+    }
+    const handleHostConnectionState = (event: Event): void => {
+      const state = (event as CustomEvent<{ state?: unknown }>).detail?.state
+      hostConnection = state === 'connected' || state === 'disconnected' || state === 'connecting'
+        ? state
+        : undefined
+      paintBadge()
     }
     document.addEventListener('dsh:live-data-state', handleLiveDataState)
     document.addEventListener('dsh:live-data-ready', handleLiveDataReady)
+    document.addEventListener('dsh:host-connection-state', handleHostConnectionState)
     own(() => document.removeEventListener('dsh:live-data-state', handleLiveDataState))
     own(() => document.removeEventListener('dsh:live-data-ready', handleLiveDataReady))
+    own(() => document.removeEventListener('dsh:host-connection-state', handleHostConnectionState))
     const openProfileMenu = (): void => {
       void showProfileMenu(repository, reconnectActiveHost, enterOnboardingAfterRemoval, async enabled => {
         await backgroundConnection.setEnabled(enabled)
@@ -561,7 +573,7 @@ void (async () => {
       }
       lastError = ''
       endpointRefreshAvailable = false
-      updateBadge(activity, route, shellMounted, liveDataReady)
+      paintBadge()
       render()
     }
 
@@ -573,10 +585,11 @@ void (async () => {
       shellMounted = false
       transportReady = false
       liveDataReady = 'pending'
+      hostConnection = undefined
       state = 'closed'
       route = ''
       activity = { phase: 'terminal', attempt: activity.attempt, route: null, error: 'no Active Host Profile' }
-      updateBadge(activity, route, shellMounted, liveDataReady)
+      paintBadge()
       setTopbarNotice(null)
       const firstRun = mountFirstRunScreen(el)
       const offerUrl = await completeProfileOnboarding({
@@ -598,6 +611,7 @@ void (async () => {
       shellMounted = false
       transportReady = false
       liveDataReady = 'pending'
+      hostConnection = undefined
       state = 'connecting'
       route = ''
       lastError = ''
@@ -606,7 +620,7 @@ void (async () => {
       activity = { phase: 'connecting', attempt: activity.attempt + 1, reconnecting: false, route: null }
       activeConnection = next
       setProtectedCacheScope(next.profile.hostId)
-      updateBadge(activity, route, shellMounted, liveDataReady)
+      paintBadge()
       setTopbarNotice(null)
       // Compatibility notices live outside #root. A Host switch owns the
       // entire shell surface, so the prior Host cannot remain visible while
@@ -690,7 +704,7 @@ void (async () => {
               const recovery = connectionRecoveryDecision(next.profile.endpoint.kind, nextActivity.phase, lastError)
               endpointRefreshAvailable ||= recovery === 'endpoint'
             }
-            updateBadge(activity, route, shellMounted, liveDataReady)
+            paintBadge()
             render()
             const refresh = session?.refreshAfterTransportActivity(previousActivity, nextActivity, shellMounted)
             void refresh?.catch(error => {
@@ -762,7 +776,7 @@ void (async () => {
         if (!supportsLiveDataReadiness(document.documentElement.dataset)) {
           liveDataReady = coreLiveDataReadiness(transportReady, shellMounted)
         }
-        updateBadge(activity, route, shellMounted, liveDataReady)
+        paintBadge()
         // The tunnel can report open before the WebView shell exists. Repaint
         // now so a ready state cannot leave a stale recovery notice behind.
         render()

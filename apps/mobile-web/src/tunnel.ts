@@ -568,6 +568,9 @@ export interface ConnectionIndicatorPresentation {
   color: string
 }
 
+/** Host `$events` generation published by the mobile layout presenter. */
+export type HostConnectionState = 'connected' | 'disconnected' | 'connecting'
+
 /** True while transport failures are being retried without user action. */
 export function isPassiveConnectionRetry(activity: TunnelManagerActivity): boolean {
   return activity.phase === 'retry-wait'
@@ -580,6 +583,7 @@ export function connectionIndicatorPresentation(
   route = '',
   shellMounted = true,
   liveDataReady: boolean | LiveDataReadiness = true,
+  hostConnection?: HostConnectionState,
 ): ConnectionIndicatorPresentation {
   if (typeof status !== 'string' && status.phase === 'terminal') {
     const title = '连接需要处理'
@@ -610,34 +614,45 @@ export function connectionIndicatorPresentation(
         : 'closed'
   const reconnecting = typeof status !== 'string' && status.phase === 'connecting' && status.reconnecting
   const readiness = typeof liveDataReady === 'boolean' ? (liveDataReady ? 'ready' : 'pending') : liveDataReady
+  const liveReady = readiness === 'ready' || readiness === 'core-ready'
   const refreshFailed = state === 'open' && readiness === 'error'
   const refreshing = state === 'open' && readiness === 'pending'
-  const connected = state === 'open' && (readiness === 'ready' || readiness === 'core-ready')
+  const eventsFailed = state === 'open' && liveReady && hostConnection === 'disconnected'
+  const eventsPending = state === 'open' && liveReady && hostConnection !== 'connected'
+  const connected = state === 'open' && liveReady && hostConnection === 'connected'
   const title = refreshFailed
     ? '会话数据刷新失败'
+    : eventsFailed
+      ? '连接异常，刷新重试'
     : refreshing
       ? '正在刷新会话…'
       : connected
         ? '已连接'
+      : eventsPending
+        ? '正在连接会话…'
       : state === 'connecting'
         ? reconnecting ? '正在重连…' : '隧道连接中…'
         : '隧道已断开，重连中'
-  const color = state === 'closed' || refreshFailed
+  const color = state === 'closed' || refreshFailed || eventsFailed
     ? 'var(--dsw-alias-state-error-primary, #ec1313)'
     : connected
       ? 'var(--dsw-alias-state-success-primary, #22c55e)'
       : 'var(--dsw-alias-state-warn-primary, #f59e0b)'
   const text = refreshFailed
     ? '刷新失败'
+    : eventsFailed
+      ? '连接异常'
     : refreshing
       ? '刷新中…'
       : connected
         ? '已连接'
+      : eventsPending
+        ? '连接中…'
       : state === 'connecting'
         ? reconnecting ? '重连中…' : '连接中…'
         : '重连中…'
   return {
-    visible: shellMounted && (state !== 'open' || (readiness !== 'ready' && readiness !== 'core-ready')),
+    visible: shellMounted && !connected,
     text,
     label: route === '' ? title : route + ' · ' + title,
     color,
@@ -651,6 +666,7 @@ export interface ConnectionBadgeUpdater {
     route?: string,
     shellMounted?: boolean,
     liveDataReady?: boolean | LiveDataReadiness,
+    hostConnection?: HostConnectionState,
   ): void
   /** Remove indicator nodes and stop observing shell mutations. */
   dispose(): void
@@ -746,8 +762,8 @@ export function installBadge(): ConnectionBadgeUpdater {
   const stop = observeShellChrome(place)
   place()
 
-  const update: ConnectionBadgeUpdater = (state, route = '', shellMounted = true, liveDataReady = true) => {
-    const view = connectionIndicatorPresentation(state, route, shellMounted, liveDataReady)
+  const update: ConnectionBadgeUpdater = (state, route = '', shellMounted = true, liveDataReady = true, hostConnection) => {
+    const view = connectionIndicatorPresentation(state, route, shellMounted, liveDataReady, hostConnection)
     dot.style.background = view.color
     el.title = view.label
     el.setAttribute('aria-label', view.label)

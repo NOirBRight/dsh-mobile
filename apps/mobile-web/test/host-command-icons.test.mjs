@@ -1,6 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { attachHostCommandIcons, isPrimitivesIconsModule, patchPrimitivesIcons } from '../src/vite-host-command-icons.ts'
 
@@ -45,6 +48,33 @@ test('Vite seeds alpha.2 SlotCore independently of the 0.1.5 Host compile pin', 
   assert.match(seed, /process\.exit\(1\)/)
   assert.match(seed, /env\.DSH_SLOTS_SEED = slots/)
   assert.doesNotMatch(seed, /if \(slots !== undefined\) env\.DSH_SLOTS_SEED/)
+})
+
+test('mobile-web carries alpha.2 primitives deps the 0.1.5 Host seed omits', async () => {
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.equal(pkg.dependencies['simple-icons'], '16.31.0')
+  assert.match(pkg.dependencies.diff, /\^9/)
+})
+
+test('Vite seeds alpha.2 primitives independently of the 0.1.5 Host compile pin', async (t) => {
+  const vite = await readFile(VITE, 'utf8')
+  assert.match(vite, /DSH_PRIMITIVES_SEED/)
+  assert.match(vite, /primitivesUp\('packages\/client\/ui-primitives\/src\/index\.ts'\)/)
+  assert.match(vite, /resolvePrimitivesDepsFromHostSeed/)
+  const seed = await readFile(new URL('../scripts/vite-with-host-seed.mjs', import.meta.url), 'utf8')
+  assert.match(seed, /DSH_PRIMITIVES_SEED/)
+  assert.match(seed, /ui-primitives\/src\/index\.ts/)
+  assert.match(seed, /env\.DSH_PRIMITIVES_SEED = primitives/)
+  assert.doesNotMatch(seed, /if \(primitives !== undefined\) env\.DSH_PRIMITIVES_SEED/)
+  const alpha2 = resolve(homedir(), '.local/opt/dsh-staging/dsh-v0.1.6-alpha.2-src/packages/client/ui-primitives/src/index.ts')
+  if (!existsSync(alpha2)) {
+    t.skip('alpha.2 staging tree is an optional read-only seam')
+    return
+  }
+  const source = await readFile(alpha2, 'utf8')
+  assert.match(source, /export \{ Checkbox \}/)
+  assert.match(source, /MarkdownDelegateProvider/)
+  assert.match(source, /isDarwinDesktop/)
 })
 
 test('patch appends Host-face exports onto an older icons barrel', () => {

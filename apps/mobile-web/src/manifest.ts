@@ -13,10 +13,8 @@ export const MODULES_ID = '@deepseek-ai/dsh-client-modules'
 export const RUNTIME_ID = '@deepseek-ai/dsh-cordis-client-runner'
 export const DSH_HOST_BRIDGE_CAPABILITY = '__DSH_HOST_BRIDGE__'
 const CLIENT_HMR_ID = '@deepseek-ai/dsh-client-hmr'
-const MOBILE_LAYOUT_REV = '0.1.75'
+const MOBILE_LAYOUT_REV = '0.1.84'
 const INTERACTION_OPERATIONS_REV = '0.1.17'
-const MOBILE_CONNECTION_REV = '0.1.23'
-const MOBILE_CONNECTION_URL = '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=' + MOBILE_CONNECTION_REV
 const MOBILE_LAYOUT_EXTRA_INJECT = ['@deepseek-ai/dsh-api-remotes'] as const
 
 /** Mark the page only after the authenticated same-origin Host bridge is validated. */
@@ -376,9 +374,7 @@ async function parseHostBridgeManifest(response: Response): Promise<BootManifest
   const manifest = validateBootManifest(extractBootManifestJson(await response.text(), 'boot manifest not found in same-origin Host index'))
   return {
     ...manifest,
-    entries: manifest.entries.map(entry => entry.id === CONNECTION_ID
-      ? { ...entry, url: MOBILE_CONNECTION_URL, rev: MOBILE_CONNECTION_REV }
-      : { ...entry }),
+    entries: manifest.entries.map(entry => ({ ...entry })),
   }
 }
 
@@ -686,7 +682,6 @@ export function selectResponsiveBootManifest(
   }
   const finalEntries = mobileEntries.map(entry => {
     if (entry.id === DESKTOP_LAYOUT_ID) return mobileLayout
-    if (entry.id === CONNECTION_ID) return { ...entry, url: MOBILE_CONNECTION_URL, rev: MOBILE_CONNECTION_REV }
     return { ...entry }
   })
   return {

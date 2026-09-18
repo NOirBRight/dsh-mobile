@@ -7,10 +7,13 @@
  * NEVER bundled here — they arrive as runtime bundles through the client
  * module system (/plugins, host-side scan of the dsh.client roster).
  */
+import { existsSync, readdirSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import { attachDarwinDesktop } from './src/vite-darwin-desktop.ts'
 import { attachHostCommandIcons } from './src/vite-host-command-icons.ts'
 
 const src = (rel: string): string => fileURLToPath(new URL(rel, import.meta.url))
@@ -19,8 +22,60 @@ const preparedUpstream = fileURLToPath(new URL('../../.dsh-upstream', import.met
 const UP = process.env.DSH_UPSTREAM ?? preparedUpstream
 /** Required by vite-with-host-seed.mjs: alpha.2 SlotCore (registerFactory). */
 const SLOTS_UP = process.env.DSH_SLOTS_SEED ?? UP
+/** Required by vite-with-host-seed.mjs: alpha.2 primitives (Checkbox, MarkdownDelegate, icons). */
+const PRIMITIVES_UP = process.env.DSH_PRIMITIVES_SEED ?? SLOTS_UP
 const up = (rel: string): string => UP + '/' + rel
 const slotsUp = (rel: string): string => SLOTS_UP + '/' + rel
+const primitivesUp = (rel: string): string => PRIMITIVES_UP + '/' + rel
+
+/**
+ * Alpha.2 primitives src has no nested node_modules. Resolve its bare imports
+ * from the 0.1.5 Host-seed tree (nested package node_modules, then pnpm store).
+ * `diff` is one such Host-only dep: 0.1.5 DiffBlock does not import it.
+ */
+function resolvePrimitivesDepsFromHostSeed(): Plugin {
+  const hostImporter = up('packages/client/ui-primitives/src/index.ts')
+  const hostPackage = up('packages/client/ui-primitives/package.json')
+  const hostRootPackage = up('package.json')
+  const appPackage = src('../package.json')
+  const pnpm = up('node_modules/.pnpm')
+  const requireFrom = (from: string, source: string): string | undefined => {
+    try {
+      return createRequire(from).resolve(source)
+    } catch {
+      return undefined
+    }
+  }
+  const resolveHostSeedPackage = (source: string): string | undefined => {
+    const nested = requireFrom(hostPackage, source)
+    if (nested !== undefined) return nested
+    const root = requireFrom(hostRootPackage, source)
+    if (root !== undefined) return root
+    const app = requireFrom(appPackage, source)
+    if (app !== undefined) return app
+    if (!existsSync(pnpm)) return
+    const name = source.startsWith('@') ? source.split('/').slice(0, 2).join('/') : source.split('/')[0]!
+    const prefix = name.startsWith('@') ? name.slice(1).replace('/', '+') : name
+    const match = readdirSync(pnpm).filter(entry => entry.startsWith(prefix + '@')).sort().at(-1)
+    if (match === undefined) return
+    return requireFrom(pnpm + '/' + match + '/node_modules/' + name + '/package.json', source)
+  }
+  return {
+    name: 'dsh-primitives-host-seed-deps',
+    resolveId(source, importer, options) {
+      if (importer === undefined) return
+      if (!importer.replace(/\\/g, '/').includes('/ui-primitives/src/')) return
+      if (importer === hostImporter) return
+      if (source.startsWith('.') || source.startsWith('\0') || source.startsWith('/')) return
+      if (source === 'react' || source.startsWith('react/') || source === 'react-dom' || source.startsWith('react-dom/')) return
+      if (source.startsWith('@deepseek-ai/')) return
+      return this.resolve(source, hostImporter, { ...options, skipSelf: true }).then(resolved => {
+        if (resolved !== null) return resolved
+        return resolveHostSeedPackage(source)
+      })
+    },
+  }
+}
 
 const STANDALONE_ERROR = 'apps/mobile-web is an Android shell, not a standalone browser server: bare Vite cannot supply a paired tunnel or window.__DSH_BOOT__. Build/sync the Capacitor app instead.'
 
@@ -35,7 +90,13 @@ function rejectStandaloneServe(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [rejectStandaloneServe(), attachHostCommandIcons(src('./src/host-command-icons.tsx')), react()],
+  plugins: [
+    rejectStandaloneServe(),
+    resolvePrimitivesDepsFromHostSeed(),
+    attachHostCommandIcons(src('./src/host-command-icons.tsx')),
+    attachDarwinDesktop(src('./src/darwin-desktop.ts')),
+    react(),
+  ],
   build: {
     sourcemap: true,
   },
@@ -47,7 +108,7 @@ export default defineConfig({
       { find: /^@deepseek-ai\/dsh-client-web$/, replacement: up('packages/client/web/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-web-react$/, replacement: up('packages/client/web-react/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-ui-slots$/, replacement: slotsUp('packages/client/ui-slots/src/index.ts') },
-      { find: /^@deepseek-ai\/dsh-client-ui-primitives$/, replacement: up('packages/client/ui-primitives/src/index.ts') },
+      { find: /^@deepseek-ai\/dsh-client-ui-primitives$/, replacement: primitivesUp('packages/client/ui-primitives/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-ui-dockkit$/, replacement: up('packages/client/ui-dockkit/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-ui-attachment$/, replacement: up('packages/client/ui-attachment/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-schema-form$/, replacement: up('packages/client/schema-form/src/index.ts') },

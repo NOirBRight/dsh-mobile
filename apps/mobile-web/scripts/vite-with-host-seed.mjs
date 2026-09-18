@@ -26,9 +26,23 @@ if (slots === undefined) {
   console.error('DSH_SLOTS_SEED missing: need dsh-v0.1.6-alpha.2 ui-slots (registerFactory).')
   process.exit(1)
 }
+// Missing seam: alpha.2 Host UI requires primitives Checkbox, MarkdownDelegateProvider,
+// isDarwinDesktop, extra icons, and SHIELD_OUTLINE_* that 0.1.5 omits. Alias only
+// ui-primitives at the alpha.2 src tree; Vite still resolves its npm deps from the
+// 0.1.5 Host seed (alpha.2 staging has no node_modules). Fail loud.
+const primitives = firstExisting([
+  process.env.DSH_PRIMITIVES_SEED,
+  slots,
+  resolve(staging, 'dsh-v0.1.6-alpha.2-src'),
+], 'packages/client/ui-primitives/src/index.ts')
+if (primitives === undefined) {
+  console.error('DSH_PRIMITIVES_SEED missing: need dsh-v0.1.6-alpha.2 ui-primitives (Checkbox, MarkdownDelegateProvider, isDarwinDesktop).')
+  process.exit(1)
+}
 const env = { ...process.env }
 if (seed !== undefined) env.DSH_UPSTREAM = seed
 env.DSH_SLOTS_SEED = slots
+env.DSH_PRIMITIVES_SEED = primitives
 const result = spawnSync('npx', ['vite', 'build'], {
   stdio: 'inherit',
   env,

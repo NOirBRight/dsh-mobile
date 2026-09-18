@@ -94,16 +94,31 @@ test('floating connection indicator follows theme and waits for authoritative li
     color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
   })
   assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, true), {
-    visible: false, text: '已连接', label: 'WebRTC Direct · 已连接',
-    color: 'var(--dsw-alias-state-success-primary, #22c55e)',
+    visible: true, text: '连接中…', label: 'WebRTC Direct · 正在连接会话…',
+    color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
   })
   assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, 'core-ready'), {
-    visible: false, text: '已连接', label: 'WebRTC Direct · 已连接',
-    color: 'var(--dsw-alias-state-success-primary, #22c55e)',
+    visible: true, text: '连接中…', label: 'WebRTC Direct · 正在连接会话…',
+    color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
   })
   assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, 'error'), {
     visible: true, text: '刷新失败', label: 'WebRTC Direct · 会话数据刷新失败',
     color: 'var(--dsw-alias-state-error-primary, #ec1313)',
+  })
+})
+
+test('drawer indicator stays off green until Host $events reports connected', () => {
+  assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, 'core-ready', 'connected'), {
+    visible: false, text: '已连接', label: 'WebRTC Direct · 已连接',
+    color: 'var(--dsw-alias-state-success-primary, #22c55e)',
+  })
+  assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, 'core-ready', 'disconnected'), {
+    visible: true, text: '连接异常', label: 'WebRTC Direct · 连接异常，刷新重试',
+    color: 'var(--dsw-alias-state-error-primary, #ec1313)',
+  })
+  assert.deepEqual(connectionIndicatorPresentation('open', 'WebRTC Direct', true, true, 'connecting'), {
+    visible: true, text: '连接中…', label: 'WebRTC Direct · 正在连接会话…',
+    color: 'var(--dsw-alias-state-warn-primary, #f59e0b)',
   })
 })
 

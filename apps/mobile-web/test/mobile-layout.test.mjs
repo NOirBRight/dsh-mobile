@@ -25,6 +25,11 @@ test('mobile layout does not paginate older history during session changes', asy
   assert.doesNotMatch(source, /history-prefetch|loadOlder/, 'session changes must not start background history pagination')
 })
 
+test('opening the drawer dismisses Agent Team instead of hiding it', async () => {
+  const source = await readFile(resolve(import.meta.dirname, '../../../packages/ui-layout-mobile/src/client/MobileFrame.tsx'), 'utf8')
+  assert.match(source, /dismissOfficialTeamDialog/, 'drawer open must close Agent Team through its official trigger')
+})
+
 test('narrow layout lets official StatsPills occupy the composer dock', async () => {
   const source = await readFile(resolve(import.meta.dirname, '../../../packages/ui-layout-mobile/src/client/index.ts'), 'utf8')
   assert.doesNotMatch(source, /CompactStatsLine/, 'mobile must not shadow official stats')
@@ -42,6 +47,21 @@ test('narrow layout lets official StatsPills occupy the composer dock', async ()
   assert.doesNotMatch(css, /max-width:\s*9rem/, 'icon chrome leaves the model trigger uncapped so the name uses leftover width')
   assert.match(css, /\[data-mobile-permission-trigger\]/)
   assert.match(css, /\[data-mobile-model-trigger\]/)
+  assert.match(css, /\[data-conversation-header-leading\]/, 'alpha.2 darwin leading chrome must leave the phone header')
+  assert.match(css, /\[data-settings-panel\]/, 'settings recomposition must not depend on :has()')
+  assert.match(css, /\[data-team-action\] > button/, 'Team trigger restyle must not hit roster buttons')
+  assert.match(css, /\[data-team-action\]\) :global\(\[role="dialog"\]\)/, 'Agent Team popover must reflow without :has()')
+  assert.match(css, /\[data-drawer-open\].*\[data-team-action\] > button/s, 'open drawer must hide the Team trigger, not CSS-hide the popover')
+  assert.match(css, /\[data-drawer-open\] \.center :global\(header\)/, 'open drawer must drop the Team header lift so Chat does not paint through the sidebar')
+  assert.match(css, /\[data-team-open\]/, 'Agent Team popover stacking must not depend on :has() alone')
+  assert.match(css, /\[data-mobile-settings-row\]/, 'drawer footer must wrap the connection pill below Settings/Switch')
+  assert.match(css, /button\[data-mobile-new-session\]/, 'New session hit target must key a stamped seam, not a hashed class')
+  assert.match(css, /\[data-mobile-new-session-label\]/, 'New session label must keep the official text box')
+  assert.match(css, /\[data-mobile-panel-row\]/, 'official sidebar panel rows must grow to a phone hit target')
+  assert.doesNotMatch(css, /\[class\*="panelRow"\]/)
+  assert.doesNotMatch(css, /\[class\*="triggerRow"\]/)
+  assert.match(css, /\[data-mobile-team-roster\]/, 'Agent Team members must stack to one column on a phone')
+  assert.doesNotMatch(css, /min-height:\s*100vh/, 'Agent Team must stay a popover, not a fullscreen sheet')
   assert.doesNotMatch(
     css,
     /button\[aria-haspopup="menu"\]\s*\+\s*\[role="menu"\]/,
@@ -66,6 +86,16 @@ test('mobile drawer closes on navigation and reports its constrained rendered wi
     assert.match(chrome.stdout, /data-ready="true"/, 'browser fixture did not settle')
     const capture = (name) => new RegExp('data-' + name + '="([^"]*)"').exec(chrome.stdout)?.[1]
     assert.equal(capture('close-count'), '2', 'session rows and New session should close the drawer')
+    assert.ok(Number(capture('sidebar-new-session-height')) >= 44, 'official New session must be a phone hit target, got height ' + capture('sidebar-new-session-height'))
+    assert.ok(Number(capture('sidebar-new-session-height')) <= 48, 'New session must stay a compact pill, got height ' + capture('sidebar-new-session-height'))
+    assert.ok(Number(capture('sidebar-new-session-label-height')) <= 24, 'New session label must not inherit the 44px hit target, got height ' + capture('sidebar-new-session-label-height'))
+    assert.equal(capture('sidebar-new-session-align'), 'true', 'New session icon and label must share a centerline')
+    assert.equal(capture('panel-row-min-height'), '44px', 'sidebar panel rows must grow to a phone hit target')
+    assert.equal(capture('settings-row-wrap'), 'wrap', 'Settings footer must wrap the connection pill onto its own line')
+    assert.equal(capture('connection-label-ellipsis'), 'ellipsis', 'connection pill copy must ellipsize instead of overflowing the drawer')
+    assert.equal(capture('mode-label-stamped'), 'true', 'preset chip must be stamped so CSS does not read hashed header classes')
+    assert.equal(capture('header-leading'), 'none', 'alpha.2 darwin header leading must not occupy the phone title row')
+    assert.ok(Number(capture('sidebar-occupant-height')) > 40, 'the sidebar occupant must fill the drawer, got height ' + capture('sidebar-occupant-height'))
     assert.equal(capture('official-drawer-width'), '280')
     assert.equal(capture('official-owner-width'), '280')
     assert.equal(capture('drawer-width'), '240')
@@ -76,6 +106,33 @@ test('mobile drawer closes on navigation and reports its constrained rendered wi
     assert.equal(capture('notice-title-visible'), 'true', 'session title should remain visible')
     assert.equal(capture('more-button'), 'false', 'mobile topbar does not keep a leftover-actions menu')
     assert.equal(capture('rightbar-expand'), 'true', 'official rightbar expand should remain in the tree')
+    assert.equal(capture('team-drawer-visibility'), 'hidden', 'open drawer must not leak the Agent Team trigger')
+    assert.equal(capture('team-drawer-pointer'), 'none', 'open drawer must not accept Team trigger taps through the scrim')
+    assert.equal(capture('expand-drawer-visibility'), 'hidden', 'open drawer must not leak the rightbar expand control')
+    assert.equal(capture('team-sheet-position'), 'fixed', 'Agent Team must leave the desktop popover containing block')
+    assert.equal(capture('team-sheet-left'), '8px', 'Agent Team popover must inset from the phone left edge')
+    assert.equal(capture('team-sheet-right'), '8px', 'Agent Team popover must inset from the phone right edge')
+    assert.notEqual(capture('team-sheet-top'), '0px', 'Agent Team popover must sit under the header, got top ' + capture('team-sheet-top'))
+    assert.equal(capture('team-sheet-radius'), '12px', 'Agent Team must keep the desktop card radius')
+    assert.ok(
+      Number(capture('team-sheet-width')) < Number(capture('viewport-width')) - 8,
+      'Agent Team popover must inset instead of covering the viewport, got ' + capture('team-sheet-width') + ' vs ' + capture('viewport-width'),
+    )
+    assert.ok(
+      Number(capture('team-sheet-width')) >= Number(capture('viewport-width')) - 40,
+      'Agent Team popover must span the phone inset, got ' + capture('team-sheet-width') + ' vs ' + capture('viewport-width'),
+    )
+    assert.ok(
+      Number(capture('team-sheet-height')) < Number(capture('viewport-height')) - 80,
+      'Agent Team must keep auto height, got ' + capture('team-sheet-height') + ' vs ' + capture('viewport-height'),
+    )
+    assert.equal(capture('team-roster-stacked'), 'true', 'Agent Team members must stack one per row')
+    assert.equal(capture('team-trigger-open-visibility'), 'visible', 'open Agent Team must keep the header Team trigger')
+    assert.notEqual(capture('team-member-font'), '0px', 'Team trigger restyle must not hide Agent Team member names')
+    assert.doesNotMatch(capture('team-member-after') ?? '', /Team/, 'member names must not gain a Team ::after, got ' + capture('team-member-after'))
+    assert.equal(capture('team-header-z'), '45', 'open Agent Team must lift the conversation header above the composer')
+    assert.equal(capture('team-drawer-header-z'), '1', 'opening the drawer after Agent Team must not leave Chat above the sidebar')
+    assert.equal(capture('team-dismissed'), 'true', 'opening the drawer must dismiss Agent Team like the model picker')
     assert.equal(capture('open-locally-hidden'), 'none', 'Open locally is unavailable on the phone')
     assert.equal(capture('crumb-hidden'), 'flex', 'parent lineage nav is one of the five row-2 cells')
     assert.equal(capture('child-crumb-display'), 'flex', 'active child sessions should expose the official breadcrumb')

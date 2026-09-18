@@ -8,6 +8,21 @@ import { build } from 'vite'
 
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/mobile-settings-layout')
 
+test('settings recomposition does not use :has(), which MICRO 2 WebView 101 drops', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const css = await readFile(resolve(import.meta.dirname, '../../../packages/ui-layout-mobile/src/client/MobileFrame.module.css'), 'utf8')
+  const presenter = await readFile(resolve(import.meta.dirname, '../../../packages/ui-layout-mobile/src/client/settings-shell-presenter.ts'), 'utf8')
+  const start = css.indexOf('data-settings-overlay')
+  const end = css.indexOf('Official turn footer')
+  assert.ok(start >= 0 && end > start, 'settings CSS block must be present')
+  const settingsCss = css.slice(start, end)
+  assert.match(css, /\[data-settings-panel\]/)
+  assert.match(css, /\[data-settings-overlay\]/)
+  assert.match(css, /\[data-mobile-settings-row\]/)
+  assert.doesNotMatch(settingsCss, /:has\(/, 'settings and drawer-footer CSS must run on WebView 101')
+  assert.match(presenter, /installSettingsShellPresenter/)
+})
+
 test('mobile settings uses a full-width panel and horizontal category navigation', async () => {
   const outDir = await mkdtemp(join(tmpdir(), 'dsh-mobile-settings-'))
   try {
@@ -57,6 +72,7 @@ test('mobile settings uses a full-width panel and horizontal category navigation
     assert.ok(Math.abs(Number(capture('close-title-center-delta'))) <= 2, 'settings close action should align with the title text')
     assert.ok(Number(capture('close-top')) <= 20, 'settings close action should sit near the panel top')
     assert.equal(capture('content-min-width'), '0px')
+    assert.equal(capture('settings-open'), 'true', 'settings open must mark the mobile frame without :has()')
   } finally {
     await rm(outDir, { recursive: true, force: true })
   }

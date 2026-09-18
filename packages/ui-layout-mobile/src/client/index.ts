@@ -31,6 +31,10 @@ import { installTurnTailPresenter } from './turn-tail-presenter.ts'
 import { installModelPickerPresenter } from './model-picker-presenter.ts'
 import { installPermissionLabelPresenter } from './permission-label-presenter.ts'
 import { installPresetLabelPresenter } from './preset-label-presenter.ts'
+import { installSettingsShellPresenter } from './settings-shell-presenter.ts'
+import { installTeamPanelPresenter } from './team-panel-presenter.ts'
+import { installDrawerChromePresenter } from './chrome-anchors.ts'
+import { installHostConnectionPresenter } from './host-connection-presenter.ts'
 import { installAgentPresetFallback, type AgentPresetFallbackContext } from './agent-preset-fallback.ts'
 
 // Contract exports only. IMobileLayout: the ctx.layout face consumers and test
@@ -175,6 +179,18 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => installModelPickerPresenter(), 'ui-layout-mobile: compact model details')
   ctx.effect(() => installPermissionLabelPresenter(), 'ui-layout-mobile: permission icon triggers')
   ctx.effect(() => installPresetLabelPresenter(), 'ui-layout-mobile: compact preset labels')
+  ctx.effect(() => installSettingsShellPresenter(), 'ui-layout-mobile: settings shell marks')
+  ctx.effect(() => installTeamPanelPresenter(), 'ui-layout-mobile: agent team sheet marks')
+  ctx.effect(() => installDrawerChromePresenter(), 'ui-layout-mobile: drawer chrome marks')
+  ctx.inject(['connection'], (scope) => {
+    const connection = (scope as ClientContext & {
+      connection: { state: import('./host-connection-presenter.ts').HostConnectionStateSource }
+    }).connection
+    scope.effect(
+      () => installHostConnectionPresenter(connection),
+      'ui-layout-mobile: host connection state',
+    )
+  })
   ctx.effect(() => installSlashMenuIconPresenter(), 'ui-layout-mobile: slash menu cube fallback')
   ctx.inject(['inputTriggers'], (scope) => {
     const service = (scope as ClientContext & { inputTriggers: InputTriggerRegistry }).inputTriggers
