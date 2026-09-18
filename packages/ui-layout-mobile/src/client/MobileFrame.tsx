@@ -19,6 +19,7 @@ import css from './MobileFrame.module.css'
 import { isOfficialNewSessionLabel } from './chrome-anchors.ts'
 import { blurComposer, composerEditor } from './composer-attach.ts'
 import { resolveMobileViewportHeight } from './mobile-viewport.ts'
+import { mainViewSessionId } from './session-main-view.ts'
 
 /** Official expanded-sidebar geometry used whenever the viewport permits it. */
 export const OFFICIAL_DRAWER_WIDTH = 280
@@ -93,13 +94,13 @@ export function MobileFrame({
   const drawerWidthRef = useRef(drawerWidth)
   drawerWidthRef.current = drawerWidth
   const detailsSession = useSessions((s) => {
-    const current = s.current
-    return current !== undefined && s.byId[current]?.blank === false ? current : undefined
+    const current = mainViewSessionId(s)
+    return current !== undefined && s.byId[current as keyof typeof s.byId]?.blank === false ? current : undefined
   })
-  const currentSession = useSessions(s => s.current)
+  const currentSession = useSessions(s => mainViewSessionId(s))
   const sessionTitle = useSessions((s) => {
-    const current = s.current
-    return current === undefined ? 'DeepSeek Harness' : s.byId[current]?.displayTitle ?? current
+    const current = mainViewSessionId(s)
+    return current === undefined ? 'DeepSeek Harness' : s.byId[current as keyof typeof s.byId]?.displayTitle ?? current
   })
 
   // ConversationRoot reuses the composer across sessions. Official InputBar

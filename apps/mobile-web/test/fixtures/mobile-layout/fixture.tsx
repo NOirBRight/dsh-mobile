@@ -7,7 +7,7 @@ import { installModelPickerPresenter } from '../../../../../packages/ui-layout-m
 import { installPermissionLabelPresenter } from '../../../../../packages/ui-layout-mobile/src/client/permission-label-presenter.ts'
 import { installPresetLabelPresenter } from '../../../../../packages/ui-layout-mobile/src/client/preset-label-presenter.ts'
 
-const sessions = { current: 'session-a', byId: { 'session-a': { blank: false, displayTitle: 'Mobile UI Session' } } }
+const sessions = { byId: { 'session-a': { blank: false, displayTitle: 'Mobile UI Session', retainedBy: { mainView: 1 } } } }
 const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)
 const statsProjections: Record<string, unknown> = {
   sessionStats: { turns: 4, steps: 8, llmMs: 20_000, toolMs: 0, ttftMs: 9_900, ttftSteps: 1, decodeMs: 1_000, decodeTokens: 68 },

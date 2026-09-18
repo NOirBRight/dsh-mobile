@@ -5,10 +5,9 @@ import { MobileFrame } from '../../../../../packages/ui-layout-mobile/src/client
 function FrameHarness() {
   const [current, setCurrent] = useState<'a' | 'b'>('a')
   const sessions = useMemo(() => ({
-    current,
     byId: {
-      a: { blank: false, displayTitle: 'Session A' },
-      b: { blank: false, displayTitle: 'Session B' },
+      a: { blank: false, displayTitle: 'Session A', retainedBy: current === 'a' ? { mainView: 1 } : {} },
+      b: { blank: false, displayTitle: 'Session B', retainedBy: current === 'b' ? { mainView: 1 } : {} },
     },
   }), [current])
   const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)

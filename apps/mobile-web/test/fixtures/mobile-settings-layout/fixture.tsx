@@ -2,7 +2,7 @@ import React, { useEffect, useMemo } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MobileFrame } from '../../../../../packages/ui-layout-mobile/src/client/MobileFrame.tsx'
 
-const sessions = { current: 'session-a', byId: { 'session-a': { blank: false, displayTitle: 'Settings Session' } } }
+const sessions = { byId: { 'session-a': { blank: false, displayTitle: 'Settings Session', retainedBy: { mainView: 1 } } } }
 const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)
 
 function App() {
