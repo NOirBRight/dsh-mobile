@@ -17,7 +17,9 @@ const src = (rel: string): string => fileURLToPath(new URL(rel, import.meta.url)
 /** Upstream checkout root selected by prepare-upstream.mjs; explicit env still wins. */
 const preparedUpstream = fileURLToPath(new URL('../../.dsh-upstream', import.meta.url))
 const UP = process.env.DSH_UPSTREAM ?? preparedUpstream
+const SLOTS_UP = process.env.DSH_SLOTS_SEED ?? UP
 const up = (rel: string): string => UP + '/' + rel
+const slotsUp = (rel: string): string => SLOTS_UP + '/' + rel
 
 const STANDALONE_ERROR = 'apps/mobile-web is an Android shell, not a standalone browser server: bare Vite cannot supply a paired tunnel or window.__DSH_BOOT__. Build/sync the Capacitor app instead.'
 
@@ -43,7 +45,7 @@ export default defineConfig({
       { find: /^node:module$/, replacement: src('./src/node-module-stub.ts') },
       { find: /^@deepseek-ai\/dsh-client-web$/, replacement: up('packages/client/web/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-web-react$/, replacement: up('packages/client/web-react/src/index.ts') },
-      { find: /^@deepseek-ai\/dsh-client-ui-slots$/, replacement: up('packages/client/ui-slots/src/index.ts') },
+      { find: /^@deepseek-ai\/dsh-client-ui-slots$/, replacement: slotsUp('packages/client/ui-slots/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-ui-primitives$/, replacement: up('packages/client/ui-primitives/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-ui-dockkit$/, replacement: up('packages/client/ui-dockkit/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-client-ui-attachment$/, replacement: up('packages/client/ui-attachment/src/index.ts') },

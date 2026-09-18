@@ -34,6 +34,16 @@ test('Vite wires the Host-face patch onto the seeded primitives icons module', a
   assert.match(source, /attachHostCommandIcons\(src\('\.\/src\/host-command-icons\.tsx'\)\)/)
 })
 
+test('Vite seeds alpha.2 SlotCore independently of the 0.1.5 Host compile pin', async () => {
+  const vite = await readFile(VITE, 'utf8')
+  assert.match(vite, /DSH_SLOTS_SEED/)
+  assert.match(vite, /slotsUp\('packages\/client\/ui-slots\/src\/index\.ts'\)/)
+  const seed = await readFile(new URL('../scripts/vite-with-host-seed.mjs', import.meta.url), 'utf8')
+  assert.match(seed, /dsh-v0\.1\.6-alpha\.2-src/)
+  assert.match(seed, /dsh-v0\.1\.5-rc\.1-183f08e9c6dd-src/)
+  assert.match(seed, /DSH_SLOTS_SEED/)
+})
+
 test('patch appends Host-face exports onto an older icons barrel', () => {
   const extra = fileURLToPath(ICONS)
   const patched = patchPrimitivesIcons('export const IconGoalOutline16 = () => null\n', extra)
