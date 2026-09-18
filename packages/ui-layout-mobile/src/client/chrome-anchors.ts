@@ -20,7 +20,7 @@ export function isComposerSendLabel(label: string | null): boolean {
   return label !== null && COMPOSER_SEND_LABEL.test(label.trim())
 }
 
-export function stampDataset(element: HTMLElement, datasetKey: string): void {
+export function stampDataset(element: HTMLElement | SVGElement, datasetKey: string): void {
   if (element.dataset[datasetKey] === undefined) element.dataset[datasetKey] = ''
 }
 
@@ -32,11 +32,39 @@ export function markMobileFrameFlag(document: Document, datasetKey: string, open
   else delete frame.dataset[datasetKey]
 }
 
+/** Official BrandWordmark widths: name-only 156, older combined 182. */
+const OFFICIAL_WORDMARK_SVGS = 'svg[width="156"], svg[width="182"]'
+
+function unstampNewSession(button: HTMLButtonElement): void {
+  delete button.dataset.mobileNewSession
+  for (const child of button.children) {
+    if (child instanceof HTMLElement) delete child.dataset.mobileNewSessionLabel
+  }
+}
+
+/** Stamp the official brand shortcut so CSS can size the wordmark without hashed classes. */
+export function stampOfficialBrand(root: ParentNode = globalThis.document): void {
+  const drawer = root.querySelector(DRAWER)
+  if (drawer === null) return
+  for (const svg of drawer.querySelectorAll(OFFICIAL_WORDMARK_SVGS)) {
+    if (!(svg instanceof SVGElement)) continue
+    stampDataset(svg, 'mobileWordmark')
+    const button = svg.closest('button')
+    if (!(button instanceof HTMLButtonElement)) continue
+    stampDataset(button, 'mobileBrand')
+    unstampNewSession(button)
+  }
+}
+
 /** Stamp the official New Session control so CSS can size it without hashed classes. */
 export function stampOfficialNewSession(root: ParentNode = globalThis.document): void {
   for (const button of root.querySelectorAll('button[aria-label]')) {
     if (!(button instanceof HTMLButtonElement)) continue
     if (!isOfficialNewSessionLabel(button.getAttribute('aria-label') ?? '')) continue
+    if (button.dataset.mobileBrand !== undefined) {
+      unstampNewSession(button)
+      continue
+    }
     stampDataset(button, 'mobileNewSession')
     for (const child of button.children) {
       if (child.tagName !== 'SPAN') continue
@@ -96,6 +124,7 @@ export function stampOfficialModeLabel(root: ParentNode = globalThis.document): 
 }
 
 export function stampOfficialDrawerChrome(root: ParentNode = globalThis.document): void {
+  stampOfficialBrand(root)
   stampOfficialNewSession(root)
   stampOfficialPanelRows(root)
   stampOfficialSettingsRow(root)

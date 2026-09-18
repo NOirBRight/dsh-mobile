@@ -118,12 +118,12 @@ test('replaces desktop layout and drops browser HMR without mutating host manife
   const mobile = adaptBootManifestForMobile(host)
 
   assert.deepEqual(host, snapshot)
-    assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.84+mobile-interactions-0.1.17')
+    assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.85+mobile-interactions-0.1.17')
   assert.deepEqual(mobile.entries.map(entry => entry.id), ['before', MOBILE_LAYOUT_ID, 'after', INTERACTION_OPERATIONS_ID])
   assert.deepEqual(mobile.entries[1], {
     id: MOBILE_LAYOUT_ID,
-    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.84',
-    rev: '0.1.84',
+    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.85',
+    rev: '0.1.85',
     inject: [
       '@deepseek-ai/dsh-client-ui-renderer',
       '@deepseek-ai/dsh-client-ui-session',

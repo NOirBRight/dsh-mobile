@@ -194,8 +194,17 @@
   justify-content: flex-start;
 }
 
-.drawer :global([class*="logoRow"]) > :global([class*="brand"]) {
-  flex: 0 1 auto;
+/* Official .brand is flex:1; min-width:0. Do not use flex: 0 1 auto — that
+   plus the New Session 16px SVG rule collapsed the 156px name wordmark. */
+.drawer :global([data-mobile-brand]) {
+  flex: 1;
+  min-width: 0;
+}
+
+.drawer :global([data-mobile-wordmark]) {
+  flex: none;
+  max-width: none;
+  height: 24px;
 }
 
 .drawer :global([data-mobile-connection-status]) {
@@ -1252,12 +1261,6 @@
   width: auto;
   max-width: none;
   max-height: calc(100dvh - 112px);
-}
-
-/* Expanded mobile drawer already has the full wordmark. Hide the 24px rail
-   fish if it sits beside the 182px wordmark. Adjacent sibling, not :has(). */
-.drawer :global(svg[width="182"] ~ svg[width="24"][height="24"]) {
-  display: none;
 }
 
 /* Mobile settings recomposition. MICRO 2 WebView is Chrome 101 and drops

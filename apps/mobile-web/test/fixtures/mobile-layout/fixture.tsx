@@ -7,7 +7,7 @@ import { installModelPickerPresenter } from '../../../../../packages/ui-layout-m
 import { installPermissionLabelPresenter } from '../../../../../packages/ui-layout-mobile/src/client/permission-label-presenter.ts'
 import { installPresetLabelPresenter } from '../../../../../packages/ui-layout-mobile/src/client/preset-label-presenter.ts'
 import { dismissOfficialTeamDialog, installTeamPanelPresenter, stampOfficialTeamRoster } from '../../../../../packages/ui-layout-mobile/src/client/team-panel-presenter.ts'
-import { installDrawerChromePresenter } from '../../../../../packages/ui-layout-mobile/src/client/chrome-anchors.ts'
+import { installDrawerChromePresenter, stampOfficialDrawerChrome } from '../../../../../packages/ui-layout-mobile/src/client/chrome-anchors.ts'
 
 const sessions = { byId: { 'session-a': { blank: false, displayTitle: 'Mobile UI Session', retainedBy: { mainView: 1 } } } }
 const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)
@@ -41,10 +41,38 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
           data-sidebar-root
           style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
         >
-          <div data-brand-row>
-            <svg width="182" height="24" data-wordmark />
-            <svg width="24" height="24" data-duplicate-fish />
-            <svg width="16" height="16" data-panel-icon />
+          <div
+            className="logoRow"
+            data-brand-row
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              overflow: 'hidden',
+              padding: '8px 0 8px 4px',
+              boxSizing: 'border-box',
+              width: '100%',
+            }}
+          >
+            <button
+              type="button"
+              className="brand"
+              aria-label="New session"
+              style={{ minWidth: 0, overflow: 'hidden', display: 'inline-flex', padding: 0, border: 'none', background: 'transparent' }}
+            >
+              <span className="brandIdentity" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, height: 24 }}>
+                <span className="brandMark" style={{ flex: 'none' }}>
+                  <svg width="24" height="24" data-brand-mark />
+                </span>
+                <span className="brandName" style={{ display: 'inline-flex', minWidth: 0 }}>
+                  <svg width="156" height="24" data-wordmark viewBox="26 0 156 24" style={{ maxWidth: '100%', height: 'auto' }} />
+                </span>
+              </span>
+            </button>
+            <span data-mobile-connection-status />
+            <button type="button" aria-label="收起侧边栏">
+              <svg width="16" height="16" data-panel-icon />
+            </button>
           </div>
           <button
             type="button"
@@ -237,7 +265,19 @@ function App() {
       ).display
       childCrumb.setAttribute('aria-label', '切换子代理：Child')
       document.body.dataset.childCrumbPositionZh = getComputedStyle(breadcrumb).position
-      document.body.dataset.fishHidden = getComputedStyle(document.querySelector<HTMLElement>('#official [data-duplicate-fish]')!).display
+      document.body.dataset.brandMarkVisible = String(
+        getComputedStyle(document.querySelector<HTMLElement>('#official [data-brand-mark]')!).display !== 'none',
+      )
+      const brand = document.querySelector<HTMLButtonElement>('#official .brand')!
+      const wordmark = document.querySelector<HTMLElement>('#official [data-wordmark]')!
+      const pill = document.querySelector<HTMLElement>('#official [data-new-session]')!
+      brand.setAttribute('data-mobile-new-session', '')
+      stampOfficialDrawerChrome()
+      document.body.dataset.brandStamped = String(brand.hasAttribute('data-mobile-brand'))
+      document.body.dataset.brandNotPill = String(!brand.hasAttribute('data-mobile-new-session'))
+      document.body.dataset.wordmarkStamped = String(wordmark.hasAttribute('data-mobile-wordmark'))
+      document.body.dataset.pillStamped = String(pill.hasAttribute('data-mobile-new-session'))
+      document.body.dataset.wordmarkWidth = String(Math.round(wordmark.getBoundingClientRect().width))
       document.body.dataset.panelVisible = getComputedStyle(document.querySelector<HTMLElement>('#official [data-panel-icon]')!).display
       const codexFrame = document.querySelector<HTMLElement>('#official [data-drawer-open]')!
       const codexFrameRect = codexFrame.getBoundingClientRect()
