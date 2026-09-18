@@ -42,6 +42,9 @@ test('Vite seeds alpha.2 SlotCore independently of the 0.1.5 Host compile pin', 
   assert.match(seed, /dsh-v0\.1\.6-alpha\.2-src/)
   assert.match(seed, /dsh-v0\.1\.5-rc\.1-183f08e9c6dd-src/)
   assert.match(seed, /DSH_SLOTS_SEED/)
+  assert.match(seed, /process\.exit\(1\)/)
+  assert.match(seed, /env\.DSH_SLOTS_SEED = slots/)
+  assert.doesNotMatch(seed, /if \(slots !== undefined\) env\.DSH_SLOTS_SEED/)
 })
 
 test('patch appends Host-face exports onto an older icons barrel', () => {

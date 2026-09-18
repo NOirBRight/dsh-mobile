@@ -17,6 +17,7 @@ const src = (rel: string): string => fileURLToPath(new URL(rel, import.meta.url)
 /** Upstream checkout root selected by prepare-upstream.mjs; explicit env still wins. */
 const preparedUpstream = fileURLToPath(new URL('../../.dsh-upstream', import.meta.url))
 const UP = process.env.DSH_UPSTREAM ?? preparedUpstream
+/** Required by vite-with-host-seed.mjs: alpha.2 SlotCore (registerFactory). */
 const SLOTS_UP = process.env.DSH_SLOTS_SEED ?? UP
 const up = (rel: string): string => UP + '/' + rel
 const slotsUp = (rel: string): string => SLOTS_UP + '/' + rel

@@ -1,6 +1,6 @@
 /** Mobile recovery for a Host that did not mount the official preset seat. */
 
-import { mainViewSessionId } from './session-main-view.ts'
+import { mainViewSessionId, type SessionListMainViewState } from './session-main-view.ts'
 
 interface PresetOption {
   readonly id: string
@@ -36,10 +36,7 @@ export interface AgentPresetFallbackContext {
   readonly remote: { readonly agentPresets: AgentPresetFallbackRemote }
   readonly sessions: {
     readonly list: {
-      getSnapshot(): {
-        readonly current?: string
-        readonly byId: Record<string, (SessionSummary & { readonly retainedBy?: { readonly mainView?: number } }) | undefined>
-      }
+      getSnapshot(): SessionListMainViewState<SessionSummary>
       subscribe(listener: () => void): () => void
     }
   }

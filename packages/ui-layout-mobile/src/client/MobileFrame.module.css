@@ -178,6 +178,14 @@
     visibility 0s var(--ds-transition-duration-slow);
 }
 
+/* Official SidebarRoot uses height:100%. As a flex child of this drawer that
+   percentage would otherwise resolve to auto and clip the session list. */
+.drawer > :global(*) {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
 /* The official sidebar header adds a small internal top offset of its own.
    Match its brand row to the mobile topbar/sidebar control centerline. */
 .drawer :global([class*="logoRow"]) {

@@ -1,16 +1,11 @@
 /** Mobile recovery for blank sessions created before Agent Presets were enabled. */
 
-import { mainViewSessionId } from './session-main-view.ts'
+import { mainViewSessionId, type SessionListMainViewState } from './session-main-view.ts'
 
 interface SessionSummaryLike {
   readonly id: string
   readonly blank: boolean
   readonly projectionValues?: Readonly<Record<string, unknown>>
-}
-
-interface SessionListSnapshotLike {
-  readonly current?: string
-  readonly byId: Readonly<Record<string, (SessionSummaryLike & { readonly retainedBy?: { readonly mainView?: number } }) | undefined>>
 }
 
 interface AgentPresetRemoteLike {
@@ -25,7 +20,7 @@ interface AgentPresetRemoteLike {
 export interface LegacyBlankPresetContext {
   readonly sessions: {
     readonly list: {
-      getSnapshot(): SessionListSnapshotLike
+      getSnapshot(): SessionListMainViewState<SessionSummaryLike>
       subscribe(listener: () => void): () => void
     }
   }

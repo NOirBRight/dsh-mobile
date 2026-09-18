@@ -1,6 +1,6 @@
 /** Mobile repair for an unroutable default on the active Host. */
 
-import { mainViewSessionId } from './session-main-view.ts'
+import { mainViewSessionId, type SessionListMainViewState } from './session-main-view.ts'
 
 interface ModelSelectionLike {
   readonly provider: string
@@ -36,15 +36,10 @@ interface SessionSummaryLike {
   readonly blank: boolean
 }
 
-interface SessionListSnapshotLike {
-  readonly current?: string
-  readonly byId: Readonly<Record<string, (SessionSummaryLike & { readonly retainedBy?: { readonly mainView?: number } }) | undefined>>
-}
-
 export interface HostModelFallbackContext {
   readonly sessions: {
     readonly list: {
-      getSnapshot(): SessionListSnapshotLike
+      getSnapshot(): SessionListMainViewState<SessionSummaryLike>
       subscribe(listener: () => void): () => void
     }
   }
