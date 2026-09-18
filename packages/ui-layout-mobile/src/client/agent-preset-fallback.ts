@@ -1,5 +1,7 @@
 /** Mobile recovery for a Host that did not mount the official preset seat. */
 
+import { mainViewSessionId, type SessionListMainViewState } from './session-main-view.ts'
+
 interface PresetOption {
   readonly id: string
   readonly name?: string
@@ -34,7 +36,7 @@ export interface AgentPresetFallbackContext {
   readonly remote: { readonly agentPresets: AgentPresetFallbackRemote }
   readonly sessions: {
     readonly list: {
-      getSnapshot(): { readonly current?: string; readonly byId: Record<string, SessionSummary | undefined> }
+      getSnapshot(): SessionListMainViewState<SessionSummary>
       subscribe(listener: () => void): () => void
     }
   }
@@ -86,7 +88,7 @@ function rosterValue(raw: RawPresetResult<PresetRoster>): PresetRoster | undefin
 
 function currentBlankSession(ctx: AgentPresetFallbackContext): SessionSummary | undefined {
   const snapshot = ctx.sessions.list.getSnapshot()
-  const id = snapshot.current
+  const id = mainViewSessionId(snapshot)
   const session = id === undefined ? undefined : snapshot.byId[id]
   return session?.blank === true ? session : undefined
 }

@@ -118,12 +118,12 @@ test('replaces desktop layout and drops browser HMR without mutating host manife
   const mobile = adaptBootManifestForMobile(host)
 
   assert.deepEqual(host, snapshot)
-  assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.64+mobile-interactions-0.1.17')
+    assert.equal(mobile.rev, 'host-rev+mobile-layout-0.1.84+mobile-interactions-0.1.17')
   assert.deepEqual(mobile.entries.map(entry => entry.id), ['before', MOBILE_LAYOUT_ID, 'after', INTERACTION_OPERATIONS_ID])
   assert.deepEqual(mobile.entries[1], {
     id: MOBILE_LAYOUT_ID,
-    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.64',
-    rev: '0.1.64',
+    url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.84',
+    rev: '0.1.84',
     inject: [
       '@deepseek-ai/dsh-client-ui-renderer',
       '@deepseek-ai/dsh-client-ui-session',
@@ -239,7 +239,7 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
     rev: 'mobile',
     entries: [
       { id: 'runtime', url: '/plugins/runtime/client.js?rev=a', rev: 'a', inject: [] },
-      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.64', rev: '0.1.64', inject: [] },
+      { id: MOBILE_LAYOUT_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.65', rev: '0.1.65', inject: [] },
       { id: INTERACTION_OPERATIONS_ID, url: '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.17', rev: '0.1.17', inject: [] },
       { id: CONNECTION_ID, url: '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23', rev: '0.1.23', inject: [] },
       { id: 'leaf', url: '/plugins/leaf/client.js?rev=b', rev: 'b', inject: ['runtime'] },
@@ -274,7 +274,7 @@ test('localizes host plugin scripts while keeping the packaged mobile layout', a
   }
   assert.deepEqual(manifest.entries.map(entry => entry.url), [
     '/plugins/runtime/client.js?rev=a',
-    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.64',
+    '/plugins/@dsh-mobile/ui-layout-mobile/client.js?rev=0.1.65',
     '/plugins/@dsh-mobile/interaction-operations/client.js?rev=0.1.17',
     '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23',
     '/plugins/leaf/client.js?rev=b',
@@ -390,8 +390,45 @@ test('loads a validated raw same-origin manifest before responsive root selectio
   assert.equal(requests[0][1].credentials, 'same-origin')
   assert.equal(requests[0][1].redirect, 'follow')
   assert.deepEqual(manifest.entries.map(entry => entry.id), ['@deepseek-ai/dsh-client-connection', DESKTOP_LAYOUT_ID, 'conversation'])
-  assert.equal(manifest.entries[0].url, '/plugins/@dsh-mobile/ui-layout-mobile/connection.js?rev=0.1.23')
-  assert.equal(manifest.entries[0].rev, '0.1.23')
+  assert.equal(manifest.entries[0].url, '/plugins/connection/client.js')
+  assert.equal(manifest.entries[0].rev, 'connection')
+})
+
+test('narrow boot keeps the Host connection plugin so $events matches the Host graph', () => {
+  const connection = {
+    id: CONNECTION_ID,
+    url: '/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=0.1.6-alpha.1',
+    rev: '0.1.6-alpha.1',
+    inject: [],
+  }
+  const selected = selectResponsiveBootManifest({
+    rev: 'host',
+    entries: [
+      connection,
+      {
+        id: DESKTOP_LAYOUT_ID, url: '/plugins/layout.js', rev: 'layout',
+        inject: ['@deepseek-ai/dsh-client-ui-renderer', '@deepseek-ai/dsh-client-ui-session', '@deepseek-ai/dsh-client-ui-theme'],
+      },
+    ],
+  }, { viewportWidth: 390 })
+  assert.equal(selected.layout, 'narrow')
+  assert.deepEqual(selected.manifest.entries.find(entry => entry.id === CONNECTION_ID), connection)
+})
+
+test('localizes the Host connection plugin instead of the packaged Alpha.4 copy', async () => {
+  const manifest = {
+    rev: 'host',
+    entries: [
+      { id: CONNECTION_ID, url: '/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=0.1.6-alpha.1', rev: '0.1.6-alpha.1', inject: [] },
+    ],
+  }
+  const loaded = []
+  const localized = await localizePluginBundles(manifest, {
+    load: async url => { loaded.push(url); return '// ' + url },
+    createUrl: (source, id) => 'blob:test/' + id,
+  })
+  assert.deepEqual(loaded, ['/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=0.1.6-alpha.1'])
+  assert.equal(localized.entries[0].url, 'blob:test/' + CONNECTION_ID)
 })
 
 test('marks and clears the explicit same-origin Host bridge capability', () => {

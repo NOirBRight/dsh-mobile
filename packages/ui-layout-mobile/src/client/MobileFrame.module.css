@@ -178,6 +178,14 @@
     visibility 0s var(--ds-transition-duration-slow);
 }
 
+/* Official SidebarRoot uses height:100%. As a flex child of this drawer that
+   percentage would otherwise resolve to auto and clip the session list. */
+.drawer > :global(*) {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
 /* The official sidebar header adds a small internal top offset of its own.
    Match its brand row to the mobile topbar/sidebar control centerline. */
 .drawer :global([class*="logoRow"]) {
@@ -201,6 +209,76 @@
 
 .drawer :global([class*="logoRow"]) > :last-child {
   margin-left: auto;
+}
+
+.drawer :global(button[data-mobile-new-session]) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-height: 44px;
+  height: 44px;
+  padding: 0 16px;
+  overflow: hidden;
+}
+
+.drawer :global(button[data-mobile-new-session] svg) {
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.drawer :global([data-mobile-new-session-label]) {
+  min-height: 0;
+  height: auto;
+  line-height: 22px;
+}
+
+.drawer :global([data-mobile-panel-row]) {
+  min-height: 44px;
+  height: auto;
+}
+
+/* Official footer is one row: Settings + Switch + connection pill. On a 280px
+   drawer the pill eats the labels. Keep the two actions on the first row and
+   put the outage control on its own line. */
+.drawer :global([data-mobile-settings-row]) {
+  flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  gap: 6px;
+}
+
+.drawer :global([data-mobile-settings-row]) > button:not([data-phase]) {
+  flex: 1 1 calc(50% - 4px);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.drawer :global([data-mobile-settings-row]) > button:not([data-phase]) span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawer :global([data-mobile-settings-row]) > button[data-phase],
+.drawer :global([data-mobile-settings-row]) > [role="status"] {
+  box-sizing: border-box;
+  flex: 1 1 100%;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  justify-content: flex-start;
+}
+
+.drawer :global([data-mobile-settings-row]) > button[data-phase] [data-mobile-connection-label],
+.drawer :global([data-mobile-settings-row]) > [role="status"] [data-mobile-connection-label] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .drawer :global([data-mobile-profile-action]) {
@@ -466,6 +544,16 @@
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='black' d='M8.2 1.1 14.6 3.5v3.5c0 4.7-3.6 6.9-6.4 7.9C5.4 13.9 2 11.7 2 7V3.5L8.2 1.1z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
+:global([data-mobile-menu-icon]) {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 :global([data-composer-card] > div:last-child > div:last-child button[aria-haspopup="menu"]) {
   box-sizing: border-box;
   width: auto;
@@ -634,6 +722,18 @@
   z-index: 1;
 }
 
+/* Alpha.2 conversation header.leading is macOS-desktop chrome. The phone
+   topbar already owns sidebar-open / new-session, so the seat must not take
+   a column in the compact title row. */
+.center :global([data-conversation-header-leading]) {
+  display: none !important;
+}
+
+.center :global(header:has([data-conversation-header-corner]):not(:has(> [role="tablist"]))) {
+  padding: 0 12px;
+  min-height: 0;
+}
+
 /* Keep the original compact action row when the main session is active.
    The upstream lineage slot is only promoted into the topbar for an active
    child, so a normal session does not gain a second title row. */
@@ -708,7 +808,7 @@
 }
 
 .center :global(header:has(> [role="tablist"]) > div:first-child),
-.center :global(header:has(> [role="tablist"]) > div:first-child > div:first-child),
+.center :global(header:has(> [role="tablist"]) > div:first-child > div:not([data-conversation-header-leading]):not([data-header-utility]):not([data-conversation-header-corner])),
 .center :global(header:has(> [role="tablist"]) [class*="headerActions"]),
 .center :global(header:has(> [role="tablist"]) > [role="tablist"]) {
   display: contents !important;
@@ -745,7 +845,7 @@
 
 /* Preserve the official dynamic/localized preset name. Long custom names
    elide inside their own seat instead of replacing the value with PTC. */
-.center :global(header:has(> [role="tablist"]) > div:first-child > div:first-child > div:last-child span[title]) {
+.center :global(header:has(> [role="tablist"]) [data-mode-label]) {
   max-width: 82px;
   padding-right: 0;
   overflow: hidden;
@@ -830,7 +930,7 @@
   background: transparent;
 }
 
-.center :global(header:has(> [role="tablist"]) [data-team-action] button) {
+.center :global(header:has(> [role="tablist"]) [data-team-action] > button) {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -838,22 +938,22 @@
   padding: 0 4px;
 }
 
-.center :global(header:has(> [role="tablist"]) [data-team-action] button > span) {
+.center :global(header:has(> [role="tablist"]) [data-team-action] > button > span) {
   font-size: 0;
 }
 
-.center :global(header:has(> [role="tablist"]) [data-team-action] button > span::after) {
+.center :global(header:has(> [role="tablist"]) [data-team-action] > button > span::after) {
   content: 'Team';
   font-size: 12px;
   font-weight: 500;
   line-height: 16px;
 }
 
-.center :global(header:has(> [role="tablist"]) [data-team-action] button > span:lang(zh)::after) {
+.center :global(header:has(> [role="tablist"]) [data-team-action] > button > span:lang(zh)::after) {
   content: 'Team';
 }
 
-.center :global(header:has(> [role="tablist"]) [data-team-action] button > span:lang(en)::after) {
+.center :global(header:has(> [role="tablist"]) [data-team-action] > button > span:lang(en)::after) {
   content: 'Team';
 }
 
@@ -890,6 +990,61 @@
   height: 16px;
   margin: 0;
   transform: translateY(-2px);
+}
+
+/* Official Agent Team is a desktop popover: width min(560px, 100vw - 32px),
+   position:absolute under the header trigger, z-index 110, 2-column roster.
+   The trigger is position:fixed; right:48px; width:0, so left:0 paints off
+   the right edge. Keep the card, pin it to the phone inset, and stack
+   members one per row (ADR 0004.4 spatial composition; official Team is
+   read-only). Hide the trigger only while the drawer is open.
+   Descendant + frame-state selectors only — MICRO 2 WebView 101 has no :has(). */
+.center :global([data-team-action]) :global([role="dialog"]) {
+  position: fixed !important;
+  top: calc(env(safe-area-inset-top) + 52px) !important;
+  right: 8px !important;
+  bottom: auto !important;
+  left: 8px !important;
+  box-sizing: border-box;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: min(70vh, calc(100vh - env(safe-area-inset-top) - 64px)) !important;
+  margin: 0;
+  z-index: 35 !important;
+  overflow: auto;
+}
+
+.center :global([data-team-action] [role="dialog"] [data-mobile-team-roster]) {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.center :global([data-team-action] [role="dialog"] [data-mobile-team-roster] > *) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* The conversation header is z-index 1 so its menus clear the transcript.
+   That stacking context also traps the Team popover below a sticky composer.
+   Lift the header while the card is open. data-team-open is for WebView 101. */
+.center :global(header:has([data-team-action] [role="dialog"])),
+.frame[data-team-open] .center :global(header) {
+  z-index: 45;
+}
+
+/* The drawer is z-index 40. Leaving the Team lift in place paints Chat /
+   Trajectory through the sidebar after the hamburger opens. */
+.frame[data-drawer-open] .center :global(header) {
+  z-index: 1;
+}
+
+.frame[data-drawer-open] .center :global([data-team-action] > button),
+.frame[data-drawer-open] .center :global([data-sidebar-right-expand]) {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .center :global(header:has(> [role="tablist"]) [class*="headerUtilities"]),
@@ -1099,35 +1254,44 @@
   max-height: calc(100dvh - 112px);
 }
 
-/* Expanded mobile drawer already has the full wordmark. If the official
-   transition briefly leaves the separate 24px rail fish beside it, hide only
-   that fish; the 16px panel toggle remains. */
-.drawer > :global(div) > :global(div:first-child:has(svg[width="182"])) :global(svg[width="24"][height="24"]) {
+/* Expanded mobile drawer already has the full wordmark. Hide the 24px rail
+   fish if it sits beside the 182px wordmark. Adjacent sibling, not :has(). */
+.drawer :global(svg[width="182"] ~ svg[width="24"][height="24"]) {
   display: none;
 }
 
-/* Mobile settings recomposition (official ui-settings-general shell): keep the
-   same sections and controls, but replace its desktop 188px rail + content
-   columns with a title row, horizontally scrollable category row, and a full-
-   width content column. */
-.frame :global(div:has(> [role="dialog"][aria-modal="true"] > nav)) {
+/* Mobile settings recomposition. MICRO 2 WebView is Chrome 101 and drops
+   :has(); the presenter stamps data-settings-* on the official shell. */
+.frame :global([data-settings-overlay]) {
   --dsh-mobile-dialog-top-clearance: max(40px, calc(env(safe-area-inset-top) + 12px));
   --dsh-mobile-dialog-bottom-clearance: calc(env(safe-area-inset-bottom) + 12px);
   box-sizing: border-box;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: auto;
+  width: 100vw;
+  max-width: 100vw;
+  overflow: hidden;
   padding: var(--dsh-mobile-dialog-top-clearance) 12px var(--dsh-mobile-dialog-bottom-clearance);
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav)) {
+.frame :global([data-settings-panel]) {
   box-sizing: border-box;
-  width: min(800px, calc(100vw - 24px));
-  max-width: calc(100vw - 24px);
+  display: flex;
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   height: min(800px, calc(100dvh - var(--dsh-mobile-dialog-top-clearance) - var(--dsh-mobile-dialog-bottom-clearance)));
   max-height: calc(100dvh - var(--dsh-mobile-dialog-top-clearance) - var(--dsh-mobile-dialog-bottom-clearance));
   padding-top: 0;
   flex-direction: column;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav) {
+.frame :global([data-settings-nav]) {
   box-sizing: border-box;
   flex: none;
   width: 100%;
@@ -1138,12 +1302,12 @@
   padding: 0;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav > div:first-child) {
+.frame :global([data-settings-title]) {
   flex: none;
   padding: 18px 20px 10px;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav > div:last-child) {
+.frame :global([data-settings-nav-list]) {
   box-sizing: border-box;
   display: flex;
   flex: none;
@@ -1159,17 +1323,17 @@
   scrollbar-width: none;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav > div:last-child::-webkit-scrollbar) {
+.frame :global([data-settings-nav-list]::-webkit-scrollbar) {
   display: none;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav > div:last-child > button) {
+.frame :global([data-settings-nav-list] > button) {
   flex: 0 0 auto;
   min-height: 40px;
   white-space: nowrap;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div) {
+.frame :global([data-settings-content]) {
   box-sizing: border-box;
   flex: 1 1 auto;
   width: 100%;
@@ -1177,7 +1341,7 @@
   min-width: 0;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:last-child) {
+.frame :global([data-settings-options]) {
   box-sizing: border-box;
   flex: 1 1 auto;
   width: 100%;
@@ -1186,23 +1350,17 @@
   overflow-x: hidden;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:last-child > *) {
+.frame :global([data-settings-options] > *) {
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
   min-width: 0;
 }
 
-/* Settings polish stays structural: feature modules keep their content and actions;
-   the narrow shell only changes the available space and mobile affordances. */
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav)) {
-  position: relative;
-}
-
 /* Keep the official close action available at the panel corner while the
    settings content scrolls. This reuses the Host button; it adds no second
    settings state or navigation path. */
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button) {
+.frame :global([data-settings-header] > button) {
   position: absolute;
   top: 10px;
   right: 10px;
@@ -1225,31 +1383,31 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:hover:not(:disabled)),
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:active:not(:disabled)) {
+.frame :global([data-settings-header] > button:hover:not(:disabled)),
+.frame :global([data-settings-header] > button:active:not(:disabled)) {
   background: var(--dsw-alias-interactive-bg-hover, ButtonFace) !important;
   border-color: transparent !important;
   box-shadow: none !important;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:focus:not(:focus-visible)) {
+.frame :global([data-settings-header] > button:focus:not(:focus-visible)) {
   box-shadow: none !important;
   outline: none;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:focus-visible) {
+.frame :global([data-settings-header] > button:focus-visible) {
   box-shadow: none !important;
   outline: 2px solid var(--dsw-alias-state-business-primary, Highlight);
   outline-offset: 2px;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:first-child > button:disabled) {
+.frame :global([data-settings-header] > button:disabled) {
   cursor: default;
   opacity: .6;
 }
 
 /* Theme cards are a three-choice control, not three full-width mobile pages. */
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) div:has(> button[aria-pressed])) {
+.frame :global([data-settings-theme-row]) {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
@@ -1259,11 +1417,11 @@
   scrollbar-width: none;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) div:has(> button[aria-pressed])::-webkit-scrollbar) {
+.frame :global([data-settings-theme-row]::-webkit-scrollbar) {
   display: none;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) div:has(> button[aria-pressed]) > button[aria-pressed]) {
+.frame :global([data-settings-theme-row] > button[aria-pressed]) {
   flex: 1 1 0;
   width: auto;
   min-width: 0;
@@ -1284,14 +1442,14 @@
   text-overflow: ellipsis;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) div:has(> button[aria-pressed]) > button[aria-pressed] > svg) {
+.frame :global([data-settings-theme-row] > button[aria-pressed] > svg) {
   flex: 0 0 auto;
   width: 20px;
   height: 20px;
 }
 
 /* Keep the Chinese Enter label together; its description may still wrap. */
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div > div:last-child > * > * > * > div:has(> span > button):last-child > div:first-child > div:first-child) {
+.frame :global([data-settings-enter-title]) {
   white-space: nowrap;
 }
 
@@ -1308,54 +1466,50 @@
 
 /* dsh-market cards are one-column on phones. Keep the title/tabs/footer in
    bounded rows so long names and metadata do not create one-character lines. */
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> h2 + a) > h2) {
+.frame :global([data-settings-market-title] > h2) {
   flex: 0 0 auto;
   width: auto;
   max-width: none;
   white-space: nowrap;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> button:nth-of-type(5))) {
+.frame :global([data-settings-market-tabs]) {
   flex-wrap: nowrap;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> button:nth-of-type(5))::-webkit-scrollbar) {
+.frame :global([data-settings-market-tabs]::-webkit-scrollbar) {
   display: none;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> a ~ button)) {
+.frame :global([data-settings-market-meta]) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
-  grid-template-areas: "tag date source" "install install install";
   align-items: center;
   column-gap: 6px;
   row-gap: 8px;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> a ~ button) > span:first-child) {
-  grid-area: tag;
+.frame :global([data-settings-market-meta] > span:first-child) {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> a ~ button) > span:nth-child(2)) {
-  grid-area: date;
+.frame :global([data-settings-market-meta] > span:nth-child(2)) {
   min-width: 0;
   white-space: nowrap;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> a ~ button) > a) {
-  grid-area: source;
+.frame :global([data-settings-market-meta] > a) {
   white-space: nowrap;
 }
 
-.frame :global([role="dialog"][aria-modal="true"]:has(> nav) > nav + div div:has(> a ~ button) > button) {
-  grid-area: install;
+.frame :global([data-settings-market-meta] > button) {
+  grid-column: 1 / -1;
   justify-self: end;
 }
 
@@ -1364,12 +1518,12 @@
    while the settings dialog is nested in the drawer at z-index 40. Lower that
    custom overlay only for the duration of the settings dialog; the dialog's
    own controls remain interactive. */
-.frame:has(.drawer :global([role="dialog"][aria-modal="true"])) .overlayLayer {
+.frame[data-settings-open] .overlayLayer {
   z-index: 25;
 }
 
-.frame:has(.drawer :global([role="dialog"][aria-modal="true"])) .overlayLayer :global(.dcs-toggle),
-.frame:has(.drawer :global([role="dialog"][aria-modal="true"])) .overlayLayer :global(.dcs-col-handle) {
+.frame[data-settings-open] .overlayLayer :global(.dcs-toggle),
+.frame[data-settings-open] .overlayLayer :global(.dcs-col-handle) {
   visibility: hidden;
   pointer-events: none;
 }

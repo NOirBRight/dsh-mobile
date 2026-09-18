@@ -6,8 +6,10 @@ import { installTurnTailPresenter } from '../../../../../packages/ui-layout-mobi
 import { installModelPickerPresenter } from '../../../../../packages/ui-layout-mobile/src/client/model-picker-presenter.ts'
 import { installPermissionLabelPresenter } from '../../../../../packages/ui-layout-mobile/src/client/permission-label-presenter.ts'
 import { installPresetLabelPresenter } from '../../../../../packages/ui-layout-mobile/src/client/preset-label-presenter.ts'
+import { dismissOfficialTeamDialog, installTeamPanelPresenter, stampOfficialTeamRoster } from '../../../../../packages/ui-layout-mobile/src/client/team-panel-presenter.ts'
+import { installDrawerChromePresenter } from '../../../../../packages/ui-layout-mobile/src/client/chrome-anchors.ts'
 
-const sessions = { current: 'session-a', byId: { 'session-a': { blank: false, displayTitle: 'Mobile UI Session' } } }
+const sessions = { byId: { 'session-a': { blank: false, displayTitle: 'Mobile UI Session', retainedBy: { mainView: 1 } } } }
 const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)
 const statsProjections: Record<string, unknown> = {
   sessionStats: { turns: 4, steps: 8, llmMs: 20_000, toolMs: 0, ttftMs: 9_900, ttftSteps: 1, decodeMs: 1_000, decodeTokens: 68 },
@@ -15,8 +17,8 @@ const statsProjections: Record<string, unknown> = {
 }
 let closeCount = 0
 
-function FrameHarness({ id, width, laggyCodex = false, english = false, feedback = false, modelName = 'DeepSeek V4 Flash Vision (exp)' }: { id: string; width: number; laggyCodex?: boolean; english?: boolean; feedback?: boolean; modelName?: string }) {
-  const panels = { drawerOpen: true, rightbarOpen: laggyCodex, panelInfo: { activePanelId: null } }
+function FrameHarness({ id, width, laggyCodex = false, english = false, feedback = false, drawerOpen = true, modelName = 'DeepSeek V4 Flash Vision (exp)' }: { id: string; width: number; laggyCodex?: boolean; english?: boolean; feedback?: boolean; drawerOpen?: boolean; modelName?: string }) {
+  const panels = { drawerOpen, rightbarOpen: laggyCodex, panelInfo: { activePanelId: null } }
   const useStore = (select: (state: typeof panels) => unknown) => select(panels)
   const usePanelInfo = (select: (state: { activePanelId: null }) => unknown) => select(panels.panelInfo)
   const actions = useMemo(() => ({
@@ -30,14 +32,56 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
   }), [])
   const renderSlot = (name: string, owner: { width?: number }) => {
     if (name === 'sidebar') {
-      return <div data-owner={id} data-owner-width={owner.width}>
-        <div data-brand-row>
-          <svg width="182" height="24" data-wordmark />
-          <svg width="24" height="24" data-duplicate-fish />
-          <svg width="16" height="16" data-panel-icon />
+      // Official SlotOutlet wraps every seat in display:contents. SidebarRoot
+      // then uses height:100% + overflow:hidden inside that wrapper.
+      return <div data-slot="sidebar" style={{ display: 'contents' }}>
+        <div
+          data-owner={id}
+          data-owner-width={owner.width}
+          data-sidebar-root
+          style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+        >
+          <div data-brand-row>
+            <svg width="182" height="24" data-wordmark />
+            <svg width="24" height="24" data-duplicate-fish />
+            <svg width="16" height="16" data-panel-icon />
+          </div>
+          <button
+            type="button"
+            className="newSession"
+            aria-label="New session"
+            data-new-session
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              height: 38,
+              padding: '8px 16px',
+              fontSize: 14,
+              lineHeight: '22px',
+              overflow: 'hidden',
+            }}
+          >
+            <svg width="16" height="16" data-new-session-icon viewBox="0 0 16 16" aria-hidden>
+              <circle cx="8" cy="8" r="7" fill="currentColor" />
+            </svg>
+            <span className="newSessionLabel" data-new-session-label>New session</span>
+          </button>
+          <div role="treeitem" aria-selected="true" data-session-row={id}>Session A</div>
+          <nav aria-label="Panels">
+            <button type="button" aria-label="Plugins">Plugins</button>
+          </nav>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Settings">
+              <span>Settings</span>
+            </button>
+            <button type="button" data-phase="disconnected" aria-label="Reconnect">
+              <span aria-hidden="true">!</span>
+              <span className="label">Connection error</span>
+            </button>
+          </div>
         </div>
-        <button type="button" aria-label="New session" data-new-session>New session</button>
-        <div role="treeitem" aria-selected="true" data-session-row={id}>Session A</div>
       </div>
     }
     if (name === 'rightbar') {
@@ -50,6 +94,7 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
     if (name === 'main') return <div style={{ '--dsh-composer-side-clearance': '16px' } as React.CSSProperties}>
       <header data-session-header>
         <div>
+          <div data-conversation-header-leading><button type="button" aria-label="打开侧边栏">Open</button></div>
           <div><nav aria-label="会话层级"><button type="button" disabled>Old title</button><button aria-haspopup="tree" aria-expanded="true"><span className="activitySlot" /><span data-subagent-count>15 个子代理</span><svg /></button><div role="tree" data-subagent-menu /></nav><div data-header-action className="headerActions">
             <span title="PTC 模式 SDK" data-mode-label><svg width="14" height="14" />PTC 模式</span>
             <div><button aria-expanded="true"><span data-state /><span data-job-count>1 background job running</span><svg /></button><ul aria-label="Background jobs" data-job-menu /></div>
@@ -106,6 +151,8 @@ function App() {
     const disposeModelPicker = installModelPickerPresenter()
     const disposePermissionLabel = installPermissionLabelPresenter()
     const disposePresetLabel = installPresetLabelPresenter()
+    const disposeTeamPanel = installTeamPanelPresenter()
+    const disposeDrawerChrome = installDrawerChromePresenter()
     const timer = window.setTimeout(() => {
       const laggySheet = document.querySelector<HTMLElement>('#laggy section[aria-label="右侧栏"]')!
       document.body.dataset.laggySheetVisibility = getComputedStyle(laggySheet).visibility
@@ -121,8 +168,35 @@ function App() {
       document.body.dataset.noticeTitleVisible = String(!(document.querySelector<HTMLElement>('#official [data-mobile-session-title]')?.hidden ?? true))
       const official = document.querySelector<HTMLElement>('#official nav[aria-label="导航抽屉"]')!
       const constrained = document.querySelector<HTMLElement>('#constrained nav[aria-label="导航抽屉"]')!
+      const officialNewSession = document.querySelector<HTMLElement>('#official [data-new-session]')!
+      const officialNewSessionIcon = officialNewSession.querySelector<HTMLElement>('[data-new-session-icon]')!
+      const officialNewSessionLabel = officialNewSession.querySelector<HTMLElement>('[data-new-session-label]')!
+      const officialNewSessionRect = officialNewSession.getBoundingClientRect()
+      const officialNewSessionIconRect = officialNewSessionIcon.getBoundingClientRect()
+      const officialNewSessionLabelRect = officialNewSessionLabel.getBoundingClientRect()
+      const officialOccupant = document.querySelector<HTMLElement>('#official [data-sidebar-root]')!
+      const officialAnchor = official.querySelector<HTMLElement>('[data-slot="sidebar"]')!
+      document.body.dataset.sidebarNewSessionHeight = String(Math.round(officialNewSessionRect.height))
+      document.body.dataset.sidebarNewSessionLabelHeight = String(Math.round(officialNewSessionLabelRect.height))
+      document.body.dataset.sidebarNewSessionAlign = String(
+        Math.abs(
+          (officialNewSessionIconRect.top + officialNewSessionIconRect.height / 2)
+          - (officialNewSessionLabelRect.top + officialNewSessionLabelRect.height / 2),
+        ) <= 2,
+      )
+      const officialPanelRow = official.querySelector<HTMLElement>('[data-mobile-panel-row]')!
+      const officialSettingsRow = official.querySelector<HTMLElement>('[data-mobile-settings-row]')!
+      const officialConnectionLabel = official.querySelector<HTMLElement>('[data-mobile-connection-label]')!
+      document.body.dataset.panelRowMinHeight = getComputedStyle(officialPanelRow).minHeight
+      document.body.dataset.settingsRowWrap = getComputedStyle(officialSettingsRow).flexWrap
+      document.body.dataset.connectionLabelEllipsis = getComputedStyle(officialConnectionLabel).textOverflow
+      document.body.dataset.modeLabelStamped = String(
+        document.querySelector('#official [data-session-header] [data-mode-label]') !== null,
+      )
+      document.body.dataset.sidebarOccupantHeight = String(Math.round(officialOccupant.getBoundingClientRect().height))
+      document.body.dataset.sidebarAnchorDisplay = getComputedStyle(officialAnchor).display
       document.querySelector<HTMLElement>('[data-session-row="constrained"]')!.click()
-      document.querySelector<HTMLElement>('#official [data-new-session]')!.click()
+      officialNewSession.click()
       document.body.dataset.closeCount = String(closeCount)
       document.body.dataset.officialDrawerWidth = String(official.getBoundingClientRect().width)
       document.body.dataset.officialOwnerWidth = document.querySelector<HTMLElement>('[data-owner="official"]')!.dataset.ownerWidth
@@ -130,6 +204,7 @@ function App() {
       document.body.dataset.ownerWidth = document.querySelector<HTMLElement>('[data-owner="constrained"]')!.dataset.ownerWidth
       document.body.dataset.topbarTitle = document.querySelector<HTMLElement>('header [title="Mobile UI Session"]')?.textContent ?? ''
       const header = document.querySelector<HTMLElement>('#official [data-session-header]')!
+      document.body.dataset.headerLeading = getComputedStyle(header.querySelector<HTMLElement>('[data-conversation-header-leading]')!).display
       const tablist = header.querySelector<HTMLElement>('[role="tablist"]')!
       const action = header.querySelector<HTMLElement>('[data-header-action]')!
       const utility = header.querySelector<HTMLElement>('[data-header-utility]')!
@@ -383,9 +458,70 @@ function App() {
       document.body.dataset.questionFooterFits = String(matrixResults.every(Boolean))
       document.body.dataset.questionActionEqual = String(matrixResults.every(Boolean))
       document.body.dataset.questionMatrix = matrixIds.map((id, index) => id + ':' + matrixResults[index]).join(',')
+      const attachTeamPanel = (rootId: string) => {
+        const action = document.querySelector<HTMLElement>('#' + rootId + ' [data-team-action]')!
+        const panel = document.createElement('div')
+        panel.setAttribute('role', 'dialog')
+        panel.setAttribute('aria-label', 'Agent Team')
+        panel.style.position = 'absolute'
+        panel.style.top = 'calc(100% + 5px)'
+        panel.style.left = '0'
+        panel.style.width = 'min(560px, calc(100vw - 32px))'
+        panel.style.maxHeight = 'min(680px, calc(100vh - 120px))'
+        panel.style.zIndex = '110'
+        panel.style.borderRadius = '12px'
+        panel.innerHTML = '<div><strong>Agent Team</strong></div><section><h3>Members</h3><div class="roster" data-team-roster style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr))"><button type="button" data-team-member><span>lead</span></button><button type="button" data-team-member><span>worker</span></button></div></section><section><h3>Shared tasks</h3></section>'
+        action.append(panel)
+        return panel
+      }
+      const officialTeam = attachTeamPanel('official')
+      const sheetTeam = attachTeamPanel('teamSheet')
+      stampOfficialTeamRoster(officialTeam)
+      stampOfficialTeamRoster(sheetTeam)
+      const sheetRect = sheetTeam.getBoundingClientRect()
+      const officialTeamTrigger = document.querySelector<HTMLElement>('#official [data-team-action] > button')!
+      document.body.dataset.teamDrawerVisibility = getComputedStyle(officialTeamTrigger).visibility
+      document.body.dataset.teamDrawerPointer = getComputedStyle(officialTeamTrigger).pointerEvents
+      document.body.dataset.expandDrawerVisibility = getComputedStyle(
+        document.querySelector<HTMLElement>('#official [data-sidebar-right-expand]')!,
+      ).visibility
+      document.body.dataset.teamSheetPosition = getComputedStyle(sheetTeam).position
+      document.body.dataset.teamSheetLeft = getComputedStyle(sheetTeam).left
+      document.body.dataset.teamSheetRight = getComputedStyle(sheetTeam).right
+      document.body.dataset.teamSheetTop = getComputedStyle(sheetTeam).top
+      document.body.dataset.teamSheetWidth = String(Math.round(sheetRect.width))
+      document.body.dataset.teamSheetHeight = String(Math.round(sheetRect.height))
+      document.body.dataset.teamSheetRadius = getComputedStyle(sheetTeam).borderTopLeftRadius
+      document.body.dataset.viewportWidth = String(window.innerWidth)
+      document.body.dataset.viewportHeight = String(window.innerHeight)
+      const memberName = sheetTeam.querySelector<HTMLElement>('[data-team-member] span')!
+      const members = Array.from(sheetTeam.querySelectorAll<HTMLElement>('[data-team-member]'))
+      document.body.dataset.teamRosterStacked = String(
+        members.length === 2
+        && Math.abs(members[0]!.getBoundingClientRect().top - members[1]!.getBoundingClientRect().top) > 8,
+      )
+      document.body.dataset.teamTriggerOpenVisibility = getComputedStyle(
+        document.querySelector<HTMLElement>('#teamSheet [data-team-action] > button')!,
+      ).visibility
+      document.body.dataset.teamMemberFont = getComputedStyle(memberName).fontSize
+      document.body.dataset.teamMemberAfter = getComputedStyle(memberName, '::after').content
+      document.body.dataset.teamHeaderZ = getComputedStyle(
+        document.querySelector<HTMLElement>('#teamSheet [data-session-header]')!,
+      ).zIndex
+      document.body.dataset.teamDrawerHeaderZ = getComputedStyle(
+        document.querySelector<HTMLElement>('#official [data-session-header]')!,
+      ).zIndex
+      const sheetTrigger = document.querySelector<HTMLButtonElement>('#teamSheet [data-team-action] > button')!
+      sheetTrigger.setAttribute('aria-expanded', 'true')
+      sheetTrigger.addEventListener('click', () => {
+        sheetTrigger.setAttribute('aria-expanded', 'false')
+        sheetTeam.remove()
+      })
+      dismissOfficialTeamDialog(document)
+      document.body.dataset.teamDismissed = String(document.querySelector('#teamSheet [role="dialog"]') === null)
       document.body.dataset.ready = 'true'
     }, 100)
-    return () => { window.clearTimeout(timer); disposeTurnTail(); disposeModelPicker(); disposePermissionLabel(); disposePresetLabel() }
+    return () => { window.clearTimeout(timer); disposeTurnTail(); disposeModelPicker(); disposePermissionLabel(); disposePresetLabel(); disposeTeamPanel(); disposeDrawerChrome() }
   }, [])
   return <>
     <style>{`:root { --dsw-alias-bg-base: #ffffff; --dsw-alias-bg-layer-1: #f3f4f6; }
@@ -399,6 +535,7 @@ function App() {
     {/* Host applies the expand intent after the tap; until Codex mounts its
         content the open drawer must stay parked instead of sliding out blank. */}
     <FrameHarness id="laggy" width={360} laggyCodex />
+    <FrameHarness id="teamSheet" width={360} drawerOpen={false} />
   </>
 }
 

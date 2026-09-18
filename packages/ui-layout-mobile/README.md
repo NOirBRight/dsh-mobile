@@ -1,6 +1,6 @@
 # @dsh-mobile/ui-layout-mobile
 
-移动端根布局:`dsh.client` 插件(platform web),注册进 web shell 内建的 `'root'` slot,**逐字实现上游 `@deepseek-ai/dsh-client-ui-layout` 的 slot 契约**,使全部 leaf 插件(ui-sidebar、ui-conversation 等)不经修改继续工作。布局本体是移动形态:单栏 + 顶栏(菜单按钮)+ sidebar 滑出抽屉 + rightbar 右侧滑入全屏层 + 安全区内边距。维护者在 `dshapp` 上改本包时必须遵守 [docs/ops-dshapp-without-restarting-web.md](../../docs/ops-dshapp-without-restarting-web.md)：不重启 `dshweb` 的 Host，也不把本包做成第二套功能 UI 或独立设计系统。窄屏加号拦截后只弹出「命令 / 插入图片」；图片仍走 Host 官方的 draft-image 通道（PNG/JPG/WebP/GIF），不提供协议并不支持的任意文件上传入口。
+移动端根布局:`dsh.client` 插件(platform web),注册进 web shell 内建的 `'root'` slot,**逐字实现上游 `@deepseek-ai/dsh-client-ui-layout` 的 slot 契约**,使全部 leaf 插件(ui-sidebar、ui-conversation 等)不经修改继续工作。布局本体是移动形态:单栏 + 顶栏(菜单按钮)+ sidebar 滑出抽屉 + rightbar 右侧滑入全屏层 + 安全区内边距。维护者在 `dshapp` 上改本包时必须遵守 [docs/ops-dshapp-without-restarting-web.md](../../docs/ops-dshapp-without-restarting-web.md)：不重启 `dshweb` 的 Host，也不把本包做成第二套功能 UI 或独立设计系统。窄屏加号打开官方命令 listbox（含 `file` /「文件」）；斜杠 skill 行补统一立方体图标。图片与文件走 Host 官方入口。
 
 ## Slot 契约(本包的维护面)
 
@@ -31,7 +31,9 @@
 - 已知内置 preset 被用户层覆盖后可能携带非本地化 metadata；移动端只可按可证明的内置身份（`standard` / `ptc` / `minimal` / `cordis` 及其官方中英文全名）补齐紧凑文案。中文为「标准 / PTC / 极简 / 创造」，英文为「Standard / PTC / Minimal / Creator」；任意用户 preset 名称保持原样。
 - 复用 Agent Presets 启用前遗留的空白会话时，移动端把 Host 默认 preset 写入该空白会话，使官方 Hero 模式选择器恢复显示；已有 preset 或已开始的会话不改动。
 - 切换 Host 后若当前空白会话的默认模型 Provider 已不可路由，移动端优先把同名模型重映射到唯一有效 Provider，否则选择该 Host 目录中的首个有效模型；已开始的会话不自动改写。
-- `conversation.input.left` 上游无 owner（渲染 `{}`），attach 经标准 `useSession` 选择器读 busy/subagent，不做 settings 侧读；Send 一律走程序化 Enter 交 Core 的 queue/steer 策略裁决（`inputActions.submit()` 只在 Core 未消费且不可 steer 时回退）。运行中 continuable 子会话的 Send+Stop 双钮只保留一个（`data-mobile-secondary-hidden` 隐藏，handler 不动），各 seat 只作用于自己所在的 `[data-composer-card]`。
+- `conversation.input.left` 上游无 owner（渲染 `{}`），attach 经标准 `useSession` 选择器读 busy/subagent，不做 settings 侧读；Send 一律走程序化 Enter 交 Core 的 queue/steer 策略裁决（`inputActions.submit()` 只在 Core 未消费且不可 steer 时回退）。运行中 continuable 子会话的 Send+Stop 双钮只保留一个（`data-mobile-secondary-hidden` 隐藏，handler 不动），各 seat 只作用于自己所在的 `[data-composer-card]`。加号在 capture 阶段拦住 InputBar keepFocus，避免弹出 IME，再把 click 交给官方命令 listbox（含「文件」）。Host 命令面自带图标；仅 skill 源与没有 glyph 的插件命令行补统一立方体。Alpha.4 / 0.1.5 壳 seed 的 primitives 缺少 0.1.6 HOST_FACES 四枚图标；mobile-web 用 Vite transform 把这四枚 export 接到 **seeded** icons 模块上，不改 `.dsh-upstream`、不打 DSH core patch。缺失 seam：官方 pinned Alpha.4 primitives 没有这些名字，上游应把它们放进该 seed 或让 HOST_FACES 不再 `require` 较新导出名。
+- 0.1.5 壳 seed 的 SlotCore 没有 alpha.2 `registerFactory`；Host conversation 会在加载期抛 `this._core.registerFactory is not a function`。`apps/mobile-web` 构建用 `DSH_SLOTS_SEED` **只**把 `@deepseek-ai/dsh-client-ui-slots` 接到 `dsh-v0.1.6-alpha.2-src`，其余 Vite alias 仍走 0.1.5 Host seed。缺该树则构建失败。缺失 seam：上游应把 `registerFactory` 放进 mobile 所钉的壳 seed，或让 Host renderer 不再包装壳里那份 SlotCore。`sidebar` 仍由官方 ui-sidebar 占用；本包只声明座位并让抽屉 flex 子项吃满高度，不复制 SidebarRoot。
+- 0.1.5 壳 seed 的 primitives 没有 alpha.2 Host 实际 `require` 的运行时导出（`isDarwinDesktop`、`Checkbox`、`MarkdownDelegateProvider`、额外图标、`SHIELD_OUTLINE_PATH` / `SHIELD_OUTLINE_STROKE`）。缺 `isDarwinDesktop` 时 SidebarRoot 每次渲染抛错，slot error boundary 画出空白 crash face，手机抽屉是一块白；缺 `MarkdownDelegateProvider` 时有 transcript 的 ChatView 同样变白。`apps/mobile-web` 用 `DSH_PRIMITIVES_SEED` **只**把 `@deepseek-ai/dsh-client-ui-primitives` 接到 `dsh-v0.1.6-alpha.2-src`，其 npm 依赖仍从 0.1.5 Host seed 的 nested `node_modules` 解析（alpha.2 staging 没有 node_modules）。缺该树则构建失败。HOST_FACES / `isDarwinDesktop` 的 Vite transform 在 seed 已含这些导出时 no-op。缺失 seam：上游应把这些导出放进 mobile 所钉的壳 seed。窄屏 CSS 隐藏 `conversation.session.header.leading`（macOS 桌面开关栏，手机顶栏已有汉堡菜单），并把官方 New session / panel 行抬到 44px 触控高度。MICRO 2 系统 WebView 是 Chrome 101，会丢掉 `:has()`；设置重排改打 `data-settings-*`，抽屉底栏把连接横幅换到 Settings/Switch 下一行。
 
 ## 静态加载修订号
 
@@ -39,7 +41,9 @@
 
 ## 构建
 
-`npm run build` 先由 `prepare-upstream.mjs` 选定根目录 `.dsh-upstream`；Vite、tsdown、类型路径、Host bridge 构建与本地打包必须全部消费这一个 checkout，禁止各自回退到 sibling 路径。随后执行 tsc(emit lib/types)+ tsdown(node 半 lib/index.js + 浏览器闭包工厂包 lib/client.js)。tsdown 预设在本仓库 `build/tsdown.client.ts`(上游 packages/client/tsdown.client.ts 的适配拷贝,PLATFORM_MODULES 指向上游 checkout)。浏览器包外部化 PLATFORM_MODULES + `@deepseek-ai/dsh-client-runtime/client`(运行时由 shell 的模块表应答),其余依赖内联并过 purity gate。
+`npm run build` 先由 `prepare-upstream.mjs` 选定根目录 `.dsh-upstream`；tsdown、类型路径、Host bridge 构建与本地打包必须全部消费这一个 checkout，禁止各自回退到 sibling 路径。随后执行 tsc(emit lib/types)+ tsdown(node 半 lib/index.js + 浏览器闭包工厂包 lib/client.js)。tsdown 预设在本仓库 `build/tsdown.client.ts`(上游 packages/client/tsdown.client.ts 的适配拷贝,PLATFORM_MODULES 指向上游 checkout)。浏览器包外部化 PLATFORM_MODULES + `@deepseek-ai/dsh-client-runtime/client`(运行时由 shell 的模块表应答),其余依赖内联并过 purity gate。
+
+Vite 壳 bundle 有三处已记录的 seed 例外，都不改 `.dsh-upstream`：`DSH_SLOTS_SEED` 只把 `ui-slots` 接到 alpha.2 src；`DSH_PRIMITIVES_SEED` 只把 `ui-primitives` 接到 alpha.2 src（0.1.5 Host seed 的 nested `node_modules` + 壳上的 `diff` / `simple-icons`，因为 alpha.2 staging 没有 node_modules，且 0.1.5 不含这两包）；HOST_FACES / `isDarwinDesktop` 的 Vite transform 在该 primitives seed 已含导出时 no-op。其余 Vite alias 仍走 `DSH_UPSTREAM`（默认 0.1.5 src）。
 
 ## 同步策略
 

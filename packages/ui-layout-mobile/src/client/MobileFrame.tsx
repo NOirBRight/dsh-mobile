@@ -16,9 +16,11 @@ import type { PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/ds
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { createMobileLayoutStore } from './stores.ts'
 import css from './MobileFrame.module.css'
-import { isOfficialNewSessionLabel } from './chrome-anchors.ts'
+import { DRAWER_ARIA_LABEL, isOfficialNewSessionLabel } from './chrome-anchors.ts'
 import { blurComposer, composerEditor } from './composer-attach.ts'
 import { resolveMobileViewportHeight } from './mobile-viewport.ts'
+import { mainViewSessionId } from './session-main-view.ts'
+import { dismissOfficialTeamDialog } from './team-panel-presenter.ts'
 
 /** Official expanded-sidebar geometry used whenever the viewport permits it. */
 export const OFFICIAL_DRAWER_WIDTH = 280
@@ -90,16 +92,20 @@ export function MobileFrame({
       dismiss: () => { actions.closeDrawer() },
     })
   }, [actions, interactionOperations, panels.drawerOpen])
+  useLayoutEffect(() => {
+    if (!panels.drawerOpen) return
+    dismissOfficialTeamDialog()
+  }, [panels.drawerOpen])
   const drawerWidthRef = useRef(drawerWidth)
   drawerWidthRef.current = drawerWidth
   const detailsSession = useSessions((s) => {
-    const current = s.current
-    return current !== undefined && s.byId[current]?.blank === false ? current : undefined
+    const current = mainViewSessionId(s)
+    return current !== undefined && s.byId[current as keyof typeof s.byId]?.blank === false ? current : undefined
   })
-  const currentSession = useSessions(s => s.current)
+  const currentSession = useSessions(s => mainViewSessionId(s))
   const sessionTitle = useSessions((s) => {
-    const current = s.current
-    return current === undefined ? 'DeepSeek Harness' : s.byId[current]?.displayTitle ?? current
+    const current = mainViewSessionId(s)
+    return current === undefined ? 'DeepSeek Harness' : s.byId[current as keyof typeof s.byId]?.displayTitle ?? current
   })
 
   // ConversationRoot reuses the composer across sessions. Official InputBar
@@ -201,7 +207,7 @@ export function MobileFrame({
       <nav
         ref={drawerRef}
         className={css.drawer}
-        aria-label="导航抽屉"
+        aria-label={DRAWER_ARIA_LABEL}
         onClick={(event) => {
           // Session rows and search results expose aria-selected; workspace
           // treeitems expose aria-expanded instead and must keep the drawer open.

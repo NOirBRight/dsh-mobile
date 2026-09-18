@@ -1,5 +1,3 @@
-/* Host is portaled to document.body so the composer tool row stays empty. */
-
 /* The seat marker rides in the slot entry; display:contents keeps it out of
    the composer tool row layout (no extra flex item). */
 .seat {
@@ -10,40 +8,4 @@
    the only hiding state, so transitions and unmount restore by removing it. */
 :global(button[data-mobile-secondary-hidden]) {
   display: none !important;
-}
-
-.host {
-  position: fixed;
-  width: 0;
-  height: 0;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.anchor {
-  display: none;
-}
-
-.fileInput {
-  position: fixed;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(88px + env(safe-area-inset-bottom));
-  z-index: 10060;
-  transform: translateX(-50%);
-  max-width: min(92vw, 420px);
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-overlay, var(--dsw-alias-bg-base));
-  color: var(--dsw-alias-label-primary);
-  border: 1px solid var(--dsw-alias-border-l1);
-  font: 13px/1.4 system-ui, sans-serif;
-  pointer-events: none;
 }

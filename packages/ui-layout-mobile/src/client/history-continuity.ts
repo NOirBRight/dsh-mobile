@@ -1,5 +1,7 @@
 /** Preserve only the history depth a reader explicitly expanded in this app lifetime. */
 
+import { mainViewSessionId, type SessionListMainViewState } from './session-main-view.ts'
+
 export interface HistoryWindowReading {
   readonly firstSeq: number | null
   readonly hasMore: boolean
@@ -72,7 +74,7 @@ interface ObservableSession {
 }
 
 interface SessionsLike {
-  list: { getSnapshot(): { current?: string }; subscribe(listener: () => void): () => void }
+  list: { getSnapshot(): SessionListMainViewState; subscribe(listener: () => void): () => void }
   binding(id: string): { session: ObservableSession } | undefined
 }
 
@@ -151,7 +153,7 @@ export function installHistoryContinuityAdapter(ctx: SessionsContext, document: 
   const ledgers = new Map<string, ExpandedHistoryLedger>()
   let disposed = false
 
-  const current = (): string | undefined => sessions.list.getSnapshot().current
+  const current = (): string | undefined => mainViewSessionId(sessions.list.getSnapshot())
   const attach = (id: string): void => {
     const session = sessions.binding(id)?.session
     if (session === undefined) return

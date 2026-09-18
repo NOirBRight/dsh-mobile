@@ -1,87 +1,67 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import {
-  attachBusyMessage,
-  attachFiles,
-  attachUnavailableMessage,
   composerCardSendSeat,
+  composerDraftActionButton,
   composerEditor,
   composerSecondarySeat,
   dismissOfficialMenus,
-  plusMenuAlreadyOpen,
-  unsupportedImageMessage,
+  isComposerKeepFocusSeat,
+  silencePlusKeepFocus,
 } from '../../../packages/ui-layout-mobile/src/client/composer-attach.ts'
-
-function png(name = 'a.png') {
-  return new File([Uint8Array.of(1)], name, { type: 'image/png' })
-}
-
-test('attachFiles refuses when conversation or inputActions are missing', () => {
-  const conversation = { createDraftImages() { return [{ id: 'x' }] } }
-  const actions = { addImages() { return true } }
-  assert.deepEqual(attachFiles([], conversation, actions), { ok: false, reason: 'empty', message: '' })
-  assert.equal(attachFiles([png()], undefined, actions).reason, 'unavailable')
-  assert.equal(attachFiles([png()], conversation, undefined).message, attachUnavailableMessage())
-})
-
-test('attachFiles appends draft ids and releases them when the composer is busy', () => {
-  const released = []
-  const conversation = {
-    createDraftImages(files) {
-      return files.map((file, index) => ({ id: 'draft-' + index + '-' + file.name }))
-    },
-    releaseDraftImages(images) { released.push(...images.map(image => image.id)) },
-  }
-  assert.equal(attachFiles([png()], conversation, { addImages: () => true }).ok, true)
-  assert.deepEqual(released, [])
-  assert.equal(attachFiles([png('b.png')], conversation, { addImages: () => false }).reason, 'busy')
-  assert.deepEqual(released, ['draft-0-b.png'])
-  assert.equal(attachFiles([png()], conversation, { addImages: () => false }).message, attachBusyMessage())
-})
-
-test('attachFiles maps unsupported media types to the official product copy', () => {
-  const conversation = {
-    createDraftImages() {
-      const error = new Error('unsupported image media type: application/pdf')
-      error.name = 'UnsupportedImageMediaTypeError'
-      throw error
-    },
-  }
-  const outcome = attachFiles([new File([Uint8Array.of(1)], 'a.pdf', { type: 'application/pdf' })], conversation, {
-    addImages: () => true,
-  })
-  assert.equal(outcome.ok, false)
-  if (outcome.ok) throw new Error('expected failure')
-  assert.equal(outcome.reason, 'unsupported')
-  assert.equal(outcome.message, unsupportedImageMessage())
-})
-
-test('attachFiles prefers an official drop listener when it preventDefault', () => {
-  if (typeof document === 'undefined' || typeof DataTransfer === 'undefined' || typeof DragEvent === 'undefined') return
-  const onDrop = (event) => { event.preventDefault() }
-  document.addEventListener('drop', onDrop)
-  try {
-    let created = 0
-    const outcome = attachFiles([png()], { createDraftImages() { created += 1; return [{ id: 'x' }] } }, { addImages: () => true })
-    assert.equal(outcome.ok, true)
-    assert.equal(created, 0)
-  } finally {
-    document.removeEventListener('drop', onDrop)
-  }
-})
 test('dismissOfficialMenus is safe outside a browser document', () => {
   assert.doesNotThrow(() => dismissOfficialMenus())
 })
 
-test('plusMenuAlreadyOpen follows aria-expanded', () => {
-  assert.equal(plusMenuAlreadyOpen({ getAttribute: () => 'true' }), true)
-  assert.equal(plusMenuAlreadyOpen({ getAttribute: () => 'false' }), false)
-  assert.equal(plusMenuAlreadyOpen({ getAttribute: () => null }), false)
+test('silencePlusKeepFocus cancels keepFocus on the official plus without swallowing non-plus events', () => {
+  if (typeof document === 'undefined' || typeof MouseEvent === 'undefined') return
+  const card = document.createElement('div')
+  card.setAttribute('data-composer-card', '')
+  const plus = document.createElement('button')
+  plus.setAttribute('aria-haspopup', 'listbox')
+  card.append(plus)
+  document.body.append(card)
+  try {
+    const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'target', { value: plus })
+    let stopped = false
+    event.stopImmediatePropagation = () => { stopped = true }
+    assert.equal(silencePlusKeepFocus(event), true)
+    assert.equal(event.defaultPrevented, false, 'canceled pointerdown swallows the plus click on Android')
+    assert.equal(stopped, true)
+    assert.equal(document.activeElement, plus)
+    const other = document.createElement('button')
+    card.append(other)
+    const skipped = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    Object.defineProperty(skipped, 'target', { value: other })
+    assert.equal(silencePlusKeepFocus(skipped), false)
+    assert.equal(skipped.defaultPrevented, false)
+  } finally {
+    card.remove()
+  }
 })
 
 test('composerEditor ignores non-elements and is the IME target helper', () => {
   assert.equal(composerEditor(null), null)
   assert.equal(composerEditor({}), null)
+})
+
+test('keepFocus seats are send/stop, never permission/plan/model (plus is gated earlier)', () => {
+  const stop = seatButton({ aria: '停止生成' })
+  const send = seatButton({ aria: '发送消息' })
+  const repaintedStop = seatButton({ aria: '发送消息', stopLabel: '停止生成' })
+  const permission = seatButton({ aria: 'Access mode, current: Full access' })
+  const plan = seatButton({ aria: 'plan mode 已关闭，按下开启' })
+  const model = seatButton({ aria: 'Select model, current Test Model' })
+  assert.equal(isComposerKeepFocusSeat(stop), true)
+  assert.equal(isComposerKeepFocusSeat(send), true)
+  // A repainted Stop keeps the interrupt seat even when its glyph reads Send.
+  assert.equal(isComposerKeepFocusSeat(repaintedStop), true)
+  assert.equal(isComposerKeepFocusSeat(permission), false)
+  assert.equal(isComposerKeepFocusSeat(plan), false)
+  assert.equal(isComposerKeepFocusSeat(model), false)
 })
 
 function seatButton({ aria = '发送消息', stopLabel = undefined, disabled = false } = {}) {
@@ -108,6 +88,33 @@ test('composerCardSendSeat finds the genuine Send seat and ignores repainted Sto
   assert.equal(composerCardSendSeat(seatCard([repainted, send])), send)
 })
 
+test('composerDraftActionButton ignores a repainted Stop even with a draft', () => {
+  const card = {
+    querySelectorAll: (selector) => selector === 'button[aria-label]' ? [draftStopButton] : [],
+    querySelector: (selector) => {
+      if (selector === 'textarea') return null
+      if (selector === '[data-composer-input]') return { textContent: 'follow-up' }
+      if (selector === '[role="group"] img') return null
+      return null
+    },
+  }
+  const draftStopButton = {
+    tagName: 'BUTTON',
+    dataset: { mobileStopLabel: '停止生成' },
+    getAttribute: (name) => name === 'aria-label' ? '发送消息' : null,
+    closest: (selector) => {
+      if (selector === 'button') return draftStopButton
+      if (selector === '[data-composer-card]') return card
+      return null
+    },
+  }
+  assert.equal(
+    composerDraftActionButton(draftStopButton),
+    null,
+    'a repainted Stop keeps its interrupt role and must not enter the send path',
+  )
+})
+
 test('composerSecondarySeat hides one seat when Send and Stop coexist', () => {
   const disabledSend = seatButton({ aria: '发送消息', disabled: true })
   const enabledStop = seatButton({ aria: '停止生成', disabled: false })
@@ -121,4 +128,14 @@ test('composerSecondarySeat hides one seat when Send and Stop coexist', () => {
   assert.equal(composerSecondarySeat(seatCard([enabledSend])), null, 'a lone Send is never secondary')
   assert.equal(composerSecondarySeat(seatCard([enabledStop])), null, 'a lone Stop is never secondary')
   assert.equal(composerSecondarySeat(seatCard([])), null)
+})
+
+test('narrow plus lets the official listbox open; ComposerAttach does not own a file or image menu', async () => {
+  const attachPath = resolve(import.meta.dirname, '../../../packages/ui-layout-mobile/src/client/ComposerAttach.tsx')
+  const source = await readFile(attachPath, 'utf8')
+  assert.doesNotMatch(source, /id: 'command'/)
+  assert.doesNotMatch(source, /id: 'image'/)
+  assert.doesNotMatch(source, /installOfficialFileCommandRowHider/)
+  assert.match(source, /silencePlusKeepFocus/)
+  assert.match(source, /data-mobile-attach-seat/)
 })

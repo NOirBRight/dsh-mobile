@@ -1,14 +1,11 @@
 /** Mobile recovery for blank sessions created before Agent Presets were enabled. */
 
+import { mainViewSessionId, type SessionListMainViewState } from './session-main-view.ts'
+
 interface SessionSummaryLike {
   readonly id: string
   readonly blank: boolean
   readonly projectionValues?: Readonly<Record<string, unknown>>
-}
-
-interface SessionListSnapshotLike {
-  readonly current?: string
-  readonly byId: Readonly<Record<string, SessionSummaryLike | undefined>>
 }
 
 interface AgentPresetRemoteLike {
@@ -23,7 +20,7 @@ interface AgentPresetRemoteLike {
 export interface LegacyBlankPresetContext {
   readonly sessions: {
     readonly list: {
-      getSnapshot(): SessionListSnapshotLike
+      getSnapshot(): SessionListMainViewState<SessionSummaryLike>
       subscribe(listener: () => void): () => void
     }
   }
@@ -60,7 +57,7 @@ export function installLegacyBlankPresetAdapter(ctx: LegacyBlankPresetContext): 
       if (preset === undefined || disposed) return
 
       const snapshot = ctx.sessions.list.getSnapshot()
-      if (snapshot.current !== sessionId || !needsPreset(snapshot.byId[sessionId])) {
+      if (mainViewSessionId(snapshot) !== sessionId || !needsPreset(snapshot.byId[sessionId])) {
         attempted.delete(sessionId)
         return
       }
@@ -77,7 +74,7 @@ export function installLegacyBlankPresetAdapter(ctx: LegacyBlankPresetContext): 
 
   const inspect = (): void => {
     const snapshot = ctx.sessions.list.getSnapshot()
-    const sessionId = snapshot.current
+    const sessionId = mainViewSessionId(snapshot)
     if (sessionId === undefined || !needsPreset(snapshot.byId[sessionId]) || attempted.has(sessionId)) return
     attempted.add(sessionId)
     void repair(sessionId)

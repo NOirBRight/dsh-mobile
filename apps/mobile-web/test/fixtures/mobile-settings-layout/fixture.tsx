@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MobileFrame } from '../../../../../packages/ui-layout-mobile/src/client/MobileFrame.tsx'
+import { installSettingsShellPresenter } from '../../../../../packages/ui-layout-mobile/src/client/settings-shell-presenter.ts'
 
-const sessions = { current: 'session-a', byId: { 'session-a': { blank: false, displayTitle: 'Settings Session' } } }
+const sessions = { byId: { 'session-a': { blank: false, displayTitle: 'Settings Session', retainedBy: { mainView: 1 } } } }
 const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)
 
 function App() {
@@ -24,38 +25,40 @@ function App() {
           <svg width="16" height="16" aria-hidden="true" />
         </button>
       </div>
-      <div role="dialog" aria-modal="true" data-settings-panel>
-        <nav data-settings-nav>
-          <div data-settings-title>设置</div>
-          <div data-settings-nav-list>
-            {['通用设置', '模型', 'LLM 供应商', '插件', '用量', 'Agent 预设', '插件市场'].map((label, index) => (
-              <button key={label} type="button" data-settings-nav-item aria-current={index === 0 ? 'true' : undefined}>{label}</button>
-            ))}
-          </div>
-        </nav>
-        <div data-settings-content>
-          <div data-settings-header><button type="button" aria-label="关闭">×</button></div>
-          <div data-settings-options>
+      <div>
+        <div role="dialog" aria-modal="true">
+          <nav>
+            <div>设置</div>
             <div>
-              <section data-settings-section>
-                <div>
-                  <div data-provider-card>Cursor provider card</div>
-                  <div data-settings-theme-group>
-                    <div data-settings-theme-row>
-                      <button type="button" aria-pressed="true"><svg width="16" height="16" aria-hidden="true" /><span data-theme-label>浅色</span></button>
-                      <button type="button" aria-pressed="false"><svg width="16" height="16" aria-hidden="true" /><span data-theme-label>深色</span></button>
-                      <button type="button" aria-pressed="false"><svg width="16" height="16" aria-hidden="true" /><span data-theme-label>跟随系统</span></button>
-                    </div>
-                  </div>
-                  <div data-settings-enter-row>
+              {['通用设置', '模型', 'LLM 供应商', '插件', '用量', 'Agent 预设', '插件市场'].map((label, index) => (
+                <button key={label} type="button" aria-current={index === 0 ? 'true' : undefined}>{label}</button>
+              ))}
+            </div>
+          </nav>
+          <div>
+            <div><button type="button" aria-label="关闭">×</button></div>
+            <div>
+              <div>
+                <section>
+                  <div>
+                    <div data-provider-card>Cursor provider card</div>
                     <div>
-                      <div>繁忙时 Enter 键行为</div>
-                      <div>仅在智能体运行时生效；Cmd/Ctrl+Enter 使用另一行为</div>
+                      <div>
+                        <button type="button" aria-pressed="true"><svg width="16" height="16" aria-hidden="true" /><span data-theme-label>浅色</span></button>
+                        <button type="button" aria-pressed="false"><svg width="16" height="16" aria-hidden="true" /><span data-theme-label>深色</span></button>
+                        <button type="button" aria-pressed="false"><svg width="16" height="16" aria-hidden="true" /><span data-theme-label>跟随系统</span></button>
+                      </div>
                     </div>
-                    <span><button type="button">插话发送</button></span>
+                    <div>
+                      <div>
+                        <div>繁忙时 Enter 键行为</div>
+                        <div>仅在智能体运行时生效；Cmd/Ctrl+Enter 使用另一行为</div>
+                      </div>
+                      <span><button type="button">插话发送</button></span>
+                    </div>
                   </div>
-                </div>
-              </section>
+                </section>
+              </div>
             </div>
           </div>
         </div>
@@ -71,6 +74,7 @@ function App() {
     return null
   }
   useEffect(() => {
+    const disposeSettings = installSettingsShellPresenter()
     const timer = window.setTimeout(() => {
       const panel = document.querySelector<HTMLElement>('[data-settings-panel]')!
       const overlay = panel.parentElement!
@@ -78,7 +82,7 @@ function App() {
       const list = document.querySelector<HTMLElement>('[data-settings-nav-list]')!
       const content = document.querySelector<HTMLElement>('[data-settings-content]')!
       const options = document.querySelector<HTMLElement>('[data-settings-options]')!
-      const section = document.querySelector<HTMLElement>('[data-settings-section]')!
+      const section = document.querySelector<HTMLElement>('section')!
       const codexToggle = document.querySelector<HTMLElement>('[data-codex-toggle]')!
       const codexHandle = document.querySelector<HTMLElement>('[data-codex-handle]')!
       document.body.dataset.codexToggleVisibility = getComputedStyle(codexToggle).visibility
@@ -107,8 +111,8 @@ function App() {
       document.body.dataset.sectionScrollWidth = String(section.scrollWidth)
       const themeRow = document.querySelector<HTMLElement>('[data-settings-theme-row]')!
       const themeButtons = [...themeRow.querySelectorAll<HTMLElement>(':scope > button')]
-      const enterTitle = document.querySelector<HTMLElement>('[data-settings-enter-row] > div > div:first-child')!
-      const close = document.querySelector<HTMLElement>('[data-settings-panel] > nav + div > div:first-child > button[aria-label="关闭"]')!
+      const enterTitle = document.querySelector<HTMLElement>('[data-settings-enter-title]')!
+      const close = document.querySelector<HTMLElement>('[data-settings-header] > button[aria-label="关闭"]')!
       document.body.dataset.themeDirection = getComputedStyle(themeRow).flexDirection
       document.body.dataset.themeWrap = getComputedStyle(themeRow).flexWrap
       document.body.dataset.themeButtonCount = String(themeButtons.length)
@@ -130,16 +134,20 @@ function App() {
       document.body.dataset.closeBackground = getComputedStyle(close).backgroundColor
       const titleRange = document.createRange()
       titleRange.selectNodeContents(document.querySelector<HTMLElement>('[data-settings-title]')!)
+      document.body.dataset.settingsOpen = String(document.querySelector('[data-settings-open]') !== null)
       const titleRect = titleRange.getBoundingClientRect()
       const closeRect = close.getBoundingClientRect()
       document.body.dataset.closeTitleCenterDelta = String(Math.round((closeRect.top + closeRect.height / 2) - (titleRect.top + titleRect.height / 2)))
       document.body.dataset.contentMinWidth = getComputedStyle(content).minWidth
       document.body.dataset.ready = 'true'
     }, 100)
-    return () => { window.clearTimeout(timer) }
+    return () => {
+      window.clearTimeout(timer)
+      disposeSettings()
+    }
   }, [])
   return <>
-    <style>{`[data-settings-theme-row] > button { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 20px 32px; border: 1px solid; font-size: 14px; line-height: 22px; }`}</style>
+    <style>{`[data-settings-overlay]{position:fixed;inset:0;display:flex;align-items:center;justify-content:center} [data-settings-theme-row] > button { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 20px 32px; border: 1px solid; font-size: 14px; line-height: 22px; }`}</style>
     <MobileFrame
       useStore={useStore as never}
       useSessions={useSessions as never}

@@ -88,7 +88,7 @@ Settings use the same official sections, laid out for a hand. The official deskt
 | :---: | :---: |
 | ![Mobile settings](docs/screenshots/05-settings.png) | ![Official settings at phone width](docs/screenshots/06-settings-official.png) |
 
-The composer plus button on a phone only offers **Command** and **Insert image**. Images still go through the Host's official draft-image path.
+The composer plus button on a phone opens the official command menu, including **File**. Slash skill rows use a shared cube icon. Files and images go through the Host's official intake.
 
 ![Insert image from the phone composer](docs/screenshots/07-insert-image.png)
 

@@ -4,10 +4,11 @@
     "noEmit": true,
     "declaration": false,
     "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
     "paths": {
       "@deepseek-ai/dsh-client-web": ["../../.dsh-upstream/packages/client/web/lib/types/index.d.ts"],
       "@dsh-mobile/e2e-tunnel": ["../../packages/e2e-tunnel/src/index.ts"]
     }
   },
-  "include": ["src/**/*.ts", "capacitor.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "capacitor.config.ts"]
 }

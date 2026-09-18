@@ -4,36 +4,27 @@ import { isComposerSendLabel, isComposerStopLabel } from './chrome-anchors.ts'
 
 export { isComposerSendLabel, isComposerStopLabel } from './chrome-anchors.ts'
 
-/** Official image MIME set used by the Host draft-image registry. */
-export const IMAGE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'] as const
-
-/** File-input accept list for the gallery/camera chooser. */
-export const IMAGE_ACCEPT = 'image/png,image/jpeg,image/jpg,image/webp,image/gif'
-
-export interface DraftImage {
-  readonly id: string
-}
-
-export interface DraftConversation {
-  createDraftImages(files: readonly File[]): readonly DraftImage[]
-  releaseDraftImage?(id: string): void
-  releaseDraftImages?(images: readonly DraftImage[]): void
-}
-
 export interface DraftInputActions {
-  addImages(ids: readonly string[]): boolean
   /** Official session input action; optional for older Hosts using the fallback bridge. */
   submit?(): void
 }
 
-export type AttachOutcome =
-  | { ok: true }
-  | { ok: false; reason: 'unavailable' | 'busy' | 'unsupported' | 'empty'; message: string }
+function asElement(target: EventTarget | null): Element | null {
+  // Mirrors composerEditor/dismissOfficialMenus: pure helpers stay safe in Node tests.
+  if (typeof Element === 'undefined' || !(target instanceof Element)) return null
+  return target
+}
+
+/** Serve label behind the secondary-seat marker, the send-seat scan, and the mousedown gate. */
+function serveSeatLabel(button: HTMLButtonElement): string | null {
+  return button.dataset.mobileStopLabel ?? button.getAttribute('aria-label')
+}
 
 /** Identify the official composer plus (commands) button without CSS-module class names. */
 export function isComposerPlusButton(target: EventTarget | null): HTMLButtonElement | null {
-  if (!(target instanceof Element)) return null
-  const button = target.closest('button[aria-haspopup="listbox"]')
+  const root = asElement(target)
+  if (root === null) return null
+  const button = root.closest('button[aria-haspopup="listbox"]')
   if (!(button instanceof HTMLButtonElement)) return null
   if (button.closest('[data-composer-card]') === null) return null
   return button
@@ -41,12 +32,25 @@ export function isComposerPlusButton(target: EventTarget | null): HTMLButtonElem
 
 /** Identify any official composer toolbar button without touching its feature behavior. */
 export function composerControlButton(target: EventTarget | null): HTMLButtonElement | null {
-  if (!(target instanceof Element)) return null
-  if (target.closest('[role="menu"], [role="listbox"], [role="dialog"]') !== null) return null
-  const button = target.closest('button')
+  const root = asElement(target)
+  if (root === null) return null
+  if (root.closest('[role="menu"], [role="listbox"], [role="dialog"]') !== null) return null
+  const button = root.closest('button')
   if (!(button instanceof HTMLButtonElement)) return null
   if (button.closest('[data-composer-card]') === null) return null
   return button
+}
+
+/**
+ * Mousedown-swallow seats: official keepFocus (plus/send/stop). Send with a
+ * draft returns earlier via composerDraftActionButton, so this still swallows
+ * the empty-Send mousedown to suppress IME. Permission, plan, and model open
+ * on click (model-switch also arms on pointerdown) and must pass through.
+ */
+export function isComposerKeepFocusSeat(button: HTMLButtonElement): boolean {
+  if (isComposerPlusButton(button) !== null) return true
+  const label = serveSeatLabel(button)
+  return isComposerStopLabel(label) || isComposerSendLabel(label)
 }
 
 function composerCardForButton(button: HTMLButtonElement): HTMLElement | null {
@@ -84,7 +88,7 @@ function stopOwnedSeats(card: HTMLElement): HTMLButtonElement[] {
 
 /** True for a Stop-owned seat. */
 function isStopOwnedSeat(button: HTMLButtonElement): boolean {
-  return isComposerStopLabel(button.dataset.mobileStopLabel ?? button.getAttribute('aria-label'))
+  return isComposerStopLabel(serveSeatLabel(button))
 }
 
 /**
@@ -95,7 +99,7 @@ function isStopOwnedSeat(button: HTMLButtonElement): boolean {
 export function composerCardSendSeat(card: HTMLElement): HTMLButtonElement | null {
   const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>('button[aria-label]'))
   return buttons.find(button =>
-    isComposerSendLabel(button.getAttribute('aria-label')) && !isStopOwnedSeat(button),
+    isComposerSendLabel(serveSeatLabel(button)) && !isStopOwnedSeat(button),
   ) ?? null
 }
 
@@ -128,19 +132,14 @@ export function composerDraftActionButton(target: EventTarget | null): HTMLButto
   if (button === null) return null
   const card = composerCardForButton(button)
   if (card === null || composerDraftForCard(card) === null) return null
-  if (isComposerSendLabel(button.getAttribute('aria-label'))) return button
-  return null
+  if (!isComposerSendLabel(serveSeatLabel(button)) || isStopOwnedSeat(button)) return null
+  return button
 }
 
 /** Return the draft editor associated with a primary action, if it is non-empty. */
 export function composerDraftInput(button: HTMLButtonElement): ComposerDraftElement | null {
   const card = composerCardForButton(button)
   return card === null ? null : composerDraftForCard(card)
-}
-
-/** Plus is already holding the slash menu open — let the official toggle close it. */
-export function plusMenuAlreadyOpen(button: HTMLButtonElement): boolean {
-  return button.getAttribute('aria-expanded') === 'true'
 }
 
 /**
@@ -165,94 +164,35 @@ export function blurComposer(): void {
 }
 
 /**
- * Close official document-owned menus before the mobile attach menu opens.
+ * Plus pointerdown/mousedown: stop InputBar keepFocus from re-focusing the
+ * editor. Do not preventDefault — a canceled pointerdown/touchstart on
+ * Android WebView swallows the later click that opens the official listbox,
+ * and also keeps the editor focused so the IME stays up.
+ * @param event - capture-phase pointer or mouse event.
+ * @returns true when this event targeted the composer plus.
+ */
+export function silencePlusKeepFocus(event: Event): boolean {
+  const plus = isComposerPlusButton(event.target)
+  if (plus === null) return false
+  event.stopImmediatePropagation()
+  plus.focus({ preventScroll: true })
+  return true
+}
+
+/**
+ * Close official document-owned menus before a phone toolbar action.
  * Current official primitives listen for pointerdown while older controls listen
  * for mousedown, so send both outside signals explicitly.
+ * @param target - dispatch target. Body closes every document-owned menu,
+ * including the slash listbox. Dispatching on the composer card closes
+ * foreign menus (mode, model) without MenuView treating it as an outside
+ * dismiss of the slash listbox the plus click is about to toggle.
  */
-export function dismissOfficialMenus(): void {
-  if (typeof document === 'undefined' || document.body === null) return
+export function dismissOfficialMenus(target: EventTarget | null = typeof document === 'undefined' ? null : document.body): void {
+  if (target === null) return
   const pointer = typeof PointerEvent === 'function'
     ? new PointerEvent('pointerdown', { bubbles: true, cancelable: true })
     : new Event('pointerdown', { bubbles: true, cancelable: true })
-  document.body.dispatchEvent(pointer)
-  document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }))
-}
-
-export function filesFromInput(input: HTMLInputElement): File[] {
-  return Array.from(input.files ?? [])
-}
-
-/**
- * Hand files to the official composer drop listener (InputBar document-level
- * intake). Returns true when that listener ran (`preventDefault`).
- */
-export function dispatchOfficialFileDrop(files: readonly File[]): boolean {
-  if (files.length === 0) return false
-  if (typeof document === 'undefined' || typeof DataTransfer === 'undefined' || typeof DragEvent === 'undefined') return false
-  try {
-    const transfer = new DataTransfer()
-    for (const file of files) transfer.items.add(file)
-    if (transfer.files.length !== files.length) return false
-    const event = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer })
-    document.dispatchEvent(event)
-    return event.defaultPrevented
-  } catch {
-    return false
-  }
-}
-
-export function unsupportedImageMessage(): string {
-  return '仅支持 PNG、JPG、WebP、GIF 格式的图片'
-}
-
-export function attachUnavailableMessage(): string {
-  return '当前会话还不能添加图片'
-}
-
-export function attachBusyMessage(): string {
-  return '正在发送，请稍后再添加图片'
-}
-
-/**
- * Register browser files as official draft images and append them to the
- * composer. Non-images fail as a whole batch, matching Host intake.
- */
-export function attachFiles(
-  files: readonly File[],
-  conversation: DraftConversation | undefined,
-  inputActions: DraftInputActions | undefined,
-): AttachOutcome {
-  if (files.length === 0) return { ok: false, reason: 'empty', message: '' }
-  if (dispatchOfficialFileDrop(files)) return { ok: true }
-  if (conversation?.createDraftImages === undefined || inputActions === undefined) {
-    return { ok: false, reason: 'unavailable', message: attachUnavailableMessage() }
-  }
-  try {
-    const images = conversation.createDraftImages(files)
-    if (!inputActions.addImages(images.map(image => image.id))) {
-      releaseDrafts(conversation, images)
-      return { ok: false, reason: 'busy', message: attachBusyMessage() }
-    }
-    return { ok: true }
-  } catch (error) {
-    const unsupported = error !== null && typeof error === 'object' && (
-      (error as { name?: string }).name === 'UnsupportedImageMediaTypeError'
-      || /unsupported image media type/i.test(String((error as { message?: string }).message ?? error))
-    )
-    return {
-      ok: false,
-      reason: unsupported ? 'unsupported' : 'unavailable',
-      message: unsupported ? unsupportedImageMessage() : attachUnavailableMessage(),
-    }
-  }
-}
-
-function releaseDrafts(conversation: DraftConversation, images: readonly DraftImage[]): void {
-  if (typeof conversation.releaseDraftImages === 'function') {
-    conversation.releaseDraftImages(images)
-    return
-  }
-  if (typeof conversation.releaseDraftImage === 'function') {
-    for (const image of images) conversation.releaseDraftImage(image.id)
-  }
+  target.dispatchEvent(pointer)
+  target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }))
 }

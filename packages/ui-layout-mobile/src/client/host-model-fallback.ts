@@ -1,5 +1,7 @@
 /** Mobile repair for an unroutable default on the active Host. */
 
+import { mainViewSessionId, type SessionListMainViewState } from './session-main-view.ts'
+
 interface ModelSelectionLike {
   readonly provider: string
   readonly model: string
@@ -34,15 +36,10 @@ interface SessionSummaryLike {
   readonly blank: boolean
 }
 
-interface SessionListSnapshotLike {
-  readonly current?: string
-  readonly byId: Readonly<Record<string, SessionSummaryLike | undefined>>
-}
-
 export interface HostModelFallbackContext {
   readonly sessions: {
     readonly list: {
-      getSnapshot(): SessionListSnapshotLike
+      getSnapshot(): SessionListMainViewState<SessionSummaryLike>
       subscribe(listener: () => void): () => void
     }
   }
@@ -104,7 +101,7 @@ export function installHostModelFallbackAdapter(ctx: HostModelFallbackContext): 
       const state = await directory.load()
       if (disposed) return
       const snapshot = ctx.sessions.list.getSnapshot()
-      if (snapshot.current !== sessionId || snapshot.byId[sessionId]?.blank !== true) {
+      if (mainViewSessionId(snapshot) !== sessionId || snapshot.byId[sessionId]?.blank !== true) {
         attempted.delete(sessionId)
         return
       }
@@ -123,7 +120,7 @@ export function installHostModelFallbackAdapter(ctx: HostModelFallbackContext): 
 
   const inspect = (): void => {
     const snapshot = ctx.sessions.list.getSnapshot()
-    const sessionId = snapshot.current
+    const sessionId = mainViewSessionId(snapshot)
     if (sessionId === undefined || snapshot.byId[sessionId]?.blank !== true || attempted.has(sessionId)) return
     attempted.add(sessionId)
     void repair(sessionId)

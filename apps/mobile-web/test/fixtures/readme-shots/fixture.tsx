@@ -61,7 +61,7 @@ html, body, #root { margin: 0; height: 100%; background: var(--dsw-alias-bg-base
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dsw-alias-state-success-primary); }
 `
 
-const sessions = { current: 's1', byId: { s1: { blank: false, displayTitle: 'Narrow layout' } } }
+const sessions = { byId: { s1: { blank: false, displayTitle: 'Narrow layout', retainedBy: { mainView: 1 } } } }
 const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)
 
 function Conversation() {

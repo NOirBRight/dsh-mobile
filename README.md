@@ -88,7 +88,7 @@ npm i github:NOirBRight/dsh-e2e-tunnel#v0.1.5
 | :---: | :---: |
 | ![窄屏设置](docs/screenshots/05-settings.png) | ![官方设置在手机宽度下](docs/screenshots/06-settings-official.png) |
 
-手机上加号只提供 **命令** 和 **插入图片**。图片仍走 Host 官方的 draft-image 通道。
+手机上加号打开官方命令菜单（含「文件」）。斜杠 skill 行使用统一立方体图标。图片与文件走 Host 官方入口。
 
 ![composer 插入图片](docs/screenshots/07-insert-image.png)
 

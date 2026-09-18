@@ -17,6 +17,11 @@ import { createMobileLayoutStore } from './stores.ts'
 import { MobileLayoutController } from './service.ts'
 import { ThemePresenter } from './theme-presenter.ts'
 import { ComposerAttach } from './ComposerAttach.tsx'
+import {
+  installSlashMenuIcon,
+  installSlashMenuIconPresenter,
+  type InputTriggerRegistry,
+} from './skill-menu-icon.ts'
 import { PlanToggle } from './PlanToggle.tsx'
 import { commandsExecuteFrom, interpretPlanCommandResult, type PlanCommand } from './plan-toggle.ts'
 import { installHistoryContinuityAdapter } from './history-continuity.ts'
@@ -26,8 +31,11 @@ import { installTurnTailPresenter } from './turn-tail-presenter.ts'
 import { installModelPickerPresenter } from './model-picker-presenter.ts'
 import { installPermissionLabelPresenter } from './permission-label-presenter.ts'
 import { installPresetLabelPresenter } from './preset-label-presenter.ts'
+import { installSettingsShellPresenter } from './settings-shell-presenter.ts'
+import { installTeamPanelPresenter } from './team-panel-presenter.ts'
+import { installDrawerChromePresenter } from './chrome-anchors.ts'
+import { installHostConnectionPresenter } from './host-connection-presenter.ts'
 import { installAgentPresetFallback, type AgentPresetFallbackContext } from './agent-preset-fallback.ts'
-import type { DraftConversation } from './composer-attach.ts'
 
 // Contract exports only. IMobileLayout: the ctx.layout face consumers and test
 // fakes type against. OwnerShare contracts below are the render-side halves
@@ -171,6 +179,23 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => installModelPickerPresenter(), 'ui-layout-mobile: compact model details')
   ctx.effect(() => installPermissionLabelPresenter(), 'ui-layout-mobile: permission icon triggers')
   ctx.effect(() => installPresetLabelPresenter(), 'ui-layout-mobile: compact preset labels')
+  ctx.effect(() => installSettingsShellPresenter(), 'ui-layout-mobile: settings shell marks')
+  ctx.effect(() => installTeamPanelPresenter(), 'ui-layout-mobile: agent team sheet marks')
+  ctx.effect(() => installDrawerChromePresenter(), 'ui-layout-mobile: drawer chrome marks')
+  ctx.inject(['connection'], (scope) => {
+    const connection = (scope as ClientContext & {
+      connection: { state: import('./host-connection-presenter.ts').HostConnectionStateSource }
+    }).connection
+    scope.effect(
+      () => installHostConnectionPresenter(connection),
+      'ui-layout-mobile: host connection state',
+    )
+  })
+  ctx.effect(() => installSlashMenuIconPresenter(), 'ui-layout-mobile: slash menu cube fallback')
+  ctx.inject(['inputTriggers'], (scope) => {
+    const service = (scope as ClientContext & { inputTriggers: InputTriggerRegistry }).inputTriggers
+    scope.effect(() => installSlashMenuIcon(service), 'ui-layout-mobile: slash menu cube wrap')
+  })
 
   ctx.effect(() => {
     let disposeAttach: (() => void) | undefined
@@ -181,7 +206,7 @@ export function apply(ctx: ClientContext): void {
           name: 'conversation.input.left',
           id: 'composer-attach',
           order: 0,
-          inject: () => draftImageInject(ctx),
+          inject: () => ({}),
         }, ComposerAttach)
       } catch {
         // ui-conversation declares this slot; retry when that roster lands.
@@ -226,43 +251,4 @@ export function apply(ctx: ClientContext): void {
       disposePlan?.()
     }
   }, 'ui-layout-mobile: plan toggle')
-}
-
-/** Slot bindings for the plus-button seat: official draft-image intake only.
- * Submission always travels the programmatic-Enter path in ComposerAttach so
- * Core's own queue/steer policy (which owns the live preference) resolves it. */
-function draftImageInject(
-  ctx: ClientContext,
-): {
-  createDraftImages: DraftConversation['createDraftImages']
-  releaseDraftImage: DraftConversation['releaseDraftImage']
-  releaseDraftImages: DraftConversation['releaseDraftImages']
-} {
-  const live = (): DraftConversation | undefined => liveConversation(ctx)
-  return {
-    createDraftImages: (files) => {
-      const conversation = live()
-      if (conversation?.createDraftImages === undefined) {
-        throw new Error('ui-layout-mobile: conversation draft images unavailable')
-      }
-      return conversation.createDraftImages(files)
-    },
-    releaseDraftImage: (id) => { live()?.releaseDraftImage?.(id) },
-    releaseDraftImages: (images) => { live()?.releaseDraftImages?.(images) },
-  }
-}
-
-/** Layout cannot inject `conversation` (conversation already injects `layout`). */
-function liveConversation(ctx: ClientContext): DraftConversation | undefined {
-  const holder = ctx as ClientContext & {
-    get?: (name: string, strict?: boolean) => unknown
-    conversation?: DraftConversation
-  }
-  try {
-    const value = holder.get?.('conversation', false) ?? holder.conversation
-    if (value === null || typeof value !== 'object') return undefined
-    return value as DraftConversation
-  } catch {
-    return undefined
-  }
 }
