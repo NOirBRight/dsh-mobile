@@ -17,7 +17,7 @@ test('mobile shell parks the assistant pet above the composer action lane', asyn
   )
   assert.match(
     source,
-    /await webEntry\.run\(\)\n\s+installMobileActionStyles\(\)/,
+    /await runDshClient\(entry\)\n\s+installMobileActionStyles\(\)/,
     'mobile action styles must be restored after the Host shell remounts its document head',
   )
 })

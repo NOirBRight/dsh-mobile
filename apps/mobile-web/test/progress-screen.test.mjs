@@ -95,8 +95,10 @@ test('the shell root is off limits to status repaints while AppWebEntry boots', 
   // The guard must be entered before render() can reach mountProgressScreen.
   assert.match(source, /const render = \(\): void => \{\s+\/\/[^\n]*\n(?:\s+\/\/[^\n]*\n)*\s+if \(shellRootIsPainting\(\)\) return/)
   // bootDshShell owns the root for its whole lifetime, nested fallback included.
-  assert.match(source, /shellPaintDepth \+= 1\s+try \{/)
-  assert.match(source, /\} finally \{\s+shellPaintDepth -= 1\s+\}/)
+  assert.match(source, /shellPaintDepth \+= 1[\s\S]*?try \{/)
+  assert.match(source, /\} finally \{\s+window.clearTimeout\(recoveryTimer\)\s+recovery.remove\(\)\s+shellPaintDepth -= 1\s+\}/)
+  assert.match(source, /await runDshClient\(entry\)/, 'mobile shell must receive AppWebEntry plugin failures')
+  assert.match(source, /entry\.dispose\(\)/, 'failed Host entries must be disposed before recovery')
   // No await may sit between a finished paint and the flag that protects it.
   assert.match(source, /const booted = await bootDshShell\(selection\)\s+(?:\/\/[^\n]*\n\s+)*shellMounted = true/)
 })

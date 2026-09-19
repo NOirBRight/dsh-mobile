@@ -73,6 +73,25 @@ export function installDshModuleLoaderQueue(): QueueModuleLoader {
 export type BootScriptLoader = (url: string, id: string) => Promise<void>
 
 /**
+ * Run the upstream web entry while preserving failures for the mobile shell.
+ *
+ * AppWebEntry deliberately resolves after drawing its framework-free failure
+ * page when no carrier callback is supplied.  That is useful for a standalone
+ * browser entry, but it makes the native shell believe the Host mounted
+ * successfully and removes its own recovery surface.  The shell owns the
+ * failure presentation, so turn the callback signal back into a rejection.
+ */
+export async function runDshClient(entry: {
+  run(onFailure?: (reason: unknown) => void): Promise<void>
+}): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    // A failure callback is terminal even if a broken plugin never lets run()
+    // settle. Promise settlement also preserves the first failure reason.
+    void Promise.resolve().then(() => entry.run(reject)).then(resolve, reject)
+  })
+}
+
+/**
  * Reset the prior client module system, install the official queue facade, and
  * execute the two parser-preload bundles before AppWebEntry reads the graph.
  */

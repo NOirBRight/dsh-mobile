@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { MobileFrame } from '../../../../../packages/ui-layout-mobile/src/client/MobileFrame.tsx'
 import { composerControlButton } from '../../../../../packages/ui-layout-mobile/src/client/composer-attach.ts'
 import { installTurnTailPresenter } from '../../../../../packages/ui-layout-mobile/src/client/turn-tail-presenter.ts'
+import { installStatsLinePresenter } from '../../../../../packages/ui-layout-mobile/src/client/stats-line-presenter.ts'
 import { installModelPickerPresenter } from '../../../../../packages/ui-layout-mobile/src/client/model-picker-presenter.ts'
 import { installPermissionLabelPresenter } from '../../../../../packages/ui-layout-mobile/src/client/permission-label-presenter.ts'
 import { installPresetLabelPresenter } from '../../../../../packages/ui-layout-mobile/src/client/preset-label-presenter.ts'
@@ -11,10 +12,6 @@ import { installDrawerChromePresenter, stampOfficialDrawerChrome } from '../../.
 
 const sessions = { byId: { 'session-a': { blank: false, displayTitle: 'Mobile UI Session', retainedBy: { mainView: 1 } } } }
 const useSessions = (select: (state: typeof sessions) => unknown) => select(sessions)
-const statsProjections: Record<string, unknown> = {
-  sessionStats: { turns: 4, steps: 8, llmMs: 20_000, toolMs: 0, ttftMs: 9_900, ttftSteps: 1, decodeMs: 1_000, decodeTokens: 68 },
-  tokenUsage: { uncachedInputTokens: 24_000, cacheReadTokens: 96_000, cacheWriteTokens: 0, outputTokens: 9_200 },
-}
 let closeCount = 0
 
 function FrameHarness({ id, width, laggyCodex = false, english = false, feedback = false, drawerOpen = true, modelName = 'DeepSeek V4 Flash Vision (exp)' }: { id: string; width: number; laggyCodex?: boolean; english?: boolean; feedback?: boolean; drawerOpen?: boolean; modelName?: string }) {
@@ -123,20 +120,24 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
       <header data-session-header>
         <div>
           <div data-conversation-header-leading><button type="button" aria-label="打开侧边栏">Open</button></div>
-          <div><nav aria-label="会话层级"><button type="button" disabled>Old title</button><button aria-haspopup="tree" aria-expanded="true"><span className="activitySlot" /><span data-subagent-count>15 个子代理</span><svg /></button><div role="tree" data-subagent-menu /></nav><div data-header-action className="headerActions">
+          <div><nav aria-label="会话层级"><button type="button" disabled>Old title</button><button aria-haspopup="tree" aria-expanded="true"><span className="activitySlot" /><span data-subagent-count>15 个子代理</span><svg width="14" height="14" /></button><div role="tree" data-subagent-menu /></nav><div data-header-action className="headerActions">
             <span title="PTC 模式 SDK" data-mode-label><svg width="14" height="14" />PTC 模式</span>
-            <div><button aria-expanded="true"><span data-state /><span data-job-count>1 background job running</span><svg /></button><ul aria-label="Background jobs" data-job-menu /></div>
+            <div><button aria-expanded="true"><span data-state /><span data-job-count>1 background job running</span><svg width="14" height="14" /></button><ul aria-label="Background jobs" data-job-menu /></div>
             <div data-team-action><button type="button" aria-expanded="false"><svg width="14" height="14" /><span>Agent Team</span></button></div>
           </div></div>
-          <div data-header-utility className="headerUtilities"><div data-utility-wrapper><button data-open-in-app aria-label="在本地打开"><span>Open</span></button><button><span>Session log</span><svg /></button></div></div>
-          <div data-conversation-header-corner><button type="button" data-sidebar-right-expand aria-label="打开右侧栏"><svg width="16" height="16" /></button></div>
+          <div className="headerUtilities"><div data-utility-wrapper><button data-open-in-app aria-label="在本地打开"><span>Open</span></button></div><div data-utility-wrapper><button type="button" aria-haspopup="menu" aria-label="更多" data-session-log><span>Session log</span><svg /></button></div></div>
+          <div className="headerCorner"><button type="button" data-sidebar-right-expand aria-label="打开右侧栏"><svg width="16" height="16" /></button></div>
         </div>
         <div role="tablist"><button role="tab">Chat</button><button role="tab">Trajectory</button></div>
       </header>
       <button type="button" data-hero-preset>PTC mode</button>
       <div data-chat-scroll><div data-chat-flow>Conversation<div data-turn-tail><span className="fixture_timeEnd">23:41 <span className="fixture_runTimeDot">·</span> Ran for 15s <span className="fixture_runTimeDot">·</span> TTFT 1.2s <span className="fixture_runTimeDot">·</span> 72 tok/s</span></div></div></div>
       <div data-composer-card>
-        <div data-composer-stats><button type="button">12 轮 · 8 步 · 68 tok/s</button></div>
+        <style>{`.fixturePills { display:flex; gap:12px; font-size:13px; width:100%; } .fixturePills > span {display:inline-flex;min-width:0} .fixturePills button {display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:1px 8px;font:inherit;white-space:nowrap} .fixturePills button > span {min-width:0;overflow:hidden;text-overflow:ellipsis} .fixturePills svg {width:14px;height:14px;flex:none}`}</style>
+        <div data-fixture-stats-dock><div data-slot="conversation.composer.dock" style={{ display: 'contents' }}><div className="fixturePills">
+          <span><button aria-haspopup="dialog" aria-label="Session time and speed"><svg /><span>{id === 'phone320' ? '12345 turns 67890 steps · 999 tok/s' : '1 turns 1 steps · 135 tok/s'}</span></button></span>
+          <span><button aria-haspopup="dialog" aria-label="Token usage"><svg /><span>{id === 'phone320' ? '999.9M tok · Cache hit 99.99%' : '12.8K · Cache hit 99%'}</span></button></span>
+        </div></div><span><button aria-haspopup="dialog"><svg width="14" height="14" /><span>1%</span></button></span></div>
         <textarea aria-label="Prompt" />
         <div role="listbox"><button type="button" data-command-option>/plan</button></div>
         <div className="fixtureComposerToolbar">
@@ -176,6 +177,7 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
 function App() {
   React.useEffect(() => {
     const disposeTurnTail = installTurnTailPresenter()
+    const disposeStatsLine = installStatsLinePresenter()
     const disposeModelPicker = installModelPickerPresenter()
     const disposePermissionLabel = installPermissionLabelPresenter()
     const disposePresetLabel = installPresetLabelPresenter()
@@ -235,7 +237,7 @@ function App() {
       document.body.dataset.headerLeading = getComputedStyle(header.querySelector<HTMLElement>('[data-conversation-header-leading]')!).display
       const tablist = header.querySelector<HTMLElement>('[role="tablist"]')!
       const action = header.querySelector<HTMLElement>('[data-header-action]')!
-      const utility = header.querySelector<HTMLElement>('[data-header-utility]')!
+      const utility = header.querySelector<HTMLElement>('[class*="headerUtilities"]')!
       const chatTab = tablist.querySelectorAll<HTMLElement>('[role="tab"]')[0]!
       const trajectoryTab = tablist.querySelectorAll<HTMLElement>('[role="tab"]')[1]!
       const presetCell = header.querySelector<HTMLElement>('[data-mode-label]')!
@@ -326,19 +328,25 @@ function App() {
       document.body.dataset.codexTabbarBorderBottom = getComputedStyle(codexTabbar).borderBottomWidth
       const headerRect = header.getBoundingClientRect()
       const tabRect = chatTab.getBoundingClientRect()
+      const menuButtonRect = document.querySelector<HTMLElement>('#official button[aria-label="打开导航菜单"]')!.getBoundingClientRect()
       const actionRect = action.getBoundingClientRect()
       const utilityRect = utility.getBoundingClientRect()
       const preset = presetCell
       const subagentButton = subagentCell
       const jobButton = jobCell
+      const downloadButton = header.querySelector<HTMLElement>('[class*="headerUtilities"] button[aria-haspopup="menu"]')!
       const presetRect = preset.getBoundingClientRect()
       const subagentRect = subagentButton.getBoundingClientRect()
       const jobRect = jobButton.getBoundingClientRect()
+      const downloadRect = downloadButton.getBoundingClientRect()
       const cells = row2.map(el => el.getBoundingClientRect())
       document.body.dataset.headerWidths = cells.map(rect => Math.round(rect.left)).join(',')
       document.body.dataset.headerFits = String(cells.filter(rect => rect.width > 8).length >= 4)
       document.body.dataset.headerLeftInset = String(Math.round(tabRect.left - headerRect.left))
-      document.body.dataset.headerRightInset = String(Math.round(headerRect.right - jobRect.right))
+      document.body.dataset.headerMenuDelta = String(Math.round(tabRect.left - menuButtonRect.left))
+      document.body.dataset.headerRightInset = String(Math.round(headerRect.right - downloadRect.right))
+      document.body.dataset.downloadAfterJobs = String(downloadRect.left >= jobRect.right)
+      document.body.dataset.downloadRightInset = String(Math.round(headerRect.right - downloadRect.right))
       document.body.dataset.modeSubagentGap = String(Math.round(subagentRect.left - presetRect.right))
       document.body.dataset.subagentJobGap = String(Math.round(jobRect.left - subagentRect.right))
       document.body.dataset.actionJustify = getComputedStyle(action).justifyContent
@@ -362,21 +370,34 @@ function App() {
       document.body.dataset.subagentCopyLineHeight = getComputedStyle(subagentCount, '::after').lineHeight
       document.body.dataset.jobCopyDisplay = getComputedStyle(jobCount, '::after').display
       document.body.dataset.jobCopyLineHeight = getComputedStyle(jobCount, '::after').lineHeight
-      document.body.dataset.logCopy = getComputedStyle(header.querySelector<HTMLElement>('[data-header-utility] span')!, '::after').content
+      document.body.dataset.logCopy = getComputedStyle(header.querySelector<HTMLElement>('[class*="headerUtilities"] button[aria-haspopup="menu"] span')!, '::after').content
       document.body.dataset.subagentMenuPosition = getComputedStyle(header.querySelector<HTMLElement>('[data-subagent-menu]')!).position
       document.body.dataset.jobMenuPosition = getComputedStyle(header.querySelector<HTMLElement>('[data-job-menu]')!).position
       document.body.dataset.chatPadding = getComputedStyle(document.querySelector<HTMLElement>('#official [data-chat-scroll]')!).paddingLeft
       const commandOption = document.querySelector<HTMLElement>('#phone320 [data-command-option]')!
       document.body.dataset.commandOptionOwned = String(composerControlButton(commandOption) === null)
-      const composerCard = document.querySelector<HTMLElement>('#phone320 [data-composer-card]')!
-      const statsLine = composerCard.querySelector<HTMLElement>('[data-composer-stats]')!
-      const statsRect = statsLine.getBoundingClientRect()
-      const composerRect = composerCard.getBoundingClientRect()
-      document.body.dataset.compactStatsText = statsLine.textContent ?? ''
-      document.body.dataset.compactStatsFits = String(statsRect.left >= composerRect.left - 1 && statsRect.right <= composerRect.right + 1)
+      document.body.dataset.pillsFit = String(['official', 'phone320', 'phone390', 'phone412'].every(id => {
+        const row = document.querySelector<HTMLElement>('#' + id + ' .fixturePills')!
+        const bounds = row.getBoundingClientRect()
+        const anchors = [...row.children].map(child => child.getBoundingClientRect())
+        const context = row.closest('[data-fixture-stats-dock]')!.querySelector(':scope > span')!.getBoundingClientRect()
+        if (Math.abs((anchors[1]!.left - anchors[0]!.right) - (context.left - anchors[1]!.right)) > 1) return false
+        if (Number.parseFloat(getComputedStyle(row).fontSize) < 12) return false
+        if ([...row.querySelectorAll('svg')].some(icon => icon.getBoundingClientRect().width < 14)) return false
+        if (!/T .*S/.test(row.querySelector('[data-mobile-stats-label]')?.getAttribute('data-mobile-stats-label') ?? '')) return false
+        for (const button of row.querySelectorAll('button')) {
+          const icon = button.querySelector('svg')!.getBoundingClientRect()
+          const label = button.querySelector('span')!.getBoundingClientRect()
+          if (Math.abs((icon.top + icon.bottom - label.top - label.bottom) / 2) > 1) return false
+        }
+        return [...row.querySelectorAll<HTMLElement>('button, button > span')].every(item => {
+          const rect = item.getBoundingClientRect()
+          return item.scrollWidth <= item.clientWidth + 1 && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 && rect.bottom <= bounds.bottom + 1
+        })
+      }))
       document.body.dataset.openLocallyHidden = getComputedStyle(header.querySelector<HTMLElement>('[data-open-in-app]')!).display
       document.body.dataset.rightbarExpand = String(document.querySelector('#official [data-sidebar-right-expand]') !== null)
-      document.body.dataset.moreButton = String(document.querySelector('#official button[aria-label="更多"]') !== null)
+      document.body.dataset.moreButton = String(document.querySelector('#official button[aria-label="更多"]:not([aria-haspopup="menu"])') !== null)
       const toolbar = document.querySelector<HTMLElement>('#phone320 .fixtureComposerToolbar')!
       const addControl = toolbar.querySelector<HTMLElement>('[data-add-control]')!
       const planControl = toolbar.querySelector<HTMLElement>('[data-plan-control]')!
@@ -561,7 +582,7 @@ function App() {
       document.body.dataset.teamDismissed = String(document.querySelector('#teamSheet [role="dialog"]') === null)
       document.body.dataset.ready = 'true'
     }, 100)
-    return () => { window.clearTimeout(timer); disposeTurnTail(); disposeModelPicker(); disposePermissionLabel(); disposePresetLabel(); disposeTeamPanel(); disposeDrawerChrome() }
+    return () => { window.clearTimeout(timer); disposeTurnTail(); disposeStatsLine(); disposeModelPicker(); disposePermissionLabel(); disposePresetLabel(); disposeTeamPanel(); disposeDrawerChrome() }
   }, [])
   return <>
     <style>{`:root { --dsw-alias-bg-base: #ffffff; --dsw-alias-bg-layer-1: #f3f4f6; }

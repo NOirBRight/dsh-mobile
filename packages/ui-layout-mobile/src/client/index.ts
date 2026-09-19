@@ -27,6 +27,7 @@ import { commandsExecuteFrom, interpretPlanCommandResult, type PlanCommand } fro
 import { installHistoryContinuityAdapter } from './history-continuity.ts'
 import { installLegacyBlankPresetAdapter } from './legacy-blank-preset.ts'
 import { installHostModelFallbackAdapter, type HostModelFallbackContext } from './host-model-fallback.ts'
+import { installStatsLinePresenter } from './stats-line-presenter.ts'
 import { installTurnTailPresenter } from './turn-tail-presenter.ts'
 import { installModelPickerPresenter } from './model-picker-presenter.ts'
 import { installPermissionLabelPresenter } from './permission-label-presenter.ts'
@@ -176,6 +177,7 @@ export function apply(ctx: ClientContext): void {
     'ui-layout-mobile: unroutable Host model fallback',
   )
   ctx.effect(() => installTurnTailPresenter(), 'ui-layout-mobile: compact turn tail')
+  ctx.effect(() => installStatsLinePresenter(), 'ui-layout-mobile: compact statistics strip')
   ctx.effect(() => installModelPickerPresenter(), 'ui-layout-mobile: compact model details')
   ctx.effect(() => installPermissionLabelPresenter(), 'ui-layout-mobile: permission icon triggers')
   ctx.effect(() => installPresetLabelPresenter(), 'ui-layout-mobile: compact preset labels')

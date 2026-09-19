@@ -1,6 +1,39 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { prepareDshClientBoot, resetDshClientBoot } from '../src/dsh-boot.ts'
+import { prepareDshClientBoot, resetDshClientBoot, runDshClient } from '../src/dsh-boot.ts'
+
+test('runDshClient rejects when AppWebEntry reports a plugin failure', async () => {
+  const failure = new Error('failed to import loader entry')
+  const entry = {
+    async run(onFailure) {
+      onFailure?.(failure)
+    },
+  }
+  await assert.rejects(runDshClient(entry), failure)
+})
+
+test('runDshClient resolves after a successful AppWebEntry run', async () => {
+  let callbackReceived = false
+  await runDshClient({
+    async run(onFailure) {
+      callbackReceived = typeof onFailure === 'function'
+    },
+  })
+  assert.equal(callbackReceived, true)
+})
+
+test('runDshClient preserves a direct AppWebEntry rejection', async () => {
+  const failure = new Error('boot transport rejected')
+  await assert.rejects(runDshClient({ run: async () => { throw failure } }), failure)
+})
+
+test('failure callback rejects even when the plugin run promise never settles', { timeout: 1000 }, async () => {
+  const failure = new Error('plugin failed then hung')
+  await assert.rejects(runDshClient({ run(onFailure) {
+    onFailure(failure)
+    return new Promise(() => {})
+  } }), failure)
+})
 
 test('prepareDshClientBoot installs the queue and parser preloads before create', async () => {
   const manifest = { rev: 'host', entries: [

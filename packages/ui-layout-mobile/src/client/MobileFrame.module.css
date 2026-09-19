@@ -722,7 +722,7 @@
   flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
+  gap: 6px;
   min-height: 44px;
   padding: 0 12px;
   overflow: visible;
@@ -738,7 +738,7 @@
   display: none !important;
 }
 
-.center :global(header:has([data-conversation-header-corner]):not(:has(> [role="tablist"]))) {
+.center :global(header:has([data-conversation-header-corner], [data-sidebar-right-expand]):not(:has(> [role="tablist"]))) {
   padding: 0 12px;
   min-height: 0;
 }
@@ -817,7 +817,7 @@
 }
 
 .center :global(header:has(> [role="tablist"]) > div:first-child),
-.center :global(header:has(> [role="tablist"]) > div:first-child > div:not([data-conversation-header-leading]):not([data-header-utility]):not([data-conversation-header-corner])),
+.center :global(header:has(> [role="tablist"]) > div:first-child > div:not([data-conversation-header-leading]):not([data-header-utility]):not([data-conversation-header-corner]):not(:has([data-open-in-app])):not(:has([data-sidebar-right-expand]))),
 .center :global(header:has(> [role="tablist"]) [class*="headerActions"]),
 .center :global(header:has(> [role="tablist"]) > [role="tablist"]) {
   display: contents !important;
@@ -966,8 +966,10 @@
   content: 'Team';
 }
 
-.center :global([data-conversation-header-corner]) {
+.center :global([data-conversation-header-corner]),
+.center :global(header div:has(> [data-sidebar-right-expand])) {
   flex: 0 0 0;
+  order: 7;
   width: 0;
   min-width: 0;
   height: 0;
@@ -1198,47 +1200,107 @@
   display: none;
 }
 
-.center :global([data-composer-stats]) {
+/* Current Host uses interactive pills, not the legacy pipe-separated line.
+   Keep their text and dialogs intact; fit all labels rather than ellipsizing. */
+.center :global([data-composer-stats]),
+.center :global([data-mobile-stats-pills]) {
   display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  max-width: none;
-  box-sizing: border-box;
-  padding: 2px 8px 6px;
-  font-size: calc(var(--dsh-content-font-size-secondary, 13px) * 0.7);
-  line-height: calc(16px + var(--dsh-content-font-delta-secondary, 0px));
-  white-space: nowrap;
-}
-
-.center :global([data-composer-stats] [class*="anchor"]) {
-  flex: none;
+  flex: 1 1 auto;
+  width: auto;
   min-width: 0;
-  max-width: none;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+  font-size: var(--mobile-stats-font, 13px);
+  line-height: 20px;
+  padding: 2px 0 4px;
+  overflow: visible;
 }
 
-.center :global([data-composer-stats] [class*="pill"]) {
-  max-width: none;
+.center :global(:is([data-composer-stats], [data-mobile-stats-pills]) > span) {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.center :global(:is([data-composer-stats], [data-mobile-stats-pills]) button),
+.center :global(:is([data-composer-stats], [data-mobile-stats-pills]) > span > span) {
+  padding: 1px 2px;
   gap: 3px;
-  padding: 0;
+  font: inherit;
   white-space: nowrap;
+  max-width: none;
 }
 
-.center :global([data-composer-stats] [class*="label"]) {
+.center :global(:is([data-composer-stats], [data-mobile-stats-pills]) button > span),
+.center :global(:is([data-composer-stats], [data-mobile-stats-pills]) > span > span > span) {
   overflow: visible;
   text-overflow: clip;
   white-space: nowrap;
 }
 
+.center :global([data-mobile-stats-label]) {
+  font-size: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  line-height: 0;
+}
+
+.center :global([data-mobile-stats-label] > *) {
+  display: none;
+}
+
+.center :global([data-mobile-stats-label])::after {
+  content: attr(data-mobile-stats-label);
+  font-size: var(--mobile-stats-font, 13px);
+  line-height: 20px;
+}
+
+.center :global([data-mobile-stats-pills] button svg) {
+  width: 14px;
+  height: 14px;
+  display: block;
+  align-self: center;
+}
+
+.center :global([data-mobile-stats-dock]) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.center :global([data-mobile-stats-dock] [data-mobile-stats-pills]) {
+  flex: 0 1 auto;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.center :global([data-mobile-stats-dock] > span) {
+  flex: none;
+  margin: 0;
+}
+
+.center :global([data-mobile-stats-dock] > span > button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 2px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.center :global([data-slot="conversation.composer.dock"] > * svg),
 .center :global([data-composer-stats] svg) {
   width: 12px;
   height: 12px;
   flex: none;
 }
 
+.center :global([data-slot="conversation.composer.dock"] > * [class*="sep"]),
 .center :global([data-composer-stats] [class*="sep"]) {
   margin: 0 3px;
 }

@@ -32,10 +32,15 @@ async function filesUnder(path) {
 }
 
 const violations = []
+// User-approved fault recovery only: boot-recovery.ts guards reload behind an
+// unfinished graph or an explicit recovery action. Normal navigation must not
+// reload. The healthy/stalled cases are exercised in boot-recovery.test.mjs.
+const bootRecoveryModule = 'apps/mobile-web/src/boot-recovery.ts'
 for (const base of roots) {
   for (const file of await filesUnder(join(root, base))) {
     const source = await readFile(file, 'utf8')
     for (const rule of forbidden) {
+      if (rule.name === 'full document reload' && relative(root, file) === bootRecoveryModule) continue
       if (rule.pattern.test(source)) violations.push(`${relative(root, file)}: ${rule.name}`)
     }
   }

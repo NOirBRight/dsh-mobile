@@ -16,7 +16,8 @@ import { prepareProfileConnection, type PreparedProfileConnection } from './prof
 import { activateHostProfile, completeProfileOnboarding, removeHostProfile } from './profile-lifecycle.ts'
 import { connectionRecoveryDecision, endpointRefreshRequired } from './reconnect-recovery.ts'
 import { BrowserProfileStorage, ProfileRepository } from './profiles.ts'
-import { prepareDshClientBoot } from './dsh-boot.ts'
+import { prepareDshClientBoot, runDshClient } from './dsh-boot.ts'
+import { reloadStalledBoot } from './boot-recovery.ts'
 import { connectionRecoveryNotice, connectionRouteLabel, coreLiveDataReadiness, hydrateBootManifestFromCache, installBadge, installProfileAction, installShims, injectBootManifestFromTunnel, isPassiveConnectionRetry, shouldInstallTunnelShims, supportsLiveDataReadiness, TunnelManager, TunnelManagerSlot, type HostConnectionState, type LiveDataReadiness, type TunnelManagerActivity } from './tunnel.ts'
 import { HostSession, isHostSessionStoppedError } from './host-session.ts'
 import { mountProgressScreen } from './progress-screen.ts'
@@ -81,13 +82,30 @@ installMobileActionStyles()
  * a half-built shell and leave a spinner over a dead document.
  */
 let shellPaintDepth = 0
+let openBootProfileMenu: (() => void) | null = null
+let bootRecoveryRequested = false
 
 export function shellRootIsPainting(): boolean {
   return shellPaintDepth > 0
 }
 
 async function bootDshShell(selection: ResponsiveBootSelection | null): Promise<ResponsiveBootSelection | null> {
+  let entry: AppWebEntry | null = null
   shellPaintDepth += 1
+  // This control lives outside the Host-owned root, including while run() or
+  // dispose() is awaiting a plugin forever. Never race a second graph into it.
+  const recovery = document.createElement('button')
+  recovery.type = 'button'
+  recovery.textContent = '连接选项'
+  recovery.dataset.mobileBootRecovery = ''
+  recovery.style.cssText = 'position:fixed;right:12px;top:calc(env(safe-area-inset-top) + 12px);z-index:2147483646;padding:10px 14px;border-radius:12px;font:14px system-ui;cursor:pointer'
+  recovery.onclick = () => {
+    bootRecoveryRequested = true
+    openBootProfileMenu?.()
+  }
+  const recoveryTimer = window.setTimeout(() => {
+    if (openBootProfileMenu !== null) document.body.append(recovery)
+  }, 5000)
   try {
     await webEntry?.dispose()
     webEntry = null
@@ -95,19 +113,34 @@ async function bootDshShell(selection: ResponsiveBootSelection | null): Promise<
     el.replaceChildren()
     if (selection !== null) installCompatibilityNotice(selection.compatibility)
     concealShellNativeBridges()
-    webEntry = new AppWebEntry(el)
-    await webEntry.run()
+    entry = new AppWebEntry(el)
+    webEntry = entry
+    await runDshClient(entry)
     installMobileActionStyles()
     const health = inspectChromeAnchors()
     if (!health.ok) console.warn('[dsh-mobile]', health.message, health.missing.join(','))
+    bootRecoveryRequested = false
     return selection
   } catch (error) {
+    // AppWebEntry leaves its framework-free failure page mounted by design.
+    // The native shell must own the recovery surface instead, and a failed
+    // entry must not linger while the user switches to another Host profile.
+    if (entry !== null && webEntry === entry) {
+      webEntry = null
+      try {
+        await entry.dispose()
+      } catch (disposeError) {
+        console.warn('[dsh-mobile] failed to dispose Host shell after boot error', disposeError)
+      }
+    }
     if (selection?.layout === 'narrow' && selection.fallbackOfficial !== undefined) {
       console.warn('[dsh-mobile] mobile layout failed, falling back to official', error)
       return bootDshShell(selection.fallbackOfficial)
     }
     throw error
   } finally {
+    window.clearTimeout(recoveryTimer)
+    recovery.remove()
     shellPaintDepth -= 1
   }
 }
@@ -420,6 +453,8 @@ void (async () => {
         ...(native ? { backgroundConnection: { enabled: backgroundConnectionEnabled } } : {}),
       }), () => { session?.stop() })
     }
+    openBootProfileMenu = openProfileMenu
+    own(() => { openBootProfileMenu = null })
     own(installProfileAction(openProfileMenu))
     const setTopbarNotice = (
       message: string | null,
@@ -521,10 +556,16 @@ void (async () => {
           : '正在拉取 Host 界面 ' + bootProgress.loaded + '/' + bootProgress.total + '…'
         const lines = [route === '' ? progress : '当前路径：' + route + '\n' + progress]
         if (bootProgress === null) lines.push('首次配对需要下载全部插件，请稍候')
+        const loadingOptions = document.createElement('button')
+        loadingOptions.type = 'button'
+        loadingOptions.dataset.mobileShellAction = ''
+        loadingOptions.textContent = '连接选项'
+        loadingOptions.addEventListener('click', openProfileMenu)
         mountProgressScreen(el, {
           title: '正在加载 ' + activeConnection.profile.displayName,
           detail: lines.join('\n'),
           spinning: true,
+          action: loadingOptions,
           ...bootProgress === null || bootProgress.total <= 0 ? {} : { ratio: bootProgress.loaded / bootProgress.total },
         })
         return
@@ -578,6 +619,9 @@ void (async () => {
     }
 
     async function enterOnboardingAfterRemoval(): Promise<void> {
+      if (reloadStalledBoot(shellRootIsPainting(), bootRecoveryRequested)) {
+        return
+      }
       session?.stop()
       await webEntry?.dispose()
       webEntry = null
@@ -604,6 +648,11 @@ void (async () => {
     }
 
     async function stageHostSwitch(next: PreparedProfileConnection): Promise<void> {
+      if (reloadStalledBoot(shellRootIsPainting(), bootRecoveryRequested)) {
+        // The profile choice is already persisted. Reload discards the old
+        // plugin graph before booting that choice, even if disposal is stuck.
+        await new Promise<never>(() => {})
+      }
       session?.stop()
       await webEntry?.dispose()
       webEntry = null
@@ -793,7 +842,18 @@ void (async () => {
       queuedRuntimeOffer = undefined
       await connectPairingOffer(offerUrl)
     }
-    shellMounted = await session.hydrate(activeConnection)
+    try {
+      shellMounted = await session.hydrate(activeConnection)
+    } catch (error) {
+      // Cached plugin graphs can fail before the live tunnel has had a chance
+      // to recover. Keep the shell alive and expose its profile menu instead
+      // of letting the top-level bootstrap terminate with a dead WebView.
+      if (isHostSessionStoppedError(error)) return
+      lastError = error instanceof Error ? error.message : String(error)
+      endpointRefreshAvailable ||= endpointRefreshRequired(activeConnection.profile.endpoint.kind, lastError)
+      shellMounted = false
+      render()
+    }
     render()
     const handleOnline = (): void => { void session?.probeNow() }
     window.addEventListener('online', handleOnline)

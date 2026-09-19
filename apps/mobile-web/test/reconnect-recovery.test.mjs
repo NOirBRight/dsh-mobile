@@ -36,7 +36,7 @@ test('rescan does not stop the new campaign as Active Host connection stopped', 
   assert.match(source, /shellMounted = false\s+lastError = ''\s+endpointRefreshAvailable = false/)
   assert.ok(source.includes('session?.forgetPaint()'))
   assert.ok(source.includes('isHostSessionStoppedError'))
-  assert.equal(source.split('if (isHostSessionStoppedError(error)) return').length - 1, 3)
+  assert.equal(source.split('if (isHostSessionStoppedError(error)) return').length - 1, 4)
   assert.ok(source.includes('if (propagateError) throw error'))
   assert.ok(source.includes('mountProgressScreen'))
   assert.ok(source.includes("'正在连接 ' + activeConnection.profile.displayName"))

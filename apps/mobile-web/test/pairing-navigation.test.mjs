@@ -8,5 +8,10 @@ test('scanned and deep-link offers transition the resident HostSession without r
   assert.ok(source.includes('runtimeOfferHandler(offerUrl)'))
   assert.ok(source.includes('async function connectPairingOffer(offerUrl: string)'))
   assert.ok(source.includes('await session?.connect(next)'))
+  // Healthy navigation stays resident. A still-painting plugin graph must be
+  // discarded before switching, otherwise late completion can overwrite it.
+  assert.match(source, /if \(reloadStalledBoot\(shellRootIsPainting\(\), bootRecoveryRequested\)\)/)
   assert.ok(!source.includes('location.reload()'))
+  const pairing = source.slice(source.indexOf('async function connectPairingOffer'), source.indexOf('async function reconnectActiveHost'))
+  assert.ok(!pairing.includes('location.reload()'))
 })
