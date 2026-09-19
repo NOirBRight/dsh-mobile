@@ -817,7 +817,7 @@
 }
 
 .center :global(header:has(> [role="tablist"]) > div:first-child),
-.center :global(header:has(> [role="tablist"]) > div:first-child > div:not([data-conversation-header-leading]):not([data-header-utility]):not([data-conversation-header-corner]):not(:has([data-open-in-app])):not(:has([data-sidebar-right-expand]))),
+.center :global(header:has(> [role="tablist"]) > div:first-child > div:not([data-conversation-header-leading]):not([data-header-utility]):not([data-conversation-header-corner]):not(:has(button[aria-haspopup="menu"])):not(:has([data-sidebar-right-expand]))),
 .center :global(header:has(> [role="tablist"]) [class*="headerActions"]),
 .center :global(header:has(> [role="tablist"]) > [role="tablist"]) {
   display: contents !important;

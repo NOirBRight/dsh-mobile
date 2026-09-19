@@ -125,7 +125,7 @@ function FrameHarness({ id, width, laggyCodex = false, english = false, feedback
             <div><button aria-expanded="true"><span data-state /><span data-job-count>1 background job running</span><svg width="14" height="14" /></button><ul aria-label="Background jobs" data-job-menu /></div>
             <div data-team-action><button type="button" aria-expanded="false"><svg width="14" height="14" /><span>Agent Team</span></button></div>
           </div></div>
-          <div className="headerUtilities"><div data-utility-wrapper><button data-open-in-app aria-label="在本地打开"><span>Open</span></button></div><div data-utility-wrapper><button type="button" aria-haspopup="menu" aria-label="更多" data-session-log><span>Session log</span><svg /></button></div></div>
+          <div className="headerUtilities"><div data-utility-wrapper><button data-fixture-open-local aria-label="在本地打开"><span>Open</span></button></div><div data-utility-wrapper><button type="button" aria-haspopup="menu" aria-label="更多" data-session-log><span>Session log</span><svg /></button></div></div>
           <div className="headerCorner"><button type="button" data-sidebar-right-expand aria-label="打开右侧栏"><svg width="16" height="16" /></button></div>
         </div>
         <div role="tablist"><button role="tab">Chat</button><button role="tab">Trajectory</button></div>
@@ -395,7 +395,7 @@ function App() {
           return item.scrollWidth <= item.clientWidth + 1 && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 && rect.bottom <= bounds.bottom + 1
         })
       }))
-      document.body.dataset.openLocallyHidden = getComputedStyle(header.querySelector<HTMLElement>('[data-open-in-app]')!).display
+      document.body.dataset.openLocallyHidden = getComputedStyle(header.querySelector<HTMLElement>('[data-fixture-open-local]')!).display
       document.body.dataset.rightbarExpand = String(document.querySelector('#official [data-sidebar-right-expand]') !== null)
       document.body.dataset.moreButton = String(document.querySelector('#official button[aria-label="更多"]:not([aria-haspopup="menu"])') !== null)
       const toolbar = document.querySelector<HTMLElement>('#phone320 .fixtureComposerToolbar')!

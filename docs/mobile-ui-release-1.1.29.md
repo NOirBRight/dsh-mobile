@@ -29,6 +29,8 @@ Header corner compatibility uses the public rightbar control rather than introdu
 
 ## Review and verification
 
+Historical results for 1.1.29 only. The subsequent physical header finding and final 1.1.30 verification are recorded in `mobile-ui-release-1.1.30.md`; the pending-device status below is superseded there.
+
 - Parallel Standards/Spec reviews against the fixed baseline found no remaining hard standards violations or substantive implementation defects after repair. The successful-boot recovery flag reset has regression coverage.
 - Full repository tests, TypeScript checks and architecture audit pass, including 298 mobile-web tests. Layout coverage checks narrow widths, large values, readable text/icon sizes, vertical centering and equal spacing.
 - Strict `npm run verify:release` passes against clean official alpha.4, including immutable Pairing 0.1.14 artifact verification, offline profile installation and the mobile startup matrix.

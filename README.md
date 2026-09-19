@@ -37,10 +37,10 @@ dsh plugin --profile web add --force https://github.com/NOirBRight/dsh-mobile/re
 1. **自动生成**（临时 Quick Tunnel）或 **填写地址**（你拿到的，或[自己部署](relay/deploy/README.md) 的 Relay）。
 2. 刷新二维码。约 5 分钟有效，且一次性。
 
-Android APK（已签名 **v1.1.29**）：
+Android APK（已签名 **v1.1.30**）：
 
 - 最新 APK：https://github.com/NOirBRight/dsh-mobile/releases/latest/download/dsh-mobile.apk
-- 固定 APK：https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.29/dsh-mobile.apk
+- 固定 APK：https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.30/dsh-mobile.apk
 
 装上应用，打开后扫描 Host 二维码。
 
@@ -51,10 +51,10 @@ Android APK（已签名 **v1.1.29**）：
 | [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) mobile layout artifact（`@dsh-mobile/ui-layout-mobile`） | [v1.1.6](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.6/dsh-mobile-ui-layout-mobile.tgz) | APK 内置的窄屏 root 布局；不安装到桌面 WebUI profile。 |
 | [dsh-e2e-tunnel](https://github.com/NOirBRight/dsh-e2e-tunnel)（`@dsh-mobile/e2e-tunnel`） | [v0.1.5](https://github.com/NOirBRight/dsh-e2e-tunnel/releases/tag/v0.1.5) | 配套库。pairing 已经依赖它。 |
 | [dsh-codex-sidebar](https://github.com/NOirBRight/dsh-codex-sidebar) | [v0.5.12](https://github.com/NOirBRight/dsh-codex-sidebar/releases/tag/v0.5.12) | **可选。** details 席位上的 Files / Review / Browser / Terminal。 |
-| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.29](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.29) | 手机应用。下载固定名称 `dsh-mobile.apk`。 |
+| [dsh-mobile](https://github.com/NOirBRight/dsh-mobile) APK | [v1.1.30](https://github.com/NOirBRight/dsh-mobile/releases/tag/v1.1.30) | 手机应用。下载固定名称 `dsh-mobile.apk`。 |
 | Relay | [`relay/deploy`](relay/deploy/README.md) | 可选自托管密文转发。只用 Quick Tunnel 就跳过。 |
 
-Release 完整性：APK 的 SHA-256 列在 [v1.1.29/SHA256SUMS-mobile](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.29/SHA256SUMS-mobile)；Host 插件 tarball 仍以 [v1.1.6/SHA256SUMS](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.6/SHA256SUMS) 为准。配对插件完整性见 [v0.1.17/SHA256SUMS](https://github.com/NOirBRight/dsh-mobile-pairing/releases/download/v0.1.17/SHA256SUMS)。生产部署请使用固定版本 URL。
+Release 完整性：APK 的 SHA-256 列在 [v1.1.30/SHA256SUMS-mobile](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.30/SHA256SUMS-mobile)；Host 插件 tarball 仍以 [v1.1.6/SHA256SUMS](https://github.com/NOirBRight/dsh-mobile/releases/download/v1.1.6/SHA256SUMS) 为准。配对插件完整性见 [v0.1.17/SHA256SUMS](https://github.com/NOirBRight/dsh-mobile-pairing/releases/download/v0.1.17/SHA256SUMS)。生产部署请使用固定版本 URL。
 
 把隧道嵌进别的 Host 时才单独钉库（装手机不用跑）：
 
